@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, inArray, notInArray, sql, or, isNull } from "drizzle-orm";
-import { db, deliveryRoutesTable, deliveryRouteOrdersTable, ordersTable, customersTable } from "@workspace/db";
+import { db, deliveryRoutesTable, deliveryRouteOrdersTable, ordersTable, customersTable, couriersTable } from "@workspace/db";
 import { getOrCreateSettings } from "./settings";
 
 const router: IRouter = Router();
@@ -680,8 +680,11 @@ router.post("/delivery/routes/:id/assign", async (req, res): Promise<void> => {
   const routeId = parseInt(req.params.id ?? "", 10);
   if (isNaN(routeId)) { res.status(400).json({ error: "Invalid route id" }); return; }
 
-  const courierName = typeof req.body?.courierName === "string" ? req.body.courierName.trim() : "";
-  if (!courierName) { res.status(400).json({ error: "courierName is required" }); return; }
+  const rawCourierName = typeof req.body?.courierName === "string" ? req.body.courierName.trim() : "";
+  const courierId = typeof req.body?.courierId === "number" ? req.body.courierId : null;
+  if (!rawCourierName && !courierId) {
+    res.status(400).json({ error: "courierId or courierName is required" }); return;
+  }
 
   const [route] = await db.select().from(deliveryRoutesTable).where(eq(deliveryRoutesTable.id, routeId));
   if (!route) { res.status(404).json({ error: "Route not found" }); return; }
@@ -689,8 +692,15 @@ router.post("/delivery/routes/:id/assign", async (req, res): Promise<void> => {
     res.status(400).json({ error: `Cannot assign route in status '${route.status}'` }); return;
   }
 
+  let courierName = rawCourierName;
+  if (courierId && !courierName) {
+    const [c] = await db.select({ name: couriersTable.name }).from(couriersTable).where(eq(couriersTable.id, courierId)).limit(1);
+    if (!c) { res.status(404).json({ error: "Motoboy não encontrado" }); return; }
+    courierName = c.name;
+  }
+
   await db.update(deliveryRoutesTable)
-    .set({ status: "in_progress", courierName, startedAt: new Date() })
+    .set({ status: "in_progress", courierId, courierName, startedAt: new Date() })
     .where(eq(deliveryRoutesTable.id, routeId));
 
   const routeOrders = await db

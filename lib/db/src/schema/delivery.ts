@@ -8,6 +8,7 @@ export const deliveryRoutesTable = pgTable("delivery_routes", {
   includedNeighborhoods: text("included_neighborhoods").notNull().default("[]"), // JSON array as text
   status: text("status").notNull().default("available"), // available | in_progress | completed
   color: text("color").notNull().default("#3b82f6"),
+  courierId: integer("courier_id"),
   courierName: text("courier_name"),
   storeOrigin: text("store_origin").notNull(),
   mapsUrl: text("maps_url"),

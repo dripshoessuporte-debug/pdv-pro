@@ -11,6 +11,7 @@ import {
   AlertCircle,
   BookOpen,
   Truck,
+  Bike,
   Settings,
 } from "lucide-react";
 import {
@@ -28,6 +29,7 @@ const navItems = [
   { href: "/menu", label: "Cardápio", icon: BookOpen },
   { href: "/customers", label: "Clientes", icon: Users },
   { href: "/routes", label: "Rotas", icon: Truck },
+  { href: "/motoboys", label: "Motoboys", icon: Bike },
   { href: "/settings", label: "Configurações", icon: Settings },
 ];
 

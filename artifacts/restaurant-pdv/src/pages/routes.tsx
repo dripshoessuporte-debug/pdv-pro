@@ -200,7 +200,16 @@ export default function Routes() {
   const [qrRoute, setQrRoute] = useState<DeliveryRoute | null>(null);
   const [assignRoute, setAssignRoute] = useState<DeliveryRoute | null>(null);
   const [courierName, setCourierName] = useState("");
+  const [selectedCourierId, setSelectedCourierId] = useState<number | null>(null);
+  const [couriers, setCouriers] = useState<{ id: number; name: string; vehicle: string }[]>([]);
   const [assigning, setAssigning] = useState(false);
+
+  useEffect(() => {
+    if (!assignRoute) return;
+    apiFetch<{ id: number; name: string; vehicle: string }[]>("/couriers")
+      .then(setCouriers)
+      .catch(() => setCouriers([]));
+  }, [assignRoute]);
   const [completing, setCompleting] = useState<number | null>(null);
   const [moveOrderState, setMoveOrderState] = useState<MoveOrderState | null>(null);
   const [movingOrder, setMovingOrder] = useState(false);
@@ -294,17 +303,24 @@ export default function Routes() {
   };
 
   const handleAssign = async () => {
-    if (!assignRoute || !courierName.trim()) return;
+    if (!assignRoute) return;
+    const hasSelection = selectedCourierId !== null || courierName.trim();
+    if (!hasSelection) return;
     setAssigning(true);
     try {
+      const body = selectedCourierId
+        ? { courierId: selectedCourierId }
+        : { courierName: courierName.trim() };
       await apiFetch(`/delivery/routes/${assignRoute.id}/assign`, {
         method: "POST",
-        body: JSON.stringify({ courierName: courierName.trim() }),
+        body: JSON.stringify(body),
       });
       await fetchRoutes();
-      toast({ title: `Rota assumida por ${courierName.trim()}!` });
+      const name = couriers.find((c) => c.id === selectedCourierId)?.name ?? courierName.trim();
+      toast({ title: `Rota assumida por ${name}!` });
       setAssignRoute(null);
       setCourierName("");
+      setSelectedCourierId(null);
     } catch (e) {
       toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
     } finally {
@@ -630,14 +646,16 @@ export default function Routes() {
       </Dialog>
 
       {/* ── Assign Modal ── */}
-      <Dialog open={!!assignRoute} onOpenChange={(open) => { if (!open) setAssignRoute(null); }}>
+      <Dialog open={!!assignRoute} onOpenChange={(open) => {
+        if (!open) { setAssignRoute(null); setSelectedCourierId(null); setCourierName(""); }
+      }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <User className="w-5 h-5" /> Assumir Rota
             </DialogTitle>
             <DialogDescription>
-              Motoboy que vai assumir <strong>{assignRoute?.name}</strong>
+              Quem vai assumir <strong>{assignRoute?.name}</strong>?
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -652,18 +670,60 @@ export default function Routes() {
                 )}
               </div>
             )}
+
+            {/* Courier list */}
+            {couriers.length > 0 ? (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Selecione o motoboy:</p>
+                <div className="grid gap-1.5 max-h-48 overflow-y-auto pr-0.5">
+                  {couriers.map((c) => {
+                    const isSelected = selectedCourierId === c.id;
+                    const vehicleEmoji = c.vehicle === "bike" ? "🚲" : c.vehicle === "carro" ? "🚗" : "🏍️";
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => { setSelectedCourierId(c.id); setCourierName(""); }}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                          isSelected
+                            ? "border-primary bg-primary/5 ring-1 ring-primary"
+                            : "border-border bg-card hover:bg-muted/50"
+                        }`}
+                      >
+                        <span className="text-lg">{vehicleEmoji}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{c.name}</p>
+                        </div>
+                        {isSelected && <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">ou digite manualmente</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                Nenhum motoboy cadastrado. <a href="/motoboys" className="underline text-primary">Cadastrar agora</a>
+              </p>
+            )}
+
             <Input
-              placeholder="Nome do motoboy"
+              placeholder="Nome do motoboy (avulso)"
               value={courierName}
-              onChange={(e) => setCourierName(e.target.value)}
+              onChange={(e) => { setCourierName(e.target.value); if (e.target.value) setSelectedCourierId(null); }}
               onKeyDown={(e) => e.key === "Enter" && handleAssign()}
-              autoFocus
               data-testid="input-courier-name"
             />
+
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setAssignRoute(null)}>Cancelar</Button>
+              <Button variant="outline" className="flex-1" onClick={() => { setAssignRoute(null); setSelectedCourierId(null); setCourierName(""); }}>Cancelar</Button>
               <Button className="flex-1" onClick={handleAssign}
-                disabled={assigning || !courierName.trim()}
+                disabled={assigning || (!selectedCourierId && !courierName.trim())}
                 data-testid="button-confirm-assign">
                 {assigning ? "Salvando..." : "Confirmar"}
               </Button>

@@ -9,6 +9,7 @@ import kitchenRouter from "./kitchen";
 import dashboardRouter from "./dashboard";
 import cashRouter from "./cash";
 import deliveryRouter from "./delivery";
+import couriersRouter from "./couriers";
 import settingsRouter from "./settings";
 import devRouter from "./dev";
 
@@ -24,6 +25,7 @@ router.use(kitchenRouter);
 router.use(dashboardRouter);
 router.use(cashRouter);
 router.use(deliveryRouter);
+router.use(couriersRouter);
 router.use(settingsRouter);
 router.use(devRouter);
 
