@@ -5,6 +5,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Settings as SettingsIcon,
   Store,
   Truck,
@@ -12,6 +22,8 @@ import {
   RefreshCw,
   Clock,
   Package,
+  Trash2,
+  TriangleAlert,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -43,6 +55,8 @@ export default function Settings() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const [storeName, setStoreName] = useState("");
   const [storePhone, setStorePhone] = useState("");
@@ -73,6 +87,25 @@ export default function Settings() {
   }, [toast]);
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
+
+  const handleReset = async () => {
+    setResetting(true);
+    try {
+      await apiFetch("/dev/reset", {
+        method: "POST",
+        body: JSON.stringify({ confirm: "ZERAR" }),
+      });
+      toast({ title: "Dados zerados com sucesso! Você pode criar novos pedidos agora." });
+      setShowResetConfirm(false);
+    } catch (e) {
+      toast({
+        title: `Erro ao zerar dados: ${e instanceof Error ? e.message : "Desconhecido"}`,
+        variant: "destructive",
+      });
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -259,7 +292,74 @@ export default function Settings() {
             {saving ? "Salvando..." : "Salvar Configurações"}
           </Button>
         </div>
+
+        {/* Reset Data */}
+        <Card className="border-red-200 dark:border-red-900/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base text-red-700 dark:text-red-400">
+              <Trash2 className="w-4 h-4" />
+              Zerar Dados
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 text-sm text-red-800 dark:text-red-300 space-y-1">
+              <p className="font-semibold flex items-center gap-1.5">
+                <TriangleAlert className="w-4 h-4 shrink-0" />
+                O que será apagado:
+              </p>
+              <ul className="list-disc list-inside space-y-0.5 text-xs ml-1">
+                <li>Todos os pedidos e itens de pedidos</li>
+                <li>Todas as rotas de delivery e atribuições</li>
+                <li>Tickets de cozinha e pagamentos</li>
+              </ul>
+              <p className="text-xs mt-2 font-medium">
+                Mantido: clientes, cardápio, mesas, configurações, caixa.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              className="gap-2 border-red-300 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950"
+              onClick={() => setShowResetConfirm(true)}
+              disabled={resetting}
+              data-testid="button-reset-data"
+            >
+              <Trash2 className="w-4 h-4" />
+              Zerar todos os dados do PDV
+            </Button>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Reset Confirmation Dialog */}
+      <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
+              <TriangleAlert className="w-5 h-5" />
+              Confirmar exclusão de dados
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <span className="block">
+                Esta ação irá apagar <strong>todos os pedidos, rotas, tickets de cozinha e pagamentos</strong> do sistema.
+              </span>
+              <span className="block font-semibold text-foreground">
+                Essa operação não pode ser desfeita.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resetting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={handleReset}
+              disabled={resetting}
+              data-testid="button-confirm-reset"
+            >
+              {resetting ? "Zerando..." : "Sim, zerar tudo"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Layout>
   );
 }

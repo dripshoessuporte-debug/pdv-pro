@@ -206,6 +206,7 @@ export default function Routes() {
   const [movingOrder, setMovingOrder] = useState(false);
   const [addPendingState, setAddPendingState] = useState<AddPendingState | null>(null);
   const [addingToRoute, setAddingToRoute] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const fetchRoutes = useCallback(async () => {
     try {
@@ -548,23 +549,32 @@ export default function Routes() {
         {/* ── Completed routes ── */}
         {completedRoutes.length > 0 && (
           <section>
-            <h2 className="text-sm font-medium text-muted-foreground mb-2">
-              Concluídas ({completedRoutes.length})
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 opacity-60">
-              {completedRoutes.map((route) => (
-                <RouteCard
-                  key={route.id}
-                  route={route}
-                  allActiveRoutes={[]}
-                  onAssign={() => {}}
-                  onComplete={() => {}}
-                  onQrCode={() => setQrRoute(route)}
-                  onMoveOrder={() => {}}
-                  completing={false}
-                />
-              ))}
-            </div>
+            <button
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors group"
+              onClick={() => setShowCompleted((v) => !v)}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span className="font-medium">
+                {showCompleted ? "Ocultar concluídas" : `Ver rotas concluídas (${completedRoutes.length})`}
+              </span>
+              <ChevronRight className={`w-4 h-4 transition-transform ${showCompleted ? "rotate-90" : ""}`} />
+            </button>
+            {showCompleted && (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mt-3 opacity-60">
+                {completedRoutes.map((route) => (
+                  <RouteCard
+                    key={route.id}
+                    route={route}
+                    allActiveRoutes={[]}
+                    onAssign={() => {}}
+                    onComplete={() => {}}
+                    onQrCode={() => setQrRoute(route)}
+                    onMoveOrder={() => {}}
+                    completing={false}
+                  />
+                ))}
+              </div>
+            )}
           </section>
         )}
       </div>
@@ -713,20 +723,20 @@ export default function Routes() {
                     disabled={addingToRoute}
                   >
                     <Zap className="w-4 h-4" />
-                    Criar rota de emergência
+                    Criar rota solitária
                   </Button>
                 </div>
               </>
             ) : (
               <>
-                <p className="text-sm text-muted-foreground">Não há rotas ativas. Criar uma rota de emergência?</p>
+                <p className="text-sm text-muted-foreground">Não há rotas ativas. Criar uma rota solitária para este pedido?</p>
                 <Button
                   className="w-full gap-2"
                   onClick={() => addPendingState && handleCreateEmergency(addPendingState.orderId)}
                   disabled={addingToRoute}
                 >
                   <Zap className="w-4 h-4" />
-                  Criar rota de emergência
+                  Criar rota solitária
                 </Button>
               </>
             )}
@@ -781,7 +791,7 @@ export default function Routes() {
                 disabled={movingOrder}
               >
                 <Zap className="w-4 h-4" />
-                Criar rota de emergência
+                Criar rota solitária
               </Button>
               <Button
                 variant="outline"
@@ -905,10 +915,10 @@ function PendingOrderRow({
           variant="ghost"
           className="h-7 px-2 text-xs gap-1 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:text-orange-400"
           onClick={onEmergency}
-          title="Criar rota de emergência"
+          title="Criar rota solitária"
         >
           <Zap className="w-3.5 h-3.5" />
-          <span className="hidden lg:inline">Emergência</span>
+          <span className="hidden lg:inline">Solitária</span>
         </Button>
       </div>
     </div>
