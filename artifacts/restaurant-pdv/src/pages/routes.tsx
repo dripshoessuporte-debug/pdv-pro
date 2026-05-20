@@ -1015,10 +1015,15 @@ function RouteCard({
   const TimeIcon = URGENCY_ICON[urgency];
 
   const readyCount = route.orders.filter((o) => o.deliveryStatus === "ready").length;
+  const deliveredCount = route.orders.filter((o) => o.deliveryStatus === "delivered").length;
   const totalCount = route.orders.length;
   const allOrdersReady = totalCount > 0 && readyCount === totalCount;
 
-  const otherNeighborhoods = route.includedNeighborhoods.filter((n) => n !== route.mainNeighborhood);
+  const progressRatio = totalCount > 0 ? deliveredCount / totalCount : 0;
+  const ringR = 20;
+  const ringCirc = 2 * Math.PI * ringR;
+  const ringOffset = ringCirc * (1 - progressRatio);
+  const ringColor = progressRatio === 1 ? "#22c55e" : "hsl(var(--primary))";
 
   return (
     <div
@@ -1029,43 +1034,49 @@ function RouteCard({
 
         {/* ── Header ── */}
         <div className="flex items-start gap-3">
-          {/* Neutral badge with colored dot + stop count */}
-          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-secondary text-foreground font-bold text-sm shrink-0 shadow-sm relative">
+          {/* Circular progress ring around stop count */}
+          <div className="relative w-12 h-12 shrink-0">
+            <svg
+              className="absolute inset-0 w-full h-full -rotate-90"
+              viewBox="0 0 48 48"
+            >
+              {/* Track */}
+              <circle
+                cx="24" cy="24" r={ringR}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                className="text-secondary"
+              />
+              {/* Progress */}
+              <circle
+                cx="24" cy="24" r={ringR}
+                fill="none"
+                stroke={ringColor}
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeDasharray={ringCirc}
+                strokeDashoffset={ringOffset}
+                style={{ transition: "stroke-dashoffset 0.6s ease" }}
+              />
+            </svg>
+            {/* Number */}
+            <div className="absolute inset-0 flex items-center justify-center font-bold text-sm text-foreground">
+              {totalCount}
+            </div>
+            {/* Color dot */}
             <span
-              className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full ring-2 ring-card"
+              className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-card"
               style={{ backgroundColor: route.color }}
             />
-            {totalCount}
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold text-sm leading-snug">{route.name}</h3>
-              {/* Only show badge for non-available statuses */}
-              {!isAvailable && (
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${STATUS_COLORS[route.status]}`}>
-                  {STATUS_LABELS[route.status]}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
-              <MapPin className="w-3 h-3 shrink-0" />
-              <span className="font-medium">{route.mainNeighborhood}</span>
-              {otherNeighborhoods.length > 0 && (
-                <span className="opacity-60 truncate">· {otherNeighborhoods.join(", ")}</span>
-              )}
-            </div>
-            {route.courierName && (
-              <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
-                <User className="w-3 h-3 shrink-0" />
-                <span>{route.courierName}</span>
-                {route.startedAt && (
-                  <span className="opacity-60">
-                    · saiu {new Date(route.startedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                )}
-              </div>
-            )}
+            <h3 className="font-semibold text-sm leading-snug">{route.name}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {deliveredCount}/{totalCount} entregues
+              {route.courierName && <span className="ml-1.5">· {route.courierName}</span>}
+            </p>
           </div>
 
           {/* Time pill */}
@@ -1117,11 +1128,11 @@ function RouteCard({
             return (
               <div
                 key={order.id}
-                className="flex items-center gap-2.5 px-3 py-2.5 bg-zinc-700/60 hover:bg-zinc-600/70 transition-colors text-xs group"
+                className="flex items-center gap-2.5 px-3 py-2.5 bg-zinc-100 hover:bg-zinc-200 transition-colors text-xs group"
                 data-testid={`route-order-${order.orderId}`}
               >
                 {/* Stop number */}
-                <div className="w-5 h-5 rounded-full flex items-center justify-center bg-zinc-500 text-zinc-100 text-xs font-bold shrink-0">
+                <div className="w-5 h-5 rounded-full flex items-center justify-center bg-zinc-400 text-white text-xs font-bold shrink-0">
                   {order.stopOrder}
                 </div>
 
