@@ -9,7 +9,6 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -25,9 +24,24 @@ import { Plus, Users, Eye, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_CONFIG = {
-  available: { label: "Livre", color: "bg-green-100 border-green-300 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300" },
-  occupied: { label: "Ocupada", color: "bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-300" },
-  reserved: { label: "Reservada", color: "bg-blue-100 border-blue-300 text-blue-800 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-300" },
+  available: {
+    label: "Livre",
+    cardStyle: { borderColor: "rgba(34,197,94,0.35)", boxShadow: "0 0 14px 0 rgba(34,197,94,0.12)" },
+    badgeClass: "bg-green-900/40 text-green-400 border border-green-700/50",
+    numberClass: "text-green-400",
+  },
+  occupied: {
+    label: "Ocupada",
+    cardStyle: { borderColor: "rgba(250,204,21,0.35)", boxShadow: "0 0 14px 0 rgba(250,204,21,0.10)" },
+    badgeClass: "bg-amber-900/40 text-amber-400 border border-amber-700/50",
+    numberClass: "text-amber-400",
+  },
+  reserved: {
+    label: "Reservada",
+    cardStyle: { borderColor: "rgba(56,189,248,0.35)", boxShadow: "0 0 14px 0 rgba(56,189,248,0.10)" },
+    badgeClass: "bg-sky-900/40 text-sky-400 border border-sky-700/50",
+    numberClass: "text-sky-400",
+  },
 };
 
 export default function Tables() {
@@ -80,7 +94,7 @@ export default function Tables() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Mesas</h1>
-            <p className="text-muted-foreground mt-1">Visao geral do salao</p>
+            <p className="text-muted-foreground mt-1">Visão geral do salão</p>
           </div>
           <Dialog open={newTableOpen} onOpenChange={setNewTableOpen}>
             <DialogTrigger asChild>
@@ -94,7 +108,7 @@ export default function Tables() {
               </DialogHeader>
               <div className="space-y-4 pt-2">
                 <div>
-                  <Label htmlFor="table-number">Numero da Mesa</Label>
+                  <Label htmlFor="table-number">Número da Mesa</Label>
                   <Input
                     id="table-number"
                     type="number"
@@ -128,11 +142,13 @@ export default function Tables() {
           </Dialog>
         </div>
 
-        <div className="flex gap-4 text-sm">
-          {Object.entries(STATUS_CONFIG).map(([key, { label, color }]) => (
-            <div key={key} className="flex items-center gap-2">
-              <div className={`w-3 h-3 rounded-sm border ${color}`} />
-              <span className="text-muted-foreground">{label}</span>
+        {/* Legenda */}
+        <div className="flex gap-5 text-sm">
+          {Object.entries(STATUS_CONFIG).map(([, { label, badgeClass }]) => (
+            <div key={label} className="flex items-center gap-2">
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badgeClass}`}>
+                {label}
+              </span>
             </div>
           ))}
         </div>
@@ -144,11 +160,17 @@ export default function Tables() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {tables?.map((table) => {
-              const config = STATUS_CONFIG[table.status as keyof typeof STATUS_CONFIG];
+              const config = STATUS_CONFIG[table.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.available;
               return (
                 <div
                   key={table.id}
-                  className={`rounded-xl border-2 p-4 flex flex-col gap-2 cursor-pointer transition-all hover:shadow-md ${config.color}`}
+                  className="rounded-xl border p-4 flex flex-col gap-2 cursor-pointer transition-all hover:brightness-110"
+                  style={{
+                    backgroundColor: "#1F2937",
+                    color: "#F9FAFB",
+                    border: "1px solid",
+                    ...config.cardStyle,
+                  }}
                   data-testid={`card-table-${table.id}`}
                   onClick={() => {
                     if (table.currentOrderId) {
@@ -157,7 +179,9 @@ export default function Tables() {
                   }}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-2xl">#{table.number}</span>
+                    <span className={`font-black text-2xl ${config.numberClass}`}>
+                      #{table.number}
+                    </span>
                     {table.status !== "available" && (
                       <Button
                         size="sm"
@@ -187,16 +211,21 @@ export default function Tables() {
                       </Button>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 text-sm">
+
+                  <div className="flex items-center gap-1 text-sm text-[#9CA3AF]">
                     <Users className="w-3.5 h-3.5" />
                     <span>{table.capacity} lugares</span>
                   </div>
-                  <span className="text-xs font-medium">{config.label}</span>
+
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full self-start ${config.badgeClass}`}>
+                    {config.label}
+                  </span>
+
                   {table.status === "available" && (
                     <Button
                       size="sm"
                       variant="outline"
-                      className="mt-1 text-xs h-7 bg-white/50"
+                      className="mt-1 text-xs h-7"
                       onClick={(e) => {
                         e.stopPropagation();
                         setLocation(`/orders/new?tableId=${table.id}`);
