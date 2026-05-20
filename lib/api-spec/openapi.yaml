@@ -1056,6 +1056,8 @@ components:
           type: number
         customerPhone:
           type: ["string", "null"]
+        deliveryCep:
+          type: ["string", "null"]
         deliveryAddress:
           type: ["string", "null"]
         deliveryNeighborhood:
@@ -1091,7 +1093,11 @@ components:
           enum: [table, counter, takeaway, delivery]
         notes:
           type: string
+        customerName:
+          type: string
         customerPhone:
+          type: string
+        deliveryCep:
           type: string
         deliveryAddress:
           type: string

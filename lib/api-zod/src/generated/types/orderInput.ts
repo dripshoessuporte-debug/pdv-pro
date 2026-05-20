@@ -12,7 +12,9 @@ export interface OrderInput {
   customerId?: number;
   type: OrderInputType;
   notes?: string;
+  customerName?: string;
   customerPhone?: string;
+  deliveryCep?: string;
   deliveryAddress?: string;
   deliveryNeighborhood?: string;
   deliveryReference?: string;

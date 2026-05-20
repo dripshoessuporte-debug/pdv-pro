@@ -14,7 +14,9 @@ export const ordersTable = pgTable("orders", {
   notes: text("notes"),
   totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),
   // Delivery / takeaway fields
+  customerName: text("customer_name"),
   customerPhone: text("customer_phone"),
+  deliveryCep: text("delivery_cep"),
   deliveryAddress: text("delivery_address"),
   deliveryNeighborhood: text("delivery_neighborhood"),
   deliveryReference: text("delivery_reference"),

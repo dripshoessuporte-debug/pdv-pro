@@ -31,9 +31,9 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const DELIVERY_STATUS_LABELS: Record<string, string> = {
-  pending: "Aguardando preparo",
+  pending: "Aguardando",
   preparing: "Em preparo",
-  ready: "Pronto para entrega",
+  ready: "Pronto p/ entrega",
   out_for_delivery: "Saiu para entrega",
   delivered: "Entregue",
 };
@@ -46,7 +46,7 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const STATUS_FILTERS = ["all", "open", "preparing", "ready", "closed", "cancelled"] as const;
-type StatusFilter = typeof STATUS_FILTERS[number];
+type StatusFilter = (typeof STATUS_FILTERS)[number];
 
 function isToday(dateStr: string) {
   const d = new Date(dateStr);
@@ -81,13 +81,10 @@ export default function Orders() {
   }, [allOrders, todayOnly]);
 
   const statusCounts = useMemo(() => {
-    return periodOrders.reduce(
-      (acc, o) => {
-        acc[o.status] = (acc[o.status] ?? 0) + 1;
-        return acc;
-      },
-      {} as Record<string, number>
-    );
+    return periodOrders.reduce((acc, o) => {
+      acc[o.status] = (acc[o.status] ?? 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
   }, [periodOrders]);
 
   const displayed = useMemo(() => {
@@ -136,49 +133,47 @@ export default function Orders() {
         </div>
 
         {/* Filtros */}
-        <div className="space-y-3">
-          <div className="flex gap-2 flex-wrap items-center">
-            <Button
-              size="sm"
-              variant={todayOnly ? "default" : "outline"}
-              onClick={() => setTodayOnly(true)}
-              className="gap-1.5"
-            >
-              <CalendarDays className="w-3.5 h-3.5" /> Hoje
-            </Button>
-            <Button
-              size="sm"
-              variant={!todayOnly ? "default" : "outline"}
-              onClick={() => setTodayOnly(false)}
-            >
-              Todos os dias
-            </Button>
-            <div className="h-5 w-px bg-border mx-1" />
-            {STATUS_FILTERS.map((f) => {
-              const count = f === "all" ? periodOrders.length : (statusCounts[f] ?? 0);
-              return (
-                <Button
-                  key={f}
-                  variant={statusFilter === f ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setStatusFilter(f)}
-                  className="gap-1.5"
-                  data-testid={`filter-${f}`}
-                >
-                  {f === "all" ? "Todos" : STATUS_LABELS[f]}
-                  {count > 0 && (
-                    <span
-                      className={`text-xs rounded-full px-1.5 py-0 min-w-[1.2rem] text-center ${
-                        statusFilter === f ? "bg-white/20" : "bg-muted"
-                      }`}
-                    >
-                      {count}
-                    </span>
-                  )}
-                </Button>
-              );
-            })}
-          </div>
+        <div className="flex gap-2 flex-wrap items-center">
+          <Button
+            size="sm"
+            variant={todayOnly ? "default" : "outline"}
+            onClick={() => setTodayOnly(true)}
+            className="gap-1.5"
+          >
+            <CalendarDays className="w-3.5 h-3.5" /> Hoje
+          </Button>
+          <Button
+            size="sm"
+            variant={!todayOnly ? "default" : "outline"}
+            onClick={() => setTodayOnly(false)}
+          >
+            Todos os dias
+          </Button>
+          <div className="h-5 w-px bg-border mx-1" />
+          {STATUS_FILTERS.map((f) => {
+            const count = f === "all" ? periodOrders.length : (statusCounts[f] ?? 0);
+            return (
+              <Button
+                key={f}
+                variant={statusFilter === f ? "default" : "outline"}
+                size="sm"
+                onClick={() => setStatusFilter(f)}
+                className="gap-1.5"
+                data-testid={`filter-${f}`}
+              >
+                {f === "all" ? "Todos" : STATUS_LABELS[f]}
+                {count > 0 && (
+                  <span
+                    className={`text-xs rounded-full px-1.5 py-0 min-w-[1.2rem] text-center ${
+                      statusFilter === f ? "bg-white/20" : "bg-muted"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </Button>
+            );
+          })}
         </div>
 
         {isLoading ? (
@@ -208,26 +203,28 @@ export default function Orders() {
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between gap-3">
-                      {/* Info */}
+                      {/* Info lado esquerdo */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <p className="font-semibold text-lg">#{order.id}</p>
                           <span
-                            className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                              STATUS_COLORS[order.status] ?? ""
-                            }`}
+                            className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[order.status] ?? ""}`}
                           >
                             {STATUS_LABELS[order.status] ?? order.status}
                           </span>
+
                           {isDelivery ? (
                             <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300 flex items-center gap-1">
                               <Truck className="w-3 h-3" /> Delivery
                             </span>
                           ) : (
-                            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                              {order.type ? (TYPE_LABELS[order.type] ?? order.type) : ""}
-                            </span>
+                            order.type && (
+                              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                                {TYPE_LABELS[order.type] ?? order.type}
+                              </span>
+                            )
                           )}
+
                           {isDelivery && order.deliveryStatus && (
                             <span className="text-xs text-muted-foreground italic">
                               · {DELIVERY_STATUS_LABELS[order.deliveryStatus] ?? order.deliveryStatus}
@@ -235,15 +232,18 @@ export default function Orders() {
                           )}
                         </div>
 
-                        {/* Cliente e endereço */}
+                        {/* Linha de cliente */}
                         <p className="text-sm text-muted-foreground truncate">
-                          {order.tableNumber ? `Mesa ${order.tableNumber}` : ""}
-                          {order.tableNumber && order.customerName ? " · " : ""}
-                          {order.customerName ?? ""}
-                          {isDelivery && order.customerPhone ? ` · 📞 ${order.customerPhone}` : ""}
-                          {!order.tableNumber && !order.customerName && !isDelivery ? "Sem identificação" : ""}
+                          {[
+                            order.tableNumber ? `Mesa ${order.tableNumber}` : null,
+                            order.customerName ?? null,
+                            isDelivery && order.customerPhone ? `📞 ${order.customerPhone}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || (!isDelivery ? "Sem identificação" : null)}
                         </p>
 
+                        {/* Endereço para delivery */}
                         {isDelivery && order.deliveryAddress && (
                           <p className="text-xs text-muted-foreground truncate">
                             📍 {order.deliveryAddress}
@@ -259,19 +259,21 @@ export default function Orders() {
                             day: "2-digit",
                             month: "2-digit",
                           })}
-                          {isDelivery && deliveryFee > 0 ? ` · Taxa R$ ${deliveryFee.toFixed(2)}` : ""}
+                          {isDelivery && deliveryFee > 0
+                            ? ` · Taxa R$ ${deliveryFee.toFixed(2)}`
+                            : ""}
                         </p>
 
                         {order.notes && (
-                          <p className="text-xs text-muted-foreground italic mt-0.5 truncate">💬 {order.notes}</p>
+                          <p className="text-xs text-muted-foreground italic mt-0.5 truncate">
+                            💬 {order.notes}
+                          </p>
                         )}
                       </div>
 
-                      {/* Valor + Ações */}
+                      {/* Valor + Ações lado direito */}
                       <div className="flex items-center gap-2 shrink-0">
-                        <p className="font-bold text-lg text-right">
-                          R$ {order.totalAmount.toFixed(2)}
-                        </p>
+                        <p className="font-bold text-lg">R$ {order.totalAmount.toFixed(2)}</p>
 
                         {order.status === "open" && (
                           <Button

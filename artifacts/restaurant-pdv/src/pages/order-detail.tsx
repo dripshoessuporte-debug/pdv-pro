@@ -28,7 +28,18 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Plus, Trash2, SendHorizonal, X, CreditCard, Search, Truck, Package, MapPin } from "lucide-react";
+import {
+  ArrowLeft,
+  Plus,
+  Trash2,
+  SendHorizonal,
+  X,
+  CreditCard,
+  Search,
+  Truck,
+  Package,
+  MapPin,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -63,7 +74,17 @@ const DELIVERY_STATUS_COLORS: Record<string, string> = {
   delivered: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
 };
 
+// Status que permitem ações financeiras
 const PAYABLE = ["open", "preparing", "ready"];
+
+// Sequência de status de entrega
+const DELIVERY_SEQUENCE = ["pending", "preparing", "ready", "out_for_delivery", "delivered"];
+
+const DELIVERY_ACTIONS: { status: string; label: string }[] = [
+  { status: "ready", label: "✅ Pronto para entrega" },
+  { status: "out_for_delivery", label: "🛵 Saiu para entrega" },
+  { status: "delivered", label: "📦 Entregue" },
+];
 
 export default function OrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -166,7 +187,9 @@ export default function OrderDetail() {
       <Layout>
         <div className="text-center py-16">
           <p className="text-muted-foreground">Pedido não encontrado</p>
-          <Button asChild className="mt-4"><Link href="/orders">Voltar</Link></Button>
+          <Button asChild className="mt-4">
+            <Link href="/orders">Voltar</Link>
+          </Button>
         </div>
       </Layout>
     );
@@ -178,21 +201,15 @@ export default function OrderDetail() {
   const deliveryFee = order.deliveryFee ?? 0;
   const itemsSubtotal = order.totalAmount - deliveryFee;
 
-  const DELIVERY_NEXT_ACTIONS: { status: string; label: string; variant?: "default" | "outline" }[] = [
-    { status: "ready", label: "✅ Pronto para entrega" },
-    { status: "out_for_delivery", label: "🛵 Saiu para entrega" },
-    { status: "delivered", label: "📦 Entregue" },
-  ];
+  const currentDeliveryIdx = DELIVERY_SEQUENCE.indexOf(order.deliveryStatus ?? "");
 
   return (
     <Layout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => setLocation("/orders")} data-testid="button-back">
-            <ArrowLeft className="w-4 h-4 mr-1" /> Pedidos
-          </Button>
-        </div>
+        <Button variant="ghost" size="sm" onClick={() => setLocation("/orders")} data-testid="button-back">
+          <ArrowLeft className="w-4 h-4 mr-1" /> Pedidos
+        </Button>
 
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
@@ -251,11 +268,20 @@ export default function OrderDetail() {
                       />
                     </div>
                     <div className="flex gap-2 flex-wrap">
-                      <Button size="sm" variant={catFilter === "all" ? "default" : "outline"} onClick={() => setCatFilter("all")}>
+                      <Button
+                        size="sm"
+                        variant={catFilter === "all" ? "default" : "outline"}
+                        onClick={() => setCatFilter("all")}
+                      >
                         Todos
                       </Button>
                       {categories?.map((cat) => (
-                        <Button key={cat.id} size="sm" variant={catFilter === String(cat.id) ? "default" : "outline"} onClick={() => setCatFilter(String(cat.id))}>
+                        <Button
+                          key={cat.id}
+                          size="sm"
+                          variant={catFilter === String(cat.id) ? "default" : "outline"}
+                          onClick={() => setCatFilter(String(cat.id))}
+                        >
                           {cat.name}
                         </Button>
                       ))}
@@ -305,7 +331,7 @@ export default function OrderDetail() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Itens */}
+          {/* Itens + Dados de Entrega */}
           <div className="lg:col-span-2 space-y-4">
             <Card>
               <CardHeader className="pb-3">
@@ -315,9 +341,7 @@ export default function OrderDetail() {
                 {order.items.length === 0 ? (
                   <div className="text-center py-10 text-muted-foreground">
                     <p className="font-medium">Nenhum item adicionado</p>
-                    {isEditable && (
-                      <p className="text-sm mt-1">Use o botão "Adicionar Item" acima</p>
-                    )}
+                    {isEditable && <p className="text-sm mt-1">Use o botão "Adicionar Item" acima</p>}
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -332,9 +356,7 @@ export default function OrderDetail() {
                             <span className="font-bold text-primary">{item.quantity}x</span>
                             <p className="font-medium truncate">{item.productName}</p>
                           </div>
-                          <p className="text-sm text-muted-foreground">
-                            R$ {item.unitPrice.toFixed(2)} cada
-                          </p>
+                          <p className="text-sm text-muted-foreground">R$ {item.unitPrice.toFixed(2)} cada</p>
                           {item.notes && (
                             <p className="text-xs text-muted-foreground italic mt-0.5">💬 {item.notes}</p>
                           )}
@@ -361,7 +383,7 @@ export default function OrderDetail() {
               </CardContent>
             </Card>
 
-            {/* Seção de Dados de Entrega */}
+            {/* Seção de Entrega */}
             {isDelivery && (
               <Card className="border-orange-200 dark:border-orange-800">
                 <CardHeader className="pb-3">
@@ -370,25 +392,23 @@ export default function OrderDetail() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Status de entrega */}
+                  {/* Status atual */}
                   {order.deliveryStatus && (
                     <div className="flex items-center gap-3 flex-wrap">
-                      <span className="text-sm font-medium text-muted-foreground">Status da entrega:</span>
+                      <span className="text-sm font-medium text-muted-foreground">Status:</span>
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${DELIVERY_STATUS_COLORS[order.deliveryStatus] ?? ""}`}>
                         {DELIVERY_STATUS_LABELS[order.deliveryStatus] ?? order.deliveryStatus}
                       </span>
                     </div>
                   )}
 
-                  {/* Botões de avanço de status */}
+                  {/* Botões de avanço */}
                   {order.status !== "cancelled" && order.status !== "closed" && (
                     <div className="flex gap-2 flex-wrap">
-                      {DELIVERY_NEXT_ACTIONS.map((action) => {
+                      {DELIVERY_ACTIONS.map((action) => {
+                        const actionIdx = DELIVERY_SEQUENCE.indexOf(action.status);
                         const isCurrent = order.deliveryStatus === action.status;
-                        const isPast = ["pending", "preparing", "ready", "out_for_delivery", "delivered"]
-                          .indexOf(order.deliveryStatus ?? "") >
-                          ["pending", "preparing", "ready", "out_for_delivery", "delivered"]
-                          .indexOf(action.status);
+                        const isPast = currentDeliveryIdx > actionIdx;
                         return (
                           <Button
                             key={action.status}
@@ -398,7 +418,14 @@ export default function OrderDetail() {
                             onClick={() =>
                               updateDeliveryStatus.mutate({
                                 id: orderId,
-                                data: { deliveryStatus: action.status as "ready" | "out_for_delivery" | "delivered" | "pending" | "preparing" },
+                                data: {
+                                  deliveryStatus: action.status as
+                                    | "pending"
+                                    | "preparing"
+                                    | "ready"
+                                    | "out_for_delivery"
+                                    | "delivered",
+                                },
                               })
                             }
                             data-testid={`button-delivery-${action.status}`}
@@ -414,28 +441,33 @@ export default function OrderDetail() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm pt-2 border-t">
                     {order.customerName && (
                       <div>
-                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Cliente</p>
+                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Cliente</p>
                         <p className="font-medium">👤 {order.customerName}</p>
                       </div>
                     )}
                     {order.customerPhone && (
                       <div>
-                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Telefone</p>
+                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Telefone</p>
                         <p className="font-medium">📞 {order.customerPhone}</p>
                       </div>
                     )}
-                    {order.deliveryAddress && (
+                    {(order.deliveryAddress || order.deliveryCep) && (
                       <div className="sm:col-span-2">
-                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Endereço</p>
+                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Endereço</p>
                         <div className="flex items-start gap-1.5">
                           <MapPin className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground" />
-                          <div>
-                            <p className="font-medium">{order.deliveryAddress}</p>
+                          <div className="space-y-0.5">
+                            {order.deliveryCep && (
+                              <p className="text-xs text-muted-foreground">CEP: {order.deliveryCep}</p>
+                            )}
+                            {order.deliveryAddress && (
+                              <p className="font-medium">{order.deliveryAddress}</p>
+                            )}
                             {order.deliveryNeighborhood && (
                               <p className="text-muted-foreground">{order.deliveryNeighborhood}</p>
                             )}
                             {order.deliveryReference && (
-                              <p className="text-muted-foreground italic">{order.deliveryReference}</p>
+                              <p className="text-muted-foreground italic text-xs">{order.deliveryReference}</p>
                             )}
                           </div>
                         </div>
@@ -443,8 +475,8 @@ export default function OrderDetail() {
                     )}
                     {order.deliveryNotes && (
                       <div className="sm:col-span-2">
-                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Obs. de entrega</p>
-                        <p className="italic">💬 {order.deliveryNotes}</p>
+                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Obs. de entrega</p>
+                        <p className="italic text-sm">💬 {order.deliveryNotes}</p>
                       </div>
                     )}
                   </div>
@@ -453,7 +485,7 @@ export default function OrderDetail() {
             )}
           </div>
 
-          {/* Resumo */}
+          {/* Resumo financeiro */}
           <div className="space-y-4">
             <Card>
               <CardHeader className="pb-3">
@@ -473,7 +505,7 @@ export default function OrderDetail() {
                 {isDelivery && deliveryFee > 0 && (
                   <>
                     <div className="flex justify-between text-sm text-muted-foreground border-t pt-2 mt-1">
-                      <span>Subtotal</span>
+                      <span>Subtotal itens</span>
                       <span>R$ {itemsSubtotal.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-sm">

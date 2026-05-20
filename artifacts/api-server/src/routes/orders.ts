@@ -31,12 +31,14 @@ async function getOrderWithItems(orderId: number) {
       tableId: ordersTable.tableId,
       tableNumber: tablesTable.number,
       customerId: ordersTable.customerId,
-      customerName: customersTable.name,
+      customerName: ordersTable.customerName,
+      customerNameRegistered: customersTable.name,
       status: ordersTable.status,
       type: ordersTable.type,
       notes: ordersTable.notes,
       totalAmount: ordersTable.totalAmount,
       customerPhone: ordersTable.customerPhone,
+      deliveryCep: ordersTable.deliveryCep,
       deliveryAddress: ordersTable.deliveryAddress,
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
       deliveryReference: ordersTable.deliveryReference,
@@ -68,8 +70,11 @@ async function getOrderWithItems(orderId: number) {
     .leftJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
     .where(eq(orderItemsTable.orderId, orderId));
 
+  const { customerNameRegistered, ...orderRest } = order;
   return {
-    ...order,
+    ...orderRest,
+    // prefer the name typed at order creation; fall back to registered customer name
+    customerName: order.customerName ?? customerNameRegistered ?? null,
     totalAmount: parseFloat(String(order.totalAmount)),
     deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
     createdAt: order.createdAt.toISOString(),
@@ -107,12 +112,14 @@ router.get("/orders", async (req, res): Promise<void> => {
       tableId: ordersTable.tableId,
       tableNumber: tablesTable.number,
       customerId: ordersTable.customerId,
-      customerName: customersTable.name,
+      customerName: ordersTable.customerName,
+      customerNameRegistered: customersTable.name,
       status: ordersTable.status,
       type: ordersTable.type,
       notes: ordersTable.notes,
       totalAmount: ordersTable.totalAmount,
       customerPhone: ordersTable.customerPhone,
+      deliveryCep: ordersTable.deliveryCep,
       deliveryAddress: ordersTable.deliveryAddress,
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
       deliveryReference: ordersTable.deliveryReference,
@@ -144,8 +151,10 @@ router.get("/orders", async (req, res): Promise<void> => {
       .leftJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
       .where(eq(orderItemsTable.orderId, order.id));
 
+    const { customerNameRegistered, ...orderRest } = order;
     return {
-      ...order,
+      ...orderRest,
+      customerName: order.customerName ?? customerNameRegistered ?? null,
       totalAmount: parseFloat(String(order.totalAmount)),
       deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
       createdAt: order.createdAt.toISOString(),

@@ -28,6 +28,8 @@ export interface Order {
   /** @nullable */
   customerPhone?: string | null;
   /** @nullable */
+  deliveryCep?: string | null;
+  /** @nullable */
   deliveryAddress?: string | null;
   /** @nullable */
   deliveryNeighborhood?: string | null;

@@ -208,6 +208,8 @@ export interface Order {
   /** @nullable */
   customerPhone?: string | null;
   /** @nullable */
+  deliveryCep?: string | null;
+  /** @nullable */
   deliveryAddress?: string | null;
   /** @nullable */
   deliveryNeighborhood?: string | null;
@@ -238,7 +240,9 @@ export interface OrderInput {
   customerId?: number;
   type: OrderInputType;
   notes?: string;
+  customerName?: string;
   customerPhone?: string;
+  deliveryCep?: string;
   deliveryAddress?: string;
   deliveryNeighborhood?: string;
   deliveryReference?: string;
