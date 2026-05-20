@@ -204,15 +204,34 @@ function orderPairScore(a: EligibleOrder, b: EligibleOrder): number {
 }
 
 /**
+ * Minimum pair score required to add an order to an existing batch.
+ *
+ * Scoring reference:
+ *   - Each shared CEP prefix digit = 10 pts
+ *   - Same neighborhood (case-insensitive) = +20 pts
+ *   - Adjacent neighborhood = +8 pts
+ *
+ * Threshold = 18 means an order must share at least:
+ *   - 2 CEP prefix digits (= 20 pts), OR
+ *   - 1 CEP prefix digit + be in an adjacent neighborhood (= 10 + 8 = 18 pts)
+ *
+ * This prevents geographically distant areas (e.g. Batel vs Boqueirão,
+ * which share only the leading "8" = 10 pts) from being grouped together
+ * just to fill a route up to maxPerRoute.
+ */
+const MIN_PAIR_SCORE = 18;
+
+/**
  * Greedy proximity-based grouping algorithm.
  *
  * 1. Sort all orders by proximity to the store CEP (closest first).
  * 2. For each unassigned order (seed), fill a batch with the most compatible
- *    remaining orders (by CEP-prefix similarity + neighborhood).
- * 3. A route is only committed once it can't accept more orders (≥ maxPerRoute).
+ *    remaining orders that exceed MIN_PAIR_SCORE.
+ * 3. Routes may be smaller than maxPerRoute — distant leftovers form their
+ *    own routes rather than being forced into a nearby one.
  *
- * This guarantees that orders in the same neighborhood/CEP are always grouped
- * before creating a new route, regardless of neighborhood string casing.
+ * The store CEP is the reference for seeding order (closest to the store
+ * seeds first) and for sorting stops within each route.
  */
 function generateRoutePlan(
   orders: EligibleOrder[],
@@ -236,23 +255,45 @@ function generateRoutePlan(
     assigned.add(seed.id);
     const batch: EligibleOrder[] = [seed];
 
-    // Score every remaining unassigned order by compatibility with this seed
-    const candidates = byProximity
-      .filter((o) => !assigned.has(o.id))
-      .map((o) => ({ order: o, score: orderPairScore(seed, o) }))
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        // Tiebreak: CEP numeric order
-        return normalizeCep(a.order.deliveryCep ?? "").localeCompare(
-          normalizeCep(b.order.deliveryCep ?? "")
-        );
-      });
+    // Fill batch greedily up to maxPerRoute.
+    //
+    // At each step, score each unassigned candidate against the BEST (maximum)
+    // match with any current batch member — not just the seed. This ensures
+    // that once a Batel order is in the batch, other Batel orders score much
+    // higher (same neighbourhood + matching CEP) and are preferred over orders
+    // from a different neighbourhood that only scored well against the seed.
+    //
+    // Only candidates that reach MIN_PAIR_SCORE against at least one batch
+    // member are considered, preventing geographically distant orders from
+    // being pulled in just to fill the route.
+    while (batch.length < maxPerRoute) {
+      let bestOrder: EligibleOrder | null = null;
+      let bestScore = MIN_PAIR_SCORE - 1; // must exceed threshold to qualify
 
-    // Fill batch greedily up to maxPerRoute
-    for (const { order } of candidates) {
-      if (batch.length >= maxPerRoute) break;
-      batch.push(order);
-      assigned.add(order.id);
+      for (const o of byProximity) {
+        if (assigned.has(o.id)) continue;
+        // Score vs every current batch member; keep the maximum
+        const score = batch.reduce(
+          (max, batchMember) => Math.max(max, orderPairScore(batchMember, o)),
+          0
+        );
+        if (score > bestScore) {
+          bestScore = score;
+          bestOrder = o;
+        } else if (score === bestScore && bestOrder !== null) {
+          // Tiebreak: lower CEP numeric string wins (i.e. closer to store)
+          if (
+            normalizeCep(o.deliveryCep ?? "") <
+            normalizeCep(bestOrder.deliveryCep ?? "")
+          ) {
+            bestOrder = o;
+          }
+        }
+      }
+
+      if (!bestOrder) break; // no more compatible candidates
+      batch.push(bestOrder);
+      assigned.add(bestOrder.id);
     }
 
     // Determine main neighborhood (most frequent, preserving original casing)
