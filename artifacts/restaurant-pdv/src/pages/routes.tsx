@@ -965,18 +965,16 @@ function RouteCard({
       className="rounded-2xl border border-border/50 bg-card shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col"
       data-testid={`card-route-${route.id}`}
     >
-      {/* ── Top accent bar ── */}
-      <div className="h-1 w-full" style={{ backgroundColor: route.color }} />
-
       <div className="p-4 flex flex-col gap-3 flex-1">
 
         {/* ── Header ── */}
         <div className="flex items-start gap-3">
-          {/* Color badge with stop count */}
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm"
-            style={{ backgroundColor: route.color }}
-          >
+          {/* Neutral badge with colored dot + stop count */}
+          <div className="w-10 h-10 rounded-full flex flex-col items-center justify-center bg-secondary text-foreground font-bold text-sm shrink-0 shadow-sm relative">
+            <span
+              className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full ring-1 ring-background"
+              style={{ backgroundColor: route.color }}
+            />
             {totalCount}
           </div>
 
@@ -1060,10 +1058,7 @@ function RouteCard({
                 data-testid={`route-order-${order.orderId}`}
               >
                 {/* Stop number badge */}
-                <div
-                  className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                  style={{ backgroundColor: route.color + "cc" }}
-                >
+                <div className="w-5 h-5 rounded-full flex items-center justify-center bg-secondary text-foreground text-xs font-bold shrink-0">
                   {order.stopOrder}
                 </div>
 
