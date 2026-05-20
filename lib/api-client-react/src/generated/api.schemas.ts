@@ -161,6 +161,7 @@ export const OrderType = {
   table: 'table',
   counter: 'counter',
   takeaway: 'takeaway',
+  delivery: 'delivery',
 } as const;
 
 export interface OrderItem {
@@ -202,6 +203,7 @@ export const OrderInputType = {
   table: 'table',
   counter: 'counter',
   takeaway: 'takeaway',
+  delivery: 'delivery',
 } as const;
 
 export interface OrderInput {
@@ -299,6 +301,7 @@ export const KitchenTicketOrderType = {
   table: 'table',
   counter: 'counter',
   takeaway: 'takeaway',
+  delivery: 'delivery',
 } as const;
 
 export type KitchenTicketStatus = typeof KitchenTicketStatus[keyof typeof KitchenTicketStatus];

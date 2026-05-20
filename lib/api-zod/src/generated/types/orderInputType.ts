@@ -13,4 +13,5 @@ export const OrderInputType = {
   table: 'table',
   counter: 'counter',
   takeaway: 'takeaway',
+  delivery: 'delivery',
 } as const;

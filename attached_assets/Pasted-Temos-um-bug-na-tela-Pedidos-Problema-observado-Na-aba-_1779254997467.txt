@@ -1,0 +1,69 @@
+Temos um bug na tela Pedidos.
+
+Problema observado:
+Na aba Pedidos, os pedidos só aparecem corretamente quando clico no filtro "Aberto".
+Quando clico em "Todos", "Preparando", "Pronto", "Pago" ou "Cancelado", a listagem fica incorreta ou vazia mesmo existindo pedidos.
+
+Não implemente novas funcionalidades.
+Não altere o design.
+Não avance para Delivery, Estoque ou outras fases.
+Corrija apenas a lógica de listagem/filtros da tela Pedidos.
+
+Faça uma auditoria e correção completa de:
+
+1. Verificar quais valores reais de status os pedidos têm no banco/API.
+   Exemplos possíveis:
+   - open
+   - preparing
+   - ready
+   - closed
+   - cancelled
+   - paid
+   - finalized
+   - sent_to_kitchen
+
+2. Verificar quais valores o frontend da tela Pedidos está usando nos filtros:
+   - Todos
+   - Aberto
+   - Preparando
+   - Pronto
+   - Pago
+   - Cancelado
+
+3. Corrigir o mapeamento entre status do backend e rótulos visuais do frontend.
+
+4. Garantir que:
+   - "Todos" mostre todos os pedidos, exceto se houver filtro de data ativo.
+   - "Aberto" mostre pedidos abertos.
+   - "Preparando" mostre pedidos em preparo/enviados para cozinha, conforme a estrutura atual.
+   - "Pronto" mostre pedidos prontos.
+   - "Pago" mostre pedidos pagos/fechados/finalizados.
+   - "Cancelado" mostre pedidos cancelados.
+
+5. Verificar também se o filtro "Hoje" está combinado corretamente com os filtros de status.
+   Exemplo:
+   - Hoje + Todos = todos os pedidos de hoje.
+   - Hoje + Aberto = pedidos abertos de hoje.
+   - Todos os dias + Todos = todos os pedidos do histórico.
+
+6. Corrigir os contadores dos botões.
+   O número ao lado de cada filtro precisa bater com a quantidade real de pedidos naquele status.
+
+7. Verificar se a API está retornando os pedidos corretamente ou se o problema está apenas no frontend.
+
+8. Se houver skeleton/loading aparecendo indevidamente mesmo após a busca terminar, corrigir também.
+
+9. Testes obrigatórios:
+   - Criar pedido novo e verificar se aparece em "Todos" e "Aberto".
+   - Enviar para cozinha e verificar se sai de "Aberto" e aparece em "Preparando" ou status equivalente.
+   - Marcar como pronto e verificar se aparece em "Pronto".
+   - Pagar e verificar se aparece em "Pago".
+   - Cancelar pedido e verificar se aparece em "Cancelado".
+   - Testar com filtro "Hoje" e "Todos os dias".
+
+Ao finalizar, responda em português brasileiro com:
+1. Qual era a causa do bug.
+2. Quais arquivos foram alterados.
+3. Quais status reais existem no sistema.
+4. Como os status foram mapeados para os filtros visuais.
+5. Como testar passo a passo.

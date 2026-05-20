@@ -6,7 +6,6 @@ import {
   getListOrdersQueryKey,
   useCancelOrder,
   useSendOrderToKitchen,
-  type ListOrdersStatus,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -35,6 +34,7 @@ const TYPE_LABELS: Record<string, string> = {
   table: "Mesa",
   counter: "Balcão",
   takeaway: "Viagem",
+  delivery: "Delivery",
 };
 
 const STATUS_FILTERS = ["all", "open", "preparing", "ready", "closed", "cancelled"] as const;
@@ -43,9 +43,11 @@ type StatusFilter = typeof STATUS_FILTERS[number];
 function isToday(dateStr: string) {
   const d = new Date(dateStr);
   const today = new Date();
-  return d.getFullYear() === today.getFullYear() &&
+  return (
+    d.getFullYear() === today.getFullYear() &&
     d.getMonth() === today.getMonth() &&
-    d.getDate() === today.getDate();
+    d.getDate() === today.getDate()
+  );
 }
 
 const PAYABLE = ["open", "preparing", "ready"];
@@ -57,26 +59,48 @@ export default function Orders() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  const { data: orders, isLoading } = useListOrders(
-    statusFilter === "all" ? {} : { status: statusFilter as ListOrdersStatus },
-    {
-      query: {
-        queryKey: getListOrdersQueryKey(statusFilter === "all" ? {} : { status: statusFilter }),
-        refetchInterval: 20_000,
-      },
-    }
-  );
+  // Always fetch ALL orders — filtering is done entirely in the frontend.
+  // This ensures statusCounts are always accurate for every button,
+  // and avoids separate cache entries per status (which caused stale/empty lists).
+  const { data: allOrders, isLoading } = useListOrders(undefined, {
+    query: {
+      queryKey: getListOrdersQueryKey(),
+      refetchInterval: 20_000,
+    },
+  });
 
+  // Step 1: apply the date filter
+  const periodOrders = useMemo(() => {
+    if (!allOrders) return [];
+    if (!todayOnly) return allOrders;
+    return allOrders.filter((o) => isToday(o.createdAt));
+  }, [allOrders, todayOnly]);
+
+  // Step 2: compute per-status counts from the date-filtered set
+  const statusCounts = useMemo(() => {
+    return periodOrders.reduce(
+      (acc, o) => {
+        acc[o.status] = (acc[o.status] ?? 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>
+    );
+  }, [periodOrders]);
+
+  // Step 3: apply the status filter on top of the date filter
   const displayed = useMemo(() => {
-    if (!orders) return [];
-    if (!todayOnly) return orders;
-    return orders.filter((o) => isToday(o.createdAt));
-  }, [orders, todayOnly]);
+    if (statusFilter === "all") return periodOrders;
+    return periodOrders.filter((o) => o.status === statusFilter);
+  }, [periodOrders, statusFilter]);
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+  };
 
   const cancel = useCancelOrder({
     mutation: {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        invalidateAll();
         toast({ title: "Pedido cancelado" });
       },
     },
@@ -85,19 +109,11 @@ export default function Orders() {
   const sendToKitchen = useSendOrderToKitchen({
     mutation: {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        invalidateAll();
         toast({ title: "Pedido enviado para a cozinha!" });
       },
     },
   });
-
-  const statusCounts = useMemo(() => {
-    if (!orders) return {} as Record<string, number>;
-    return orders.reduce((acc, o) => {
-      acc[o.status] = (acc[o.status] ?? 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-  }, [orders]);
 
   return (
     <Layout>
@@ -106,7 +122,8 @@ export default function Orders() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Pedidos</h1>
             <p className="text-muted-foreground mt-1">
-              {displayed.length} pedido{displayed.length !== 1 ? "s" : ""} encontrado{displayed.length !== 1 ? "s" : ""}
+              {displayed.length} pedido{displayed.length !== 1 ? "s" : ""} encontrado
+              {displayed.length !== 1 ? "s" : ""}
             </p>
           </div>
           <Button asChild data-testid="button-new-order">
@@ -136,9 +153,8 @@ export default function Orders() {
             </Button>
             <div className="h-5 w-px bg-border mx-1" />
             {STATUS_FILTERS.map((f) => {
-              const count = f === "all"
-                ? (orders?.length ?? 0)
-                : (statusCounts[f] ?? 0);
+              // "Todos" shows count of the whole period; others show per-status count
+              const count = f === "all" ? periodOrders.length : (statusCounts[f] ?? 0);
               return (
                 <Button
                   key={f}
@@ -150,7 +166,11 @@ export default function Orders() {
                 >
                   {f === "all" ? "Todos" : STATUS_LABELS[f]}
                   {count > 0 && (
-                    <span className={`text-xs rounded-full px-1.5 py-0 min-w-[1.2rem] text-center ${statusFilter === f ? "bg-white/20" : "bg-muted"}`}>
+                    <span
+                      className={`text-xs rounded-full px-1.5 py-0 min-w-[1.2rem] text-center ${
+                        statusFilter === f ? "bg-white/20" : "bg-muted"
+                      }`}
+                    >
                       {count}
                     </span>
                   )}
@@ -162,7 +182,9 @@ export default function Orders() {
 
         {isLoading ? (
           <div className="space-y-3">
-            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-24 w-full" />
+            ))}
           </div>
         ) : displayed.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
@@ -186,8 +208,12 @@ export default function Orders() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <p className="font-semibold text-lg">#{order.id}</p>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[order.status]}`}>
-                          {STATUS_LABELS[order.status]}
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            STATUS_COLORS[order.status] ?? ""
+                          }`}
+                        >
+                          {STATUS_LABELS[order.status] ?? order.status}
                         </span>
                         <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                           {order.type ? (TYPE_LABELS[order.type] ?? order.type) : ""}
@@ -202,12 +228,16 @@ export default function Orders() {
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {order.items.length} {order.items.length === 1 ? "item" : "itens"} ·{" "}
                         {new Date(order.createdAt).toLocaleString("pt-BR", {
-                          hour: "2-digit", minute: "2-digit",
-                          day: "2-digit", month: "2-digit"
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          day: "2-digit",
+                          month: "2-digit",
                         })}
                       </p>
                       {order.notes && (
-                        <p className="text-xs text-muted-foreground italic mt-0.5 truncate">💬 {order.notes}</p>
+                        <p className="text-xs text-muted-foreground italic mt-0.5 truncate">
+                          💬 {order.notes}
+                        </p>
                       )}
                     </div>
 

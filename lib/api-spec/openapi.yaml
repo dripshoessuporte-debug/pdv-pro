@@ -1022,7 +1022,7 @@ components:
           enum: [open, preparing, ready, closed, cancelled]
         type:
           type: string
-          enum: [table, counter, takeaway]
+          enum: [table, counter, takeaway, delivery]
         notes:
           type: ["string", "null"]
         totalAmount:
@@ -1046,7 +1046,7 @@ components:
           type: integer
         type:
           type: string
-          enum: [table, counter, takeaway]
+          enum: [table, counter, takeaway, delivery]
         notes:
           type: string
 
@@ -1159,7 +1159,7 @@ components:
           type: ["integer", "null"]
         orderType:
           type: string
-          enum: [table, counter, takeaway]
+          enum: [table, counter, takeaway, delivery]
         status:
           type: string
           enum: [pending, preparing, ready]

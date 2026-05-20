@@ -13,4 +13,5 @@ export const KitchenTicketOrderType = {
   table: 'table',
   counter: 'counter',
   takeaway: 'takeaway',
+  delivery: 'delivery',
 } as const;
