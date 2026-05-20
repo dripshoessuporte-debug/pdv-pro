@@ -117,21 +117,21 @@ export default function Dashboard() {
         {/* Mesas */}
         {summary && (
           <div className="grid grid-cols-2 gap-4">
-            <Card className="bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800">
+            <Card className="border-green-700/40" style={{ backgroundColor: "#1A202C" }}>
               <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-green-500" />
+                <div className="w-3 h-3 rounded-full bg-green-500 shrink-0" />
                 <div>
-                  <p className="text-2xl font-bold text-green-700 dark:text-green-400">{summary.availableTables}</p>
-                  <p className="text-sm text-green-600 dark:text-green-500">Mesas livres</p>
+                  <p className="text-2xl font-bold text-green-400">{summary.availableTables}</p>
+                  <p className="text-sm text-green-600">Mesas livres</p>
                 </div>
               </CardContent>
             </Card>
-            <Card className="bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800">
+            <Card className="border-amber-700/40" style={{ backgroundColor: "#1A202C" }}>
               <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-amber-500" />
+                <div className="w-3 h-3 rounded-full bg-amber-500 shrink-0" />
                 <div>
-                  <p className="text-2xl font-bold text-amber-700 dark:text-amber-400">{summary.occupiedTables}</p>
-                  <p className="text-sm text-amber-600 dark:text-amber-500">Mesas ocupadas</p>
+                  <p className="text-2xl font-bold text-amber-400">{summary.occupiedTables}</p>
+                  <p className="text-sm text-amber-600">Mesas ocupadas</p>
                 </div>
               </CardContent>
             </Card>

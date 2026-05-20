@@ -988,11 +988,11 @@ function PendingOrderRow({
 // ─── Route value color based on total delivery fee ────────────────────────────
 
 function getRouteValueColor(fee: number): { color: string; glow: string } {
-  if (fee > 60) return { color: "#F43F5E", glow: "rgba(244,63,94,0.18)"  };
-  if (fee > 45) return { color: "#A855F7", glow: "rgba(168,85,247,0.18)" };
-  if (fee > 30) return { color: "#FACC15", glow: "rgba(250,204,21,0.18)" };
-  if (fee > 15) return { color: "#10B981", glow: "rgba(16,185,129,0.18)" };
-  return        { color: "#38BDF8", glow: "rgba(56,189,248,0.18)"  };
+  if (fee > 60) return { color: "#F43F5E", glow: "rgba(244,63,94,0.25)"  };
+  if (fee > 45) return { color: "#A855F7", glow: "rgba(168,85,247,0.25)" };
+  if (fee > 30) return { color: "#FACC15", glow: "rgba(250,204,21,0.25)" };
+  if (fee > 15) return { color: "#00C853", glow: "rgba(0,200,83,0.25)"   };
+  return        { color: "#38BDF8", glow: "rgba(56,189,248,0.25)"  };
 }
 
 // ─── RouteCard ────────────────────────────────────────────────────────────────
@@ -1044,10 +1044,10 @@ function RouteCard({
       className="rounded-2xl overflow-hidden flex flex-col transition-shadow"
       data-testid={`card-route-${route.id}`}
       style={{
-        backgroundColor: "#1F2937",
-        border: `1px solid ${vc.color}55`,
-        boxShadow: `0 0 22px 0px ${vc.glow}, 0 4px 12px -4px rgba(0,0,0,0.5)`,
-        color: "#F9FAFB",
+        backgroundColor: "#1A202C",
+        border: `2px solid ${vc.color}66`,
+        boxShadow: `0 0 24px 2px ${vc.glow}, 0 4px 16px -4px rgba(0,0,0,0.6)`,
+        color: "#F8FAFC",
       }}
     >
       <div className="p-4 flex flex-col gap-3 flex-1">
@@ -1153,9 +1153,9 @@ function RouteCard({
               <div
                 key={order.id}
                 className="flex items-center gap-2.5 px-3 py-2.5 transition-colors text-xs group rounded-lg mx-1 my-0.5"
-                style={{ backgroundColor: "#111827" }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#1a2435")}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#111827")}
+                style={{ backgroundColor: "#252F3F" }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#2d3a4d")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#252F3F")}
                 data-testid={`route-order-${order.orderId}`}
               >
                 {/* Stop number */}
@@ -1253,7 +1253,7 @@ function RouteCard({
         {/* ── Value info panel ── */}
         <div
           className="rounded-xl px-3 py-2.5 text-xs space-y-1"
-          style={{ backgroundColor: "#111827", border: "1px solid #374151" }}
+          style={{ backgroundColor: "#252F3F", border: "1px solid #334155" }}
         >
           <div className="flex items-center justify-between">
             <span style={{ color: "#9CA3AF" }}>Valor da rota</span>
@@ -1280,7 +1280,7 @@ function RouteCard({
         </div>
 
         {/* ── Footer ── */}
-        <div className="flex items-center gap-2 pt-1 mt-auto" style={{ borderTop: "1px solid #374151" }}>
+        <div className="flex items-center gap-2 pt-1 mt-auto" style={{ borderTop: "1px solid #334155" }}>
           <div className="flex-1" />
 
           <Button
@@ -1297,7 +1297,7 @@ function RouteCard({
             <Button
               size="sm"
               className="h-8 gap-1.5 rounded-lg font-semibold text-white border-0"
-              style={{ backgroundColor: vc.color }}
+              style={{ backgroundColor: "#00C853", color: "#0B0F14" }}
               onClick={onAssign}
               title="Assumir esta rota"
               data-testid={`button-assign-${route.id}`}

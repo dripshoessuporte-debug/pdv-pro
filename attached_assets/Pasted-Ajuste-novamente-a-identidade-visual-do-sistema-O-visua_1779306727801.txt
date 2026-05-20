@@ -1,0 +1,394 @@
+Ajuste novamente a identidade visual do sistema.
+
+O visual anterior ainda não ficou bom. A cor rubi/bordô ficou estranha no conjunto. Quero mudar para uma estética mais escura, mais limpa, mais premium e com verde como cor principal.
+
+Não refaça o projeto do zero.
+Preserve todas as funcionalidades existentes:
+- pedidos
+- cozinha
+- caixa
+- pagamento
+- cardápio
+- delivery
+- rotas
+- configurações
+- QR Code
+- pagamento na entrega
+- agrupamento por CEP/bairro
+- alertas de tempo
+- organização de pedidos por data, se já estiver implementada
+
+OBJETIVO VISUAL
+
+Quero um tema dark mais profundo, com contraste elegante:
+
+- fundo principal bem escuro
+- sidebar escura
+- cards em cinza mais claro que o fundo
+- textos bem legíveis
+- verde como cor principal
+- botões padronizados
+- rotas com glow bonito, mas sem ficar exagerado ou carnavalesco
+
+--------------------------------------------------
+PARTE 1 — PALETA FINAL SUGERIDA
+--------------------------------------------------
+
+Aplicar esta paleta:
+
+Fundo principal:
+#0B0F14
+
+Sidebar:
+#111827
+
+Cards:
+#1A202C
+
+Cards destacados:
+#202938
+
+Cards internos / blocos menores:
+#252F3F
+
+Bordas neutras:
+#334155
+
+Cor principal / verde premium:
+#00C853
+
+Hover verde:
+#00A844
+
+Glow verde principal:
+rgba(0, 200, 83, 0.22)
+
+Texto principal:
+#F8FAFC
+
+Texto secundário:
+#CBD5E1
+
+Texto apagado:
+#94A3B8
+
+Sucesso:
+#22C55E
+
+Aviso:
+#FACC15
+
+Erro / atraso:
+#EF4444
+
+Informação:
+#38BDF8
+
+Regras:
+1. O sistema deve ficar mais escuro no fundo geral.
+2. Os cards devem ser cinza escuro, mas ainda visíveis sobre o fundo.
+3. Verde deve ser a cor principal para ações positivas e CTAs.
+4. Remover completamente o rubi/bordô como cor principal.
+5. Não usar bordas brancas nos botões.
+6. Evitar cores fortes demais ocupando áreas grandes.
+7. Manter o visual flat, moderno e operacional.
+
+--------------------------------------------------
+PARTE 2 — BOTÕES
+--------------------------------------------------
+
+Padronizar todos os botões.
+
+Botões principais:
+- fundo #00C853
+- hover #00A844
+- texto escuro ou branco, escolher o que der melhor contraste
+- sem borda branca
+- sem outline estranho
+- borda-radius consistente
+- sombra/glow muito sutil
+
+Exemplos:
+- Novo Pedido
+- Gerar Rotas
+- Salvar
+- Confirmar
+- Assumir Rota
+
+Botões secundários:
+- fundo #1A202C ou #202938
+- borda #334155
+- texto #CBD5E1
+- hover #252F3F
+
+Botões perigosos:
+- usar vermelho apenas para cancelar, excluir, atrasado crítico
+
+IMPORTANTE:
+Na página Rotas, os botões “Assumir Rota” devem ter cor padrão verde.
+Eles NÃO devem mudar de cor conforme o valor da rota.
+A cor por valor deve aparecer só na borda/glow do card.
+
+--------------------------------------------------
+PARTE 3 — PÁGINA ROTAS
+--------------------------------------------------
+
+A página Rotas está visualmente poluída. Quero deixar mais premium.
+
+Ajustar os cards das rotas:
+
+1. Remover visual muito colorido.
+2. Remover fitinha lateral, se ainda existir.
+3. Remover labels de classificação tipo:
+   - baixa
+   - média
+   - alta
+   - premium
+4. Manter apenas o valor financeiro da rota.
+5. Todos os cards devem ter a mesma base:
+   - fundo #1A202C
+   - blocos internos #252F3F
+   - texto claro
+   - layout limpo
+
+6. A diferenciação por valor deve aparecer apenas em:
+   - borda colorida um pouco mais grossa
+   - glow externo suave, porém mais visível que antes
+
+Não quero glow exagerado.
+Quero um glow bonito, perceptível e premium.
+
+Sugestão:
+- borda de 2px
+- box-shadow com cor da faixa
+- opacidade controlada
+
+Exemplo visual:
+card escuro padrão
+borda fina/média colorida
+glow externo suave na mesma cor
+
+--------------------------------------------------
+PARTE 4 — COR DAS ROTAS POR VALOR
+--------------------------------------------------
+
+Manter a cor da borda/glow baseada no valor da rota.
+
+Faixas:
+
+1. Até R$ 15,00:
+- cor: #38BDF8
+- glow azul
+
+2. R$ 15,01 até R$ 30,00:
+- cor: #00C853
+- glow verde
+
+3. R$ 30,01 até R$ 45,00:
+- cor: #FACC15
+- glow dourado
+
+4. R$ 45,01 até R$ 60,00:
+- cor: #A855F7
+- glow roxo
+
+5. Acima de R$ 60,00:
+- cor: #F43F5E
+- glow rosa/vermelho premium
+
+IMPORTANTE:
+Não mostrar texto de classificação.
+Não mostrar “Baixa”, “Média”, “Boa”, “Alta”, “Premium”.
+Mostrar somente o valor da rota.
+
+A função pode continuar calculando a faixa internamente, mas visualmente deve exibir apenas:
+- Valor da rota
+- Total a receber
+- Troco necessário
+- Taxa total
+
+--------------------------------------------------
+PARTE 5 — AJUSTE DOS CARDS INTERNOS DAS ROTAS
+--------------------------------------------------
+
+Os pedidos dentro de cada rota devem ficar mais limpos.
+
+Usar:
+- fundo interno #252F3F
+- borda neutra #334155
+- textos organizados
+- badges pequenos
+- menos cor espalhada
+
+Cada pedido dentro da rota deve mostrar:
+- número do pedido
+- cliente
+- endereço resumido
+- bairro
+- CEP
+- pagamento
+- troco, se houver
+- status de preparo/entrega
+
+Mas com hierarquia visual melhor:
+- nome do cliente em destaque
+- endereço menor
+- valor/troco em destaque controlado
+- status em badge pequeno
+
+--------------------------------------------------
+PARTE 6 — CABEÇALHO DAS ROTAS
+--------------------------------------------------
+
+Melhorar o topo da página Rotas.
+
+Quero algo mais limpo:
+- título: Painel de Rotas
+- subtítulo curto
+- cards de estatísticas menores e mais discretos
+- botão Atualizar secundário
+- botão Gerar Rotas / Rotas Prontas em verde principal
+
+Evitar muitos tons diferentes no topo.
+
+--------------------------------------------------
+PARTE 7 — MESAS
+--------------------------------------------------
+
+Ajustar também a página Mesas para combinar com o tema.
+
+1. Fundo geral bem escuro.
+2. Cards das mesas em cinza escuro.
+3. Não usar verde pastel/amarelo pastel como fundo gigante.
+4. Status deve aparecer por badge:
+   - Livre = verde
+   - Ocupada = amarelo
+   - Reservada = azul
+5. Card da mesa mantém aparência padrão dark.
+
+--------------------------------------------------
+PARTE 8 — CARDÁPIO E PEDIDOS
+--------------------------------------------------
+
+Harmonizar Cardápio e Pedidos com a nova paleta.
+
+1. Cards dark em #1A202C.
+2. Bordas #334155.
+3. Botões principais verdes.
+4. Botões de excluir continuam vermelhos.
+5. Badges menores e mais discretos.
+6. Evitar textos laranja restantes.
+7. Preços podem usar verde ou texto claro com destaque, não laranja.
+
+--------------------------------------------------
+PARTE 9 — DASHBOARD E CAIXA
+--------------------------------------------------
+
+Ajustar Dashboard e Caixa:
+
+1. Dashboard:
+- cards dark
+- números importantes em verde ou branco
+- status em badges
+- sem excesso de laranja/rubi
+
+2. Caixa:
+- caixa aberto em verde
+- valores em branco/verde
+- sangria em vermelho
+- suprimento em verde
+- botões sem borda branca
+
+--------------------------------------------------
+PARTE 10 — ORGANIZAÇÃO DOS PEDIDOS POR DATA
+--------------------------------------------------
+
+Se ainda não foi implementado, implementar a organização de pedidos por período.
+
+Filtros:
+- Hoje
+- Ontem
+- Esta semana
+- Este mês
+- Todos
+
+Regras:
+1. Hoje mostra pedidos do dia atual, 00:00 até 23:59.
+2. Ontem mostra pedidos do dia anterior.
+3. Esta semana mostra pedidos da semana atual.
+4. Este mês mostra pedidos do mês atual.
+5. Todos mostra histórico completo.
+
+Não apagar pedidos antigos.
+Apenas organizar e filtrar visualmente.
+
+Quando virar meia-noite:
+- Hoje deve zerar automaticamente.
+- Pedidos do dia anterior devem aparecer em Ontem.
+- Histórico continua em Todos.
+
+Quando estiver em Todos, agrupar visualmente por data:
+- Hoje
+- Ontem
+- 18/05/2026
+- 17/05/2026
+
+Os contadores de status devem respeitar o período selecionado.
+
+--------------------------------------------------
+PARTE 11 — DASHBOARD APENAS DO DIA
+--------------------------------------------------
+
+A Dashboard deve mostrar apenas dados de hoje:
+
+- Faturamento Hoje
+- Pedidos Hoje
+- Pedidos Ativos
+- Fila da Cozinha
+- Pedidos Recentes
+
+Pedidos antigos não devem inflar a Dashboard do dia atual.
+
+--------------------------------------------------
+PARTE 12 — TESTES OBRIGATÓRIOS
+--------------------------------------------------
+
+Teste:
+
+1. Verificar se o fundo ficou mais escuro.
+2. Verificar se os cards ficaram em cinza escuro mais claro que o fundo.
+3. Verificar se o verde virou cor principal.
+4. Verificar se não existem mais botões com borda branca estranha.
+5. Verificar se os botões Assumir Rota são todos verdes padronizados.
+6. Verificar se os cards de rota:
+   - não têm fitinha lateral
+   - não têm labels baixa/média/alta/premium
+   - têm borda colorida de 2px
+   - têm glow externo perceptível e elegante
+   - mostram apenas o valor da rota
+7. Verificar se o glow da rota varia por valor:
+   - até R$ 15 azul
+   - até R$ 30 verde
+   - até R$ 45 dourado
+   - até R$ 60 roxo
+   - acima de R$ 60 rosa/vermelho
+8. Verificar se Cardápio, Pedidos, Mesas, Caixa e Dashboard estão harmonizados.
+9. Verificar se filtros de data funcionam:
+   - Hoje
+   - Ontem
+   - Esta semana
+   - Este mês
+   - Todos
+10. Verificar se Dashboard mostra apenas dados de hoje.
+11. Rodar typecheck sem erros.
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Qual paleta foi aplicada.
+3. Como ficou a nova aparência dos botões.
+4. Como ficou a nova aparência dos cards de rota.
+5. Como funciona a cor/glow das rotas por valor.
+6. Como os pedidos são organizados por data.
+7. Como testar passo a passo.
+8. Limitações restantes.
