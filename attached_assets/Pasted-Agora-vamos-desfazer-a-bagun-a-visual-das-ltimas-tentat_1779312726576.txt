@@ -1,0 +1,369 @@
+Agora vamos desfazer a bagunça visual das últimas tentativas e voltar para uma identidade mais clean, parecida com a aparência original do sistema.
+
+Não refaça o projeto do zero.
+Não altere funcionalidades.
+Preserve tudo que já funciona:
+- pedidos
+- cozinha
+- caixa
+- pagamento
+- cardápio
+- delivery
+- rotas
+- configurações
+- QR Code
+- pagamento na entrega
+- alertas de tempo
+- organização de pedidos por data
+- agrupamento de rotas
+
+OBJETIVO VISUAL
+
+Quero voltar para uma aparência mais clean, clara/cinza, com laranja como cor principal, semelhante ao visual original do sistema.
+
+As últimas versões ficaram com muita mistura de cor, muito escuro, muito glow e poluição visual.
+Agora quero algo mais simples, limpo, leve e fácil de entender.
+
+--------------------------------------------------
+PARTE 1 — PALETA CLEAN PADRÃO
+--------------------------------------------------
+
+Aplicar uma paleta clara/cinza com laranja como cor principal.
+
+Use como referência:
+
+Fundo principal:
+#F8FAFC
+
+Sidebar:
+#FFFFFF
+
+Cards:
+#FFFFFF
+
+Cards secundários:
+#F1F5F9
+
+Blocos internos:
+#F8FAFC
+
+Bordas:
+#E2E8F0
+
+Texto principal:
+#0F172A
+
+Texto secundário:
+#475569
+
+Texto apagado:
+#94A3B8
+
+Cor principal / laranja:
+#F97316
+
+Hover laranja:
+#EA580C
+
+Laranja suave de fundo:
+#FFF7ED
+
+Sucesso:
+#22C55E
+
+Aviso:
+#F59E0B
+
+Erro:
+#EF4444
+
+Informação:
+#3B82F6
+
+Regras:
+1. Remover o tema dark/chumbo/azulado.
+2. Voltar para fundo claro e clean.
+3. Usar cards brancos com bordas cinza suaves.
+4. Usar laranja como cor principal.
+5. Não usar excesso de glow.
+6. Não usar bordas coloridas exageradas.
+7. Deixar a interface limpa e fácil de bater o olho.
+
+--------------------------------------------------
+PARTE 2 — BOTÕES
+--------------------------------------------------
+
+Padronizar todos os botões.
+
+Botões principais:
+- fundo laranja #F97316
+- hover #EA580C
+- texto branco sempre visível
+- sem borda branca
+- sem texto fora do botão
+- sem outline estranho
+
+Botões secundários:
+- fundo branco ou #F8FAFC
+- borda #E2E8F0
+- texto #0F172A
+- hover #F1F5F9
+
+Botões perigosos:
+- fundo vermelho #EF4444
+- texto branco
+
+Botões de sucesso:
+- fundo verde #22C55E
+- texto branco
+
+IMPORTANTE:
+Garantir que todo texto dentro dos botões tenha contraste bom.
+Nenhum botão pode ficar com texto branco em fundo branco ou texto invisível.
+
+--------------------------------------------------
+PARTE 3 — PÁGINA ROTAS
+--------------------------------------------------
+
+A página Rotas precisa ficar mais clean.
+
+Remover:
+- glow exagerado
+- fundo escuro
+- bordas brilhantes fortes
+- excesso de cores
+- aparência muito “carnaval”
+
+Manter:
+- cards brancos
+- borda cinza clara
+- sombra leve
+- laranja para ações principais
+- badges discretos
+
+Cada card de rota deve ter:
+- fundo branco
+- borda #E2E8F0
+- sombra suave
+- texto escuro
+- layout limpo
+
+A diferenciação por valor da rota pode continuar, mas de forma discreta.
+
+Usar apenas um pequeno indicador visual, como:
+- badge discreto
+- bolinha colorida pequena
+- texto do valor com destaque leve
+
+Não usar glow ao redor do card.
+Não usar card inteiro colorido.
+Não usar borda neon.
+
+--------------------------------------------------
+PARTE 4 — CORES DAS ROTAS POR VALOR, MAS DISCRETAS
+--------------------------------------------------
+
+Manter as faixas de valor, porém sem exagero visual:
+
+Até R$ 15,00:
+- indicador azul #3B82F6
+
+R$ 15,01 até R$ 30,00:
+- indicador verde #22C55E
+
+R$ 30,01 até R$ 45,00:
+- indicador amarelo/laranja #F59E0B
+
+R$ 45,01 até R$ 60,00:
+- indicador roxo #8B5CF6
+
+Acima de R$ 60,00:
+- indicador vermelho/rosa #EF4444
+
+IMPORTANTE:
+Não quero glow.
+Não quero borda colorida forte.
+Não quero fitinha lateral grande.
+Não quero card colorido.
+
+Apenas um detalhe pequeno para indicar a faixa do valor.
+
+Mostrar apenas:
+- valor da rota
+- total a receber
+- troco necessário
+- taxa total
+- quantidade de pedidos
+
+Não mostrar textos como:
+- baixa
+- média
+- alta
+- premium
+
+--------------------------------------------------
+PARTE 5 — LEGENDA DAS ROTAS
+--------------------------------------------------
+
+Manter uma legenda discreta abaixo do título Painel de Rotas.
+
+Exemplo:
+
+[bolinha azul] até R$ 15
+[bolinha verde] R$ 15–30
+[bolinha laranja] R$ 30–45
+[bolinha roxa] R$ 45–60
+[bolinha vermelha] acima de R$ 60
+
+A legenda deve ser:
+- pequena
+- discreta
+- clean
+- com texto escuro
+- sem fundo escuro
+- sem brilho
+
+--------------------------------------------------
+PARTE 6 — CARDS INTERNOS DAS ROTAS
+--------------------------------------------------
+
+Os pedidos dentro de cada rota devem ficar em blocos limpos:
+
+- fundo #F8FAFC
+- borda #E2E8F0
+- texto #0F172A
+- badges pequenos
+
+Cada pedido dentro da rota deve mostrar:
+- número do pedido
+- cliente
+- endereço resumido
+- bairro
+- CEP
+- pagamento
+- troco, se houver
+- status
+
+Tudo com visual simples e organizado.
+
+--------------------------------------------------
+PARTE 7 — PÁGINAS GERAIS
+--------------------------------------------------
+
+Aplicar o visual clean também em:
+
+- Dashboard
+- Pedidos
+- Caixa
+- Cardápio
+- Mesas
+- Cozinha
+- Rotas
+- Configurações
+
+Regras:
+1. Fundo geral claro.
+2. Cards brancos.
+3. Bordas cinza suaves.
+4. Botões principais laranja.
+5. Textos escuros.
+6. Badges discretos.
+7. Nada de tema escuro/chumbo.
+
+--------------------------------------------------
+PARTE 8 — MESAS
+--------------------------------------------------
+
+Na página Mesas:
+
+1. Cards brancos.
+2. Borda cinza suave.
+3. Status em badge:
+   - Livre = verde
+   - Ocupada = laranja/amarelo
+   - Reservada = azul
+4. Não usar fundo gigante colorido.
+5. Manter visual leve e limpo.
+
+--------------------------------------------------
+PARTE 9 — PEDIDOS POR DATA
+--------------------------------------------------
+
+Manter ou implementar a organização de pedidos por período:
+
+Filtros:
+- Hoje
+- Ontem
+- Esta semana
+- Este mês
+- Todos
+
+Regras:
+1. Hoje mostra apenas pedidos do dia atual.
+2. Ontem mostra pedidos do dia anterior.
+3. Esta semana mostra pedidos da semana atual.
+4. Este mês mostra pedidos do mês atual.
+5. Todos mostra histórico completo.
+
+Não apagar pedidos antigos.
+Apenas filtrar e organizar visualmente.
+
+Quando virar meia-noite:
+- Hoje começa zerado automaticamente.
+- Pedidos do dia anterior aparecem em Ontem.
+- Histórico continua em Todos.
+
+Quando estiver em Todos, agrupar visualmente por data:
+- Hoje
+- Ontem
+- 18/05/2026
+- 17/05/2026
+
+Os contadores de status precisam respeitar o período selecionado.
+
+--------------------------------------------------
+PARTE 10 — DASHBOARD
+--------------------------------------------------
+
+A Dashboard deve mostrar dados de hoje:
+
+- Faturamento Hoje
+- Pedidos Hoje
+- Pedidos Ativos
+- Fila da Cozinha
+- Pedidos Recentes
+
+Pedidos antigos não devem inflar a Dashboard do dia atual.
+
+--------------------------------------------------
+PARTE 11 — TESTES OBRIGATÓRIOS
+--------------------------------------------------
+
+Teste:
+
+1. Verificar se o sistema voltou para visual claro/cinza clean.
+2. Verificar se o laranja voltou como cor principal.
+3. Verificar se os botões principais têm texto branco legível.
+4. Verificar se não existe texto invisível dentro de botão.
+5. Verificar se a página Rotas está limpa:
+   - sem glow
+   - sem borda neon
+   - sem card escuro
+   - sem fitinha lateral grande
+   - sem card colorido
+6. Verificar se as rotas mostram apenas indicadores discretos por valor.
+7. Verificar se a legenda das cores está discreta.
+8. Verificar se Dashboard, Pedidos, Mesas, Caixa e Cardápio estão harmonizados.
+9. Verificar se filtros Hoje, Ontem, Esta semana, Este mês e Todos funcionam.
+10. Verificar se Dashboard mostra apenas dados de hoje.
+11. Rodar typecheck sem erros.
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Qual paleta clean foi aplicada.
+3. Como ficou a aparência dos botões.
+4. Como ficou a aparência da página Rotas.
+5. Como ficou a organização por data.
+6. Como testar passo a passo.
+7. Limitações restantes.

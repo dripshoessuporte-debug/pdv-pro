@@ -117,20 +117,20 @@ export default function Dashboard() {
         {/* Mesas */}
         {summary && (
           <div className="grid grid-cols-2 gap-4">
-            <Card className="border-green-700/40" style={{ backgroundColor: "#17191D" }}>
+            <Card className="border-green-200 bg-green-50">
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="w-3 h-3 rounded-full bg-green-500 shrink-0" />
                 <div>
-                  <p className="text-2xl font-bold text-green-400">{summary.availableTables}</p>
+                  <p className="text-2xl font-bold text-green-700">{summary.availableTables}</p>
                   <p className="text-sm text-green-600">Mesas livres</p>
                 </div>
               </CardContent>
             </Card>
-            <Card className="border-amber-700/40" style={{ backgroundColor: "#17191D" }}>
+            <Card className="border-amber-200 bg-amber-50">
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="w-3 h-3 rounded-full bg-amber-500 shrink-0" />
                 <div>
-                  <p className="text-2xl font-bold text-amber-400">{summary.occupiedTables}</p>
+                  <p className="text-2xl font-bold text-amber-700">{summary.occupiedTables}</p>
                   <p className="text-sm text-amber-600">Mesas ocupadas</p>
                 </div>
               </CardContent>

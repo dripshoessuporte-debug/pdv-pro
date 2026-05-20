@@ -166,8 +166,8 @@ export default function Tables() {
                   key={table.id}
                   className="rounded-xl border p-4 flex flex-col gap-2 cursor-pointer transition-all hover:brightness-110"
                   style={{
-                    backgroundColor: "#17191D",
-                    color: "#F5F5F5",
+                    backgroundColor: "#FFFFFF",
+                    color: "#0F172A",
                     border: "1px solid",
                     ...config.cardStyle,
                   }}
