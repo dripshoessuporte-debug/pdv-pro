@@ -209,7 +209,7 @@ export default function Orders() {
                 </span>
 
                 {isDelivery ? (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-900/30 text-sky-300 flex items-center gap-1">
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-700 flex items-center gap-1">
                     <Truck className="w-3 h-3" /> Delivery
                   </span>
                 ) : (
@@ -221,7 +221,7 @@ export default function Orders() {
                 )}
 
                 {isDelivery && order.deliveryStatus && (
-                  <span className="text-xs text-muted-foreground italic">
+                  <span className="text-xs text-slate-500 font-medium">
                     · {DELIVERY_STATUS_LABELS[order.deliveryStatus] ?? order.deliveryStatus}
                   </span>
                 )}
@@ -282,7 +282,7 @@ export default function Orders() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="gap-1.5 border-emerald-600 text-emerald-400 hover:bg-emerald-950"
+                  className="gap-1.5 border-emerald-500 text-emerald-600 hover:bg-emerald-50"
                   onClick={() => markDelivered(order.id)}
                   disabled={completingDelivery === order.id}
                   title="Confirmar entrega"

@@ -1,0 +1,333 @@
+Vamos fazer um ajuste fino visual no sistema, mantendo o tema clean original, mas melhorando principalmente a leitura da página Rotas e também o contraste da página Pedidos.
+
+Não refaça o projeto do zero.
+Não altere as funcionalidades.
+Preserve tudo que já funciona:
+- pedidos
+- cozinha
+- caixa
+- pagamento
+- cardápio
+- delivery
+- rotas
+- configurações
+- QR Code
+- pagamento na entrega
+- alertas de tempo
+- agrupamento por CEP/bairro
+- organização dos pedidos por data
+
+OBJETIVO GERAL
+
+Quero manter o visual clean original do sistema:
+- fundo claro
+- cards brancos
+- cinzas suaves
+- laranja como cor principal
+
+Mas preciso melhorar:
+1. os cards da página Rotas, porque estão difíceis de ler
+2. a leitura/contraste de alguns elementos da página Pedidos
+
+==================================================
+PARTE 1 — MANTER O TEMA CLEAN ORIGINAL
+==================================================
+
+Usar a identidade visual clara/original como base:
+
+Fundo principal:
+#F8FAFC
+
+Sidebar:
+#FFFFFF
+
+Cards:
+#FFFFFF
+
+Cards secundários:
+#F1F5F9
+
+Blocos internos:
+#F8FAFC
+
+Bordas:
+#E2E8F0
+
+Texto principal:
+#0F172A
+
+Texto secundário:
+#475569
+
+Texto apagado:
+#94A3B8
+
+Cor principal / laranja:
+#F97316
+
+Hover laranja:
+#EA580C
+
+Laranja suave:
+#FFF7ED
+
+Sucesso:
+#22C55E
+
+Aviso:
+#F59E0B
+
+Informação:
+#3B82F6
+
+Roxo:
+#8B5CF6
+
+Rosa:
+#EC4899
+
+Amarelo forte:
+#EAB308
+
+Regras:
+1. Não voltar para tema dark.
+2. Não usar azul-marinho/chumbo como fundo geral.
+3. Manter o sistema claro, clean e leve.
+4. Laranja continua como cor principal de ação.
+5. Botões principais com texto branco sempre legível.
+
+==================================================
+PARTE 2 — AJUSTAR A PÁGINA ROTAS
+==================================================
+
+Problema atual:
+Os cards de "Rotas Ativas" estão difíceis de ler.
+O visual está apagado, com contraste ruim e as informações estão pouco atraentes.
+
+Quero melhorar os cards de rota assim:
+
+1. Manter os cards com fundo branco.
+2. Voltar com destaque na borda de cada rota.
+3. A borda deve ter a cor da faixa da rota.
+4. A borda deve ser mais visível:
+   - usar borda de 2px ou 2.5px
+5. Adicionar um glow muito leve e bem colado na borda:
+   - nada de glow espalhado
+   - nada de neon exagerado
+   - algo sutil, bonito e só para destacar
+6. Não usar fitinha lateral.
+7. Não usar card inteiro colorido.
+8. Não usar glow gigante.
+
+Visual desejado:
+- card branco
+- borda colorida visível
+- glow bem leve ao redor da borda
+- conteúdo interno com bom contraste
+- cara clean, bonita e profissional
+
+==================================================
+PARTE 3 — NOVA ESCALA DE CORES DAS ROTAS
+==================================================
+
+Trocar a escala de cores das rotas.
+
+Nova ordem desejada:
+
+1. Até R$ 15,00
+- azul
+- cor: #3B82F6
+
+2. R$ 15,01 até R$ 30,00
+- verde
+- cor: #22C55E
+
+3. R$ 30,01 até R$ 45,00
+- rosa
+- cor: #EC4899
+
+4. R$ 45,01 até R$ 60,00
+- roxo
+- cor: #8B5CF6
+
+5. Acima de R$ 60,00
+- amarelo
+- cor: #EAB308
+
+IMPORTANTE:
+- remover o vermelho da escala
+- amarelo será a rota mais cara/mais valiosa
+- manter essa lógica somente como borda + glow leve + legenda
+- não mostrar textos tipo “baixa”, “média”, “alta” etc.
+- mostrar apenas os valores da rota normalmente
+
+Criar/ajustar função tipo:
+getRouteValueColor(route)
+
+Ela deve retornar apenas:
+- cor da borda
+- cor do glow discreto
+
+==================================================
+PARTE 4 — LEGENDA DAS CORES NAS ROTAS
+==================================================
+
+Abaixo do título “Painel de Rotas”, manter uma legenda discreta explicando as cores:
+
+- azul = até R$ 15
+- verde = R$ 15–30
+- rosa = R$ 30–45
+- roxo = R$ 45–60
+- amarelo = acima de R$ 60
+
+Visual da legenda:
+- pequena
+- clean
+- com bolinha colorida ou mini indicador
+- texto discreto
+- alinhada horizontalmente no desktop
+- responsiva no mobile
+
+==================================================
+PARTE 5 — MELHORAR LEITURA DENTRO DOS CARDS DE ROTA
+==================================================
+
+Melhorar a legibilidade dos cards de rota.
+
+Hoje está muito apagado.
+Quero mais contraste.
+
+Dentro do card:
+1. Título da rota mais escuro e forte.
+2. Bairro mais legível.
+3. Status de atraso com melhor contraste.
+4. Os pedidos internos precisam ser mais legíveis:
+   - nome do cliente com mais destaque
+   - endereço menor
+   - badge “Preparando” mais clara e legível
+5. O bloco “0/2 pedidos prontos na cozinha” precisa ficar legível.
+6. O bloco “Valor da rota / Pedidos” precisa ficar mais bonito.
+7. O valor da rota pode ter a mesma cor da borda da rota, para reforçar a leitura.
+8. O botão “Assumir Rota” continua laranja padrão com texto branco.
+
+Os cards internos dos pedidos podem continuar em cinza muito claro, mas com:
+- borda suave
+- texto escuro
+- badges mais visíveis
+
+==================================================
+PARTE 6 — AJUSTAR A PÁGINA PEDIDOS
+==================================================
+
+Na página Pedidos, melhorar contraste e leitura.
+
+Pelo visual atual, alguns elementos estão meio lavados.
+
+Ajustar:
+
+1. Os cards dos pedidos continuam brancos com borda suave.
+2. O número do pedido precisa ficar forte e bem visível.
+3. O badge “Aberto” deve manter boa legibilidade.
+4. O badge “Delivery” precisa ter melhor contraste.
+5. O texto “Em preparo” está muito apagado; melhorar contraste.
+6. O valor do pedido deve continuar forte e bem visível.
+7. O botão “Pagar” deve ficar mais bonito e mais legível:
+   - fundo laranja
+   - texto branco
+   - sem parecer desativado, exceto quando realmente estiver desativado
+8. Os botões de ação do lado direito precisam ficar mais claros e legíveis.
+9. Manter a organização dos filtros:
+   - Hoje
+   - Ontem
+   - Esta semana
+   - Este mês
+   - Todos
+10. Os botões dos filtros devem continuar clean e bem legíveis.
+
+==================================================
+PARTE 7 — MANTER PADRÃO DOS BOTÕES
+==================================================
+
+Botões principais:
+- fundo #F97316
+- hover #EA580C
+- texto branco
+- sem borda branca
+- contraste forte
+
+Botões secundários:
+- fundo branco
+- borda #E2E8F0
+- texto #0F172A
+
+Botões de sucesso:
+- fundo verde
+- texto branco
+
+Botões críticos:
+- fundo vermelho
+- texto branco
+
+==================================================
+PARTE 8 — MANTER A ORGANIZAÇÃO POR DATA
+==================================================
+
+Se já estiver implementado, manter a organização dos pedidos por período:
+
+- Hoje
+- Ontem
+- Esta semana
+- Este mês
+- Todos
+
+Manter a lógica:
+- Hoje = pedidos do dia atual
+- Ontem = pedidos do dia anterior
+- Esta semana = semana atual
+- Este mês = mês atual
+- Todos = histórico
+
+Quando virar meia-noite:
+- Hoje zera automaticamente
+- os pedidos migram para Ontem / histórico
+- não apagar pedidos antigos
+
+Quando estiver em “Todos”, manter agrupamento visual por data, se já estiver implementado.
+
+==================================================
+PARTE 9 — TESTES OBRIGATÓRIOS
+==================================================
+
+Teste:
+
+1. Verificar se o sistema continua no visual clean original.
+2. Verificar se o laranja continua como cor principal.
+3. Verificar se a página Rotas ficou mais legível.
+4. Verificar se os cards das rotas agora têm:
+   - fundo branco
+   - borda colorida
+   - glow leve e colado na borda
+   - sem glow exagerado
+   - sem fitinha lateral
+5. Verificar se a nova escala de cores está correta:
+   - azul até R$ 15
+   - verde até R$ 30
+   - rosa até R$ 45
+   - roxo até R$ 60
+   - amarelo acima de R$ 60
+6. Verificar se a legenda aparece abaixo do título.
+7. Verificar se os textos dentro dos cards de rota estão legíveis.
+8. Verificar se o botão “Assumir Rota” continua laranja e bonito.
+9. Verificar se a página Pedidos ficou com melhor contraste.
+10. Verificar se os badges Delivery / Em preparo / Aberto ficaram legíveis.
+11. Verificar se o botão Pagar ficou mais nítido.
+12. Rodar typecheck sem erros.
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Como ficou a página Rotas.
+3. Como ficou a nova escala de cores das rotas.
+4. Como ficou a página Pedidos.
+5. Como testar passo a passo.
+6. Limitações restantes.

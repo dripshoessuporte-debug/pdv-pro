@@ -1000,19 +1000,19 @@ function PendingOrderRow({
 // ─── Route value color based on total delivery fee ────────────────────────────
 
 function getRouteValueColor(fee: number): { color: string; glow: string } {
-  if (fee > 60) return { color: "#EF4444", glow: "rgba(0,0,0,0)" };
-  if (fee > 45) return { color: "#8B5CF6", glow: "rgba(0,0,0,0)" };
-  if (fee > 30) return { color: "#F59E0B", glow: "rgba(0,0,0,0)" };
-  if (fee > 15) return { color: "#22C55E", glow: "rgba(0,0,0,0)" };
-  return        { color: "#3B82F6", glow: "rgba(0,0,0,0)" };
+  if (fee > 60) return { color: "#EAB308", glow: "rgba(234,179,8,0.20)"   };
+  if (fee > 45) return { color: "#8B5CF6", glow: "rgba(139,92,246,0.20)"  };
+  if (fee > 30) return { color: "#EC4899", glow: "rgba(236,72,153,0.20)"  };
+  if (fee > 15) return { color: "#22C55E", glow: "rgba(34,197,94,0.20)"   };
+  return        { color: "#3B82F6", glow: "rgba(59,130,246,0.20)"  };
 }
 
 const ROUTE_VALUE_LEGEND = [
   { color: "#3B82F6", label: "até R$ 15" },
-  { color: "#22C55E", label: "R$ 15–30" },
-  { color: "#F59E0B", label: "R$ 30–45" },
-  { color: "#8B5CF6", label: "R$ 45–60" },
-  { color: "#EF4444", label: "acima de R$ 60" },
+  { color: "#22C55E", label: "R$ 15–30"  },
+  { color: "#EC4899", label: "R$ 30–45"  },
+  { color: "#8B5CF6", label: "R$ 45–60"  },
+  { color: "#EAB308", label: "acima de R$ 60" },
 ] as const;
 
 // ─── RouteCard ────────────────────────────────────────────────────────────────
@@ -1065,8 +1065,8 @@ function RouteCard({
       data-testid={`card-route-${route.id}`}
       style={{
         backgroundColor: "#FFFFFF",
-        border: "1px solid #E2E8F0",
-        boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+        border: `2px solid ${vc.color}99`,
+        boxShadow: `0 0 10px 0 ${vc.glow}, 0 1px 4px rgba(0,0,0,0.06)`,
         color: "#0F172A",
       }}
     >
@@ -1103,18 +1103,15 @@ function RouteCard({
             {/* Number */}
             <div
               className="absolute inset-0 flex items-center justify-center font-black text-sm"
-              style={{
-                color: vc.color,
-                textShadow: `0 0 8px ${vc.glow}, 0 0 18px ${vc.glow}`,
-              }}
+              style={{ color: vc.color }}
             >
               {totalCount}
             </div>
           </div>
 
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-sm leading-snug text-[#F9FAFB]">{route.name}</h3>
-            <div className="flex items-center gap-1 mt-0.5 text-xs" style={{ color: "#9CA3AF" }}>
+            <h3 className="font-semibold text-sm leading-snug text-[#0F172A]">{route.name}</h3>
+            <div className="flex items-center gap-1 mt-0.5 text-xs" style={{ color: "#64748B" }}>
               <MapPin className="w-3 h-3 shrink-0" />
               <span className="font-medium">{route.mainNeighborhood}</span>
               {otherNeighborhoods.length > 0 && (
@@ -1182,10 +1179,9 @@ function RouteCard({
                 <div
                   className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-black shrink-0 border"
                   style={{
-                    backgroundColor: "transparent",
+                    backgroundColor: `${vc.color}18`,
                     borderColor: vc.color,
                     color: vc.color,
-                    boxShadow: `0 0 5px ${vc.glow}`,
                   }}
                 >
                   {order.stopOrder}
@@ -1196,13 +1192,13 @@ function RouteCard({
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-white truncate">{order.customerName ?? `Pedido #${order.orderId}`}</p>
-                  <p className="text-zinc-400 truncate">
+                  <p className="font-semibold text-[#0F172A] truncate">{order.customerName ?? `Pedido #${order.orderId}`}</p>
+                  <p className="text-[#64748B] truncate text-[11px]">
                     {order.deliveryAddress ?? "—"}
                     {order.deliveryNeighborhood ? ` · ${order.deliveryNeighborhood}` : ""}
                   </p>
                   {order.paymentTiming === "on_delivery" && (
-                    <div className="text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
+                    <div className="text-amber-600 font-semibold flex items-center gap-1 mt-0.5">
                       {PayIcon && <PayIcon className="w-3 h-3 shrink-0" />}
                       Cobrar R$ {order.totalAmount.toFixed(2)}
                       {changeAmt !== null && ` · Troco R$ ${changeAmt.toFixed(2)}`}
@@ -1276,26 +1272,26 @@ function RouteCard({
           style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}
         >
           <div className="flex items-center justify-between">
-            <span style={{ color: "#9CA3AF" }}>Valor da rota</span>
+            <span className="text-[#64748B]">Valor da rota</span>
             <span className="font-bold" style={{ color: vc.color }}>
               R$ {route.totalDeliveryFee.toFixed(2)}
             </span>
           </div>
           {route.totalToReceive > 0 && (
             <div className="flex items-center justify-between">
-              <span style={{ color: "#9CA3AF" }}>Receber na entrega</span>
-              <span className="font-semibold text-amber-400">R$ {route.totalToReceive.toFixed(2)}</span>
+              <span className="text-[#64748B]">Receber na entrega</span>
+              <span className="font-semibold text-amber-600">R$ {route.totalToReceive.toFixed(2)}</span>
             </div>
           )}
           {route.totalChangeNeeded > 0 && (
             <div className="flex items-center justify-between">
-              <span style={{ color: "#9CA3AF" }}>Troco necessário</span>
-              <span className="font-semibold text-orange-400">R$ {route.totalChangeNeeded.toFixed(2)}</span>
+              <span className="text-[#64748B]">Troco necessário</span>
+              <span className="font-semibold text-orange-500">R$ {route.totalChangeNeeded.toFixed(2)}</span>
             </div>
           )}
           <div className="flex items-center justify-between">
-            <span style={{ color: "#9CA3AF" }}>Pedidos</span>
-            <span className="font-semibold" style={{ color: "#F9FAFB" }}>{totalCount}</span>
+            <span className="text-[#64748B]">Pedidos</span>
+            <span className="font-semibold text-[#0F172A]">{totalCount}</span>
           </div>
         </div>
 
