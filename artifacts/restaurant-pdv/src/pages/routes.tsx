@@ -962,7 +962,7 @@ function RouteCard({
 
   return (
     <div
-      className="rounded-2xl border border-border/50 bg-card shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col"
+      className="rounded-2xl border border-border bg-card shadow-[0_4px_24px_-4px_rgba(0,0,0,0.12)] hover:shadow-[0_8px_32px_-4px_rgba(0,0,0,0.18)] transition-shadow overflow-hidden flex flex-col"
       data-testid={`card-route-${route.id}`}
     >
       <div className="p-4 flex flex-col gap-3 flex-1">
@@ -970,9 +970,9 @@ function RouteCard({
         {/* ── Header ── */}
         <div className="flex items-start gap-3">
           {/* Neutral badge with colored dot + stop count */}
-          <div className="w-10 h-10 rounded-full flex flex-col items-center justify-center bg-secondary text-foreground font-bold text-sm shrink-0 shadow-sm relative">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-secondary text-foreground font-bold text-sm shrink-0 shadow-sm relative">
             <span
-              className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full ring-1 ring-background"
+              className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full ring-2 ring-card"
               style={{ backgroundColor: route.color }}
             />
             {totalCount}
@@ -981,9 +981,12 @@ function RouteCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-semibold text-sm leading-snug">{route.name}</h3>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${STATUS_COLORS[route.status]}`}>
-                {STATUS_LABELS[route.status]}
-              </span>
+              {/* Only show badge for non-available statuses */}
+              {!isAvailable && (
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${STATUS_COLORS[route.status]}`}>
+                  {STATUS_LABELS[route.status]}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
               <MapPin className="w-3 h-3 shrink-0" />
@@ -1007,7 +1010,7 @@ function RouteCard({
 
           {/* Time pill */}
           {timeStatus && !isCompleted && (
-            <div className={`shrink-0 flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full
+            <div className={`shrink-0 flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full
               ${urgency === "ok" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : ""}
               ${urgency === "warning" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : ""}
               ${urgency === "danger" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" : ""}
@@ -1024,8 +1027,8 @@ function RouteCard({
           )}
         </div>
 
-        {/* ── Orders list ── */}
-        <div className="space-y-1.5">
+        {/* ── Orders list — dark rows ── */}
+        <div className="rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700">
           {sortedOrders.map((order) => {
             const ds = order.deliveryStatus as DeliveryOrderStatus | null;
             const isReady = ds === "ready";
@@ -1033,14 +1036,14 @@ function RouteCard({
             const isOut = ds === "out_for_delivery";
             const isDelivered = ds === "delivered";
             const dotColor = isReady
-              ? "bg-emerald-500"
+              ? "bg-emerald-400"
               : isPrep
               ? "bg-amber-400"
               : isOut
-              ? "bg-blue-500"
+              ? "bg-blue-400"
               : isDelivered
-              ? "bg-gray-400"
-              : "bg-gray-300";
+              ? "bg-zinc-500"
+              : "bg-zinc-600";
             const dsLabel = ds ? DELIVERY_STATUS_LABELS[ds] : null;
             const PayIcon =
               order.paymentTiming === "on_delivery" && order.deliveryPaymentMethod
@@ -1054,11 +1057,11 @@ function RouteCard({
             return (
               <div
                 key={order.id}
-                className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl bg-muted/40 hover:bg-muted/60 transition-colors text-xs group"
+                className="flex items-center gap-2.5 px-3 py-2.5 bg-zinc-900 hover:bg-zinc-800 transition-colors text-xs group"
                 data-testid={`route-order-${order.orderId}`}
               >
-                {/* Stop number badge */}
-                <div className="w-5 h-5 rounded-full flex items-center justify-center bg-secondary text-foreground text-xs font-bold shrink-0">
+                {/* Stop number */}
+                <div className="w-5 h-5 rounded-full flex items-center justify-center bg-zinc-700 text-zinc-200 text-xs font-bold shrink-0">
                   {order.stopOrder}
                 </div>
 
@@ -1067,13 +1070,13 @@ function RouteCard({
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{order.customerName ?? `Pedido #${order.orderId}`}</p>
-                  <p className="text-muted-foreground truncate">
+                  <p className="font-semibold text-white truncate">{order.customerName ?? `Pedido #${order.orderId}`}</p>
+                  <p className="text-zinc-400 truncate">
                     {order.deliveryAddress ?? "—"}
                     {order.deliveryNeighborhood ? ` · ${order.deliveryNeighborhood}` : ""}
                   </p>
                   {order.paymentTiming === "on_delivery" && (
-                    <div className="text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-1 mt-0.5">
+                    <div className="text-amber-400 font-semibold flex items-center gap-1 mt-0.5">
                       {PayIcon && <PayIcon className="w-3 h-3 shrink-0" />}
                       Cobrar R$ {order.totalAmount.toFixed(2)}
                       {changeAmt !== null && ` · Troco R$ ${changeAmt.toFixed(2)}`}
@@ -1082,9 +1085,9 @@ function RouteCard({
                 </div>
 
                 {/* Right: status label + move button */}
-                <div className="flex flex-col items-end gap-1 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0">
                   {dsLabel && (
-                    <span className={`px-1.5 py-px rounded-full font-medium ${DELIVERY_STATUS_COLORS[ds!]}`}>
+                    <span className={`px-1.5 py-px rounded-full font-medium text-[10px] ${DELIVERY_STATUS_COLORS[ds!]}`}>
                       {dsLabel}
                     </span>
                   )}
@@ -1092,7 +1095,7 @@ function RouteCard({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-5 w-5 p-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="h-6 w-6 p-0 text-zinc-500 hover:text-white hover:bg-zinc-700 opacity-0 group-hover:opacity-100 transition-all rounded-lg"
                       onClick={() => onMoveOrder(order.orderId, order.customerName)}
                       title="Mover pedido"
                     >
@@ -1105,14 +1108,13 @@ function RouteCard({
           })}
         </div>
 
-        {/* ── Readiness indicator (available only) ── */}
+        {/* ── Readiness indicator ── */}
         {isAvailable && (
-          <div
-            className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl
-              ${allOrdersReady
-                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
-                : "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
-              }`}
+          <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl
+            ${allOrdersReady
+              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
+              : "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+            }`}
           >
             {allOrdersReady ? (
               <>
@@ -1122,9 +1124,7 @@ function RouteCard({
             ) : (
               <>
                 <Clock className="w-3.5 h-3.5 shrink-0" />
-                <span>
-                  <strong>{readyCount}/{totalCount}</strong> pedidos prontos na cozinha
-                </span>
+                <span><strong>{readyCount}/{totalCount}</strong> pedidos prontos na cozinha</span>
               </>
             )}
           </div>
@@ -1146,8 +1146,7 @@ function RouteCard({
 
         {/* ── Footer ── */}
         <div className="flex items-center gap-2 pt-1 mt-auto border-t border-border/40">
-          {/* Fee summary */}
-          <div className="flex-1 text-xs space-y-0.5">
+          <div className="flex-1 text-xs">
             <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
               Taxa R$ {route.totalDeliveryFee.toFixed(2)}
             </span>
@@ -1158,7 +1157,6 @@ function RouteCard({
             )}
           </div>
 
-          {/* QR */}
           <Button
             variant="outline"
             size="sm"
@@ -1169,7 +1167,6 @@ function RouteCard({
             <QrCode className="w-3.5 h-3.5" />
           </Button>
 
-          {/* Main CTA */}
           {isAvailable && (
             <Button
               size="sm"
