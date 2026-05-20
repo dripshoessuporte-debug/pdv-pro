@@ -1019,7 +1019,7 @@ function RouteCard({
   const totalCount = route.orders.length;
   const allOrdersReady = totalCount > 0 && readyCount === totalCount;
 
-  const progressRatio = isCompleted ? 1 : isInProgress ? 0.75 : (totalCount > 0 ? deliveredCount / totalCount : 0);
+  const progressRatio = isCompleted ? 1 : isInProgress ? 1 : (totalCount > 0 ? deliveredCount / totalCount : 0);
   const ringR = 20;
   const ringCirc = 2 * Math.PI * ringR;
   const ringOffset = ringCirc * (1 - progressRatio);
@@ -1240,13 +1240,13 @@ function RouteCard({
 
         {/* ── Footer ── */}
         <div className="flex items-center gap-2 pt-1 mt-auto border-t border-border/40">
-          <div className="flex-1 text-xs flex items-center gap-2 flex-wrap">
-            <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-              Taxa total R$ {route.totalDeliveryFee.toFixed(2)}
+          <div className="flex-1 text-xs flex items-center gap-2">
+            <span className="text-emerald-600 font-semibold">
+              Taxa R$ {route.totalDeliveryFee.toFixed(2)}
             </span>
             {route.totalToReceive > 0 && (
-              <span className="bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded-full">
-                Cobrar R$ {route.totalToReceive.toFixed(2)}
+              <span className="text-amber-600">
+                · Cobrar R$ {route.totalToReceive.toFixed(2)}
               </span>
             )}
           </div>
