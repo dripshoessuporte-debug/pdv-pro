@@ -1,0 +1,80 @@
+O protótipo visual ficou bom, mas agora quero transformar o sistema em um PDV funcional real para restaurante, seguindo uma lógica modular semelhante a sistemas profissionais como PDV + comanda + cozinha + delivery + estoque + financeiro.
+
+Não refaça o projeto do zero.
+Preserve o design atual.
+Preserve as telas existentes.
+Não remova funcionalidades visuais já criadas.
+Implemente em cima da estrutura atual.
+
+Antes de alterar qualquer coisa, analise o projeto e me diga em português brasileiro:
+
+1. Quais módulos já existem no projeto atual.
+2. Quais telas estão apenas visuais/mockadas.
+3. Onde os dados estão sendo armazenados hoje.
+4. Se existe banco de dados real ou apenas dados temporários.
+5. Quais arquivos controlam:
+   - Dashboard
+   - Pedidos
+   - Mesas
+   - Cozinha
+   - Cardápio
+   - Clientes
+   - Pagamento
+6. O que precisa ser criado para o sistema funcionar como um PDV real.
+7. Qual seria a melhor arquitetura modular para evoluir o sistema em fases.
+
+Use esta estrutura como referência de módulos futuros:
+
+FASE 1 — PDV funcional:
+- criação de pedidos
+- pedido balcão, mesa e viagem/delivery
+- itens do pedido
+- envio para cozinha
+- alteração de status
+- pagamento
+- dashboard com dados reais
+
+FASE 2 — Caixa:
+- abertura de caixa
+- fechamento de caixa
+- sangria
+- suprimento
+- histórico de pagamentos
+- faturamento diário
+
+FASE 3 — Cardápio:
+- produtos
+- categorias
+- preços
+- disponibilidade
+- adicionais/opcionais
+
+FASE 4 — Clientes:
+- cadastro
+- telefone
+- endereço
+- histórico de pedidos
+
+FASE 5 — Delivery:
+- endereço de entrega
+- taxa
+- motoboy
+- status da entrega
+- tempo de entrega
+
+FASE 6 — Estoque e ficha técnica:
+- ingredientes
+- entrada e saída de estoque
+- ficha técnica por produto
+- baixa automática ao vender
+- custo do prato
+- CMV
+
+FASE 7 — Financeiro:
+- contas a pagar
+- contas a receber
+- relatório diário
+- lucro estimado
+- DRE simplificada
+
+Por enquanto, apenas analise e proponha o plano técnico. Não altere arquivos ainda.
