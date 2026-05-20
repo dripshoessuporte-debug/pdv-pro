@@ -1078,7 +1078,14 @@ function RouteCard({
               />
             </svg>
             {/* Number */}
-            <div className="absolute inset-0 flex items-center justify-center font-bold text-sm text-foreground">
+            <div
+              className="absolute inset-0 flex items-center justify-center font-black text-sm"
+              style={{
+                color: rarity.color,
+                textShadow: `0 0 8px ${rarity.glow}, 0 0 20px ${rarity.glow}`,
+                WebkitTextStroke: `0.5px ${rarity.color}`,
+              }}
+            >
               {totalCount}
             </div>
             {/* Color dot */}
@@ -1148,11 +1155,19 @@ function RouteCard({
             return (
               <div
                 key={order.id}
-                className="flex items-center gap-2.5 px-3 py-2.5 bg-zinc-300 hover:bg-zinc-400 transition-colors text-xs group"
+                className="flex items-center gap-2.5 px-3 py-2.5 bg-zinc-800 hover:bg-zinc-700 transition-colors text-xs group rounded-lg mx-1 my-0.5"
                 data-testid={`route-order-${order.orderId}`}
               >
                 {/* Stop number */}
-                <div className="w-5 h-5 rounded-full flex items-center justify-center bg-zinc-500 text-white text-xs font-bold shrink-0">
+                <div
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-black shrink-0 border"
+                  style={{
+                    backgroundColor: "transparent",
+                    borderColor: rarity.color,
+                    color: rarity.color,
+                    boxShadow: `0 0 6px ${rarity.glow}`,
+                  }}
+                >
                   {order.stopOrder}
                 </div>
 
@@ -1161,8 +1176,8 @@ function RouteCard({
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-foreground truncate">{order.customerName ?? `Pedido #${order.orderId}`}</p>
-                  <p className="text-muted-foreground truncate">
+                  <p className="font-semibold text-white truncate">{order.customerName ?? `Pedido #${order.orderId}`}</p>
+                  <p className="text-zinc-400 truncate">
                     {order.deliveryAddress ?? "—"}
                     {order.deliveryNeighborhood ? ` · ${order.deliveryNeighborhood}` : ""}
                   </p>
