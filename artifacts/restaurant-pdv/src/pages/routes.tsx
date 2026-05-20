@@ -430,6 +430,18 @@ export default function Routes() {
             <p className="text-sm text-muted-foreground mt-0.5">
               Delivery em tempo real — agrupe pedidos em rotas quando estiver pronto
             </p>
+            {/* ── Legenda de cores por valor ── */}
+            <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-2">
+              {ROUTE_VALUE_LEGEND.map((entry) => (
+                <div key={entry.color} className="flex items-center gap-1.5">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: entry.color, boxShadow: `0 0 4px ${entry.color}` }}
+                  />
+                  <span className="text-xs" style={{ color: "#8A9099" }}>{entry.label}</span>
+                </div>
+              ))}
+            </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-1 bg-muted rounded-lg px-2.5 py-1.5 text-sm">
@@ -988,12 +1000,20 @@ function PendingOrderRow({
 // ─── Route value color based on total delivery fee ────────────────────────────
 
 function getRouteValueColor(fee: number): { color: string; glow: string } {
-  if (fee > 60) return { color: "#F43F5E", glow: "rgba(244,63,94,0.25)"  };
-  if (fee > 45) return { color: "#A855F7", glow: "rgba(168,85,247,0.25)" };
-  if (fee > 30) return { color: "#FACC15", glow: "rgba(250,204,21,0.25)" };
-  if (fee > 15) return { color: "#00C853", glow: "rgba(0,200,83,0.25)"   };
-  return        { color: "#38BDF8", glow: "rgba(56,189,248,0.25)"  };
+  if (fee > 60) return { color: "#F43F5E", glow: "rgba(244,63,94,0.45)"  };
+  if (fee > 45) return { color: "#A855F7", glow: "rgba(168,85,247,0.45)" };
+  if (fee > 30) return { color: "#FACC15", glow: "rgba(250,204,21,0.45)" };
+  if (fee > 15) return { color: "#00C853", glow: "rgba(0,200,83,0.45)"   };
+  return        { color: "#38BDF8", glow: "rgba(56,189,248,0.45)"  };
 }
+
+const ROUTE_VALUE_LEGEND = [
+  { color: "#38BDF8", label: "até R$ 15" },
+  { color: "#00C853", label: "R$ 15–30" },
+  { color: "#FACC15", label: "R$ 30–45" },
+  { color: "#A855F7", label: "R$ 45–60" },
+  { color: "#F43F5E", label: "acima de R$ 60" },
+] as const;
 
 // ─── RouteCard ────────────────────────────────────────────────────────────────
 
@@ -1044,10 +1064,10 @@ function RouteCard({
       className="rounded-2xl overflow-hidden flex flex-col transition-shadow"
       data-testid={`card-route-${route.id}`}
       style={{
-        backgroundColor: "#1A202C",
-        border: `2px solid ${vc.color}66`,
-        boxShadow: `0 0 24px 2px ${vc.glow}, 0 4px 16px -4px rgba(0,0,0,0.6)`,
-        color: "#F8FAFC",
+        backgroundColor: "#17191D",
+        border: `2px solid ${vc.color}`,
+        boxShadow: `0 0 8px 0 ${vc.glow}`,
+        color: "#F5F5F5",
       }}
     >
       <div className="p-4 flex flex-col gap-3 flex-1">
@@ -1153,9 +1173,9 @@ function RouteCard({
               <div
                 key={order.id}
                 className="flex items-center gap-2.5 px-3 py-2.5 transition-colors text-xs group rounded-lg mx-1 my-0.5"
-                style={{ backgroundColor: "#252F3F" }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#2d3a4d")}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#252F3F")}
+                style={{ backgroundColor: "#25282F" }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#2c2f38")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#25282F")}
                 data-testid={`route-order-${order.orderId}`}
               >
                 {/* Stop number */}
@@ -1253,7 +1273,7 @@ function RouteCard({
         {/* ── Value info panel ── */}
         <div
           className="rounded-xl px-3 py-2.5 text-xs space-y-1"
-          style={{ backgroundColor: "#252F3F", border: "1px solid #334155" }}
+          style={{ backgroundColor: "#25282F", border: "1px solid #343840" }}
         >
           <div className="flex items-center justify-between">
             <span style={{ color: "#9CA3AF" }}>Valor da rota</span>
@@ -1280,7 +1300,7 @@ function RouteCard({
         </div>
 
         {/* ── Footer ── */}
-        <div className="flex items-center gap-2 pt-1 mt-auto" style={{ borderTop: "1px solid #334155" }}>
+        <div className="flex items-center gap-2 pt-1 mt-auto" style={{ borderTop: "1px solid #343840" }}>
           <div className="flex-1" />
 
           <Button

@@ -1,0 +1,277 @@
+Faça uma lapidação visual final no tema do sistema e principalmente na página Rotas.
+
+Não refaça o projeto do zero.
+Não altere funcionalidades.
+Preserve tudo que já funciona:
+- pedidos
+- cozinha
+- caixa
+- pagamento
+- cardápio
+- delivery
+- rotas
+- configurações
+- QR Code
+- pagamento na entrega
+- alertas de tempo
+- organização de pedidos por data
+- agrupamento de rotas
+
+OBJETIVO:
+O sistema ainda está com aparência muito azulada/marinho.
+Quero trocar para uma estética mais cinza chumbo, escura, neutra, premium e operacional.
+
+Também quero ajustar os cards das rotas:
+- reduzir o glow espalhado
+- deixar a borda colorida mais brilhosa
+- manter apenas um glow mínimo em volta
+- adicionar uma legenda das cores das rotas abaixo do título "Painel de Rotas"
+
+--------------------------------------------------
+PARTE 1 — TROCAR O TOM AZULADO POR CINZA CHUMBO
+--------------------------------------------------
+
+Substituir os tons muito azulados/marinho por cinza chumbo escuro.
+
+Usar esta paleta como referência:
+
+Fundo principal:
+#090A0C
+
+Sidebar:
+#0E1013
+
+Cards:
+#17191D
+
+Cards destacados:
+#1F2228
+
+Cards internos / blocos menores:
+#25282F
+
+Bordas neutras:
+#343840
+
+Texto principal:
+#F5F5F5
+
+Texto secundário:
+#C7CBD1
+
+Texto apagado:
+#8A9099
+
+Cor principal verde:
+#00C853
+
+Hover verde:
+#00A844
+
+Sucesso:
+#22C55E
+
+Aviso:
+#FACC15
+
+Erro / atraso:
+#EF4444
+
+Informação:
+#38BDF8
+
+Regras:
+1. Remover aparência azul marinho do sistema.
+2. O fundo deve parecer cinza chumbo quase preto.
+3. Cards devem ser cinza chumbo, um pouco mais claros que o fundo.
+4. Blocos internos devem ser cinza médio escuro.
+5. Evitar fundo com tom azul forte.
+6. Manter contraste bom para leitura.
+7. Verde continua como cor principal dos botões e ações principais.
+
+--------------------------------------------------
+PARTE 2 — AJUSTAR BOTÕES
+--------------------------------------------------
+
+Manter os botões principais em verde padrão:
+
+- fundo #00C853
+- hover #00A844
+- sem borda branca
+- sem outline estranho
+- texto com bom contraste
+
+Botões secundários:
+- fundo #17191D ou #1F2228
+- borda #343840
+- texto #C7CBD1
+
+Botões de rota, como "Assumir Rota":
+- todos devem ser verdes padronizados
+- não devem mudar de cor conforme o valor da rota
+- a cor do valor da rota deve aparecer somente na borda do card
+
+--------------------------------------------------
+PARTE 3 — CARDS DE ROTAS COM BORDA BRILHOSA
+--------------------------------------------------
+
+Na página Rotas, ajustar os cards das rotas.
+
+Problema atual:
+O glow está muito espalhado e chamativo.
+
+Quero:
+1. Remover glow muito grande/espalhado.
+2. Usar uma borda colorida mais brilhosa.
+3. Usar glow mínimo, bem próximo da borda.
+4. O card deve continuar dark/chumbo.
+5. Nada de fitinha lateral.
+6. Nada de label escrito "baixa", "média", "alta" ou "premium".
+7. Mostrar apenas o valor da rota.
+
+Visual desejado:
+- card fundo #17191D
+- borda colorida de 2px ou 2.5px
+- borda com cor viva da faixa de valor
+- box-shadow pequeno, quase colado na borda
+- sem glow espalhado para longe
+
+Exemplo de CSS desejado:
+- border: 2px solid [cor da faixa]
+- box-shadow: 0 0 8px rgba(cor, 0.35)
+- NÃO usar shadow enorme tipo 0 0 30px
+
+A ideia é:
+borda brilhosa e elegante, não neon exagerado.
+
+--------------------------------------------------
+PARTE 4 — CORES DAS ROTAS POR VALOR
+--------------------------------------------------
+
+Manter as faixas por valor:
+
+Até R$ 15,00:
+- cor da borda: #38BDF8
+
+R$ 15,01 até R$ 30,00:
+- cor da borda: #00C853
+
+R$ 30,01 até R$ 45,00:
+- cor da borda: #FACC15
+
+R$ 45,01 até R$ 60,00:
+- cor da borda: #A855F7
+
+Acima de R$ 60,00:
+- cor da borda: #F43F5E
+
+Importante:
+- não mostrar rótulo textual da faixa dentro dos cards
+- não escrever "baixa", "média", "boa", "alta", "premium"
+- o card mostra apenas:
+  - valor da rota
+  - total a receber
+  - troco necessário
+  - taxa total
+  - quantidade de pedidos
+
+--------------------------------------------------
+PARTE 5 — LEGENDA DAS CORES DAS ROTAS
+--------------------------------------------------
+
+Na página Rotas, abaixo do título "Painel de Rotas" e abaixo do subtítulo, adicionar uma legenda discreta das cores.
+
+A legenda deve explicar as faixas de valor:
+
+- Azul: até R$ 15
+- Verde: R$ 15 a R$ 30
+- Dourado: R$ 30 a R$ 45
+- Roxo: R$ 45 a R$ 60
+- Rosa: acima de R$ 60
+
+Visual da legenda:
+- pequena
+- horizontal em desktop
+- responsiva em mobile
+- com bolinha colorida ou mini borda
+- texto discreto
+- sem poluir a tela
+
+Exemplo visual:
+
+[bolinha azul] até R$ 15
+[bolinha verde] R$ 15–30
+[bolinha dourada] R$ 30–45
+[bolinha roxa] R$ 45–60
+[bolinha rosa] acima de R$ 60
+
+Essa legenda deve servir só para o usuário entender o significado das bordas coloridas.
+
+--------------------------------------------------
+PARTE 6 — HIERARQUIA VISUAL DAS ROTAS
+--------------------------------------------------
+
+Nos cards de rota, melhorar a leitura:
+
+O valor da rota deve ficar bem visível, mas sem exagero.
+
+Mostrar de forma organizada:
+- Valor da rota: R$ XX,XX
+- Receber na entrega: R$ XX,XX
+- Troco necessário: R$ XX,XX
+- Taxas: R$ XX,XX
+
+Os pedidos dentro da rota devem continuar em blocos internos chumbo:
+- fundo #25282F
+- borda neutra #343840
+- texto claro
+- badges pequenos
+
+--------------------------------------------------
+PARTE 7 — APLICAR CINZA CHUMBO NO SISTEMA TODO
+--------------------------------------------------
+
+Ajustar as principais páginas para harmonizar:
+
+- Dashboard
+- Pedidos
+- Caixa
+- Cardápio
+- Mesas
+- Cozinha
+- Rotas
+- Configurações
+
+Trocar fundos azulados por cinza chumbo.
+Preservar verde como cor principal.
+Preservar amarelo/vermelho/azul somente para status e alertas.
+
+--------------------------------------------------
+PARTE 8 — TESTES OBRIGATÓRIOS
+--------------------------------------------------
+
+Teste:
+
+1. Verificar se o sistema não parece mais azul marinho.
+2. Verificar se o fundo geral ficou cinza chumbo quase preto.
+3. Verificar se os cards ficaram chumbo mais claro que o fundo.
+4. Verificar se os botões principais continuam verdes e sem borda branca.
+5. Na página Rotas, verificar:
+   - sem fitinha lateral
+   - sem card inteiro colorido
+   - sem label baixa/média/alta/premium
+   - borda colorida mais brilhosa
+   - glow mínimo, sem espalhar demais
+6. Verificar se a legenda das cores aparece abaixo do título Painel de Rotas.
+7. Verificar se a legenda está discreta e responsiva.
+8. Verificar se as cores da borda mudam conforme o valor da rota.
+9. Rodar typecheck sem erros.
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Qual paleta cinza chumbo foi aplicada.
+3. Como ficou a borda/glow das rotas.
+4. Como ficou a legenda de cores.
+5. Como testar passo a passo.
+6. Limitações restantes.

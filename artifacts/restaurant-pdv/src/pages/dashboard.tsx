@@ -117,7 +117,7 @@ export default function Dashboard() {
         {/* Mesas */}
         {summary && (
           <div className="grid grid-cols-2 gap-4">
-            <Card className="border-green-700/40" style={{ backgroundColor: "#1A202C" }}>
+            <Card className="border-green-700/40" style={{ backgroundColor: "#17191D" }}>
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="w-3 h-3 rounded-full bg-green-500 shrink-0" />
                 <div>
@@ -126,7 +126,7 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="border-amber-700/40" style={{ backgroundColor: "#1A202C" }}>
+            <Card className="border-amber-700/40" style={{ backgroundColor: "#17191D" }}>
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="w-3 h-3 rounded-full bg-amber-500 shrink-0" />
                 <div>
