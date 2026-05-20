@@ -8,6 +8,7 @@ import {
   useRemoveOrderItem,
   useSendOrderToKitchen,
   useCancelOrder,
+  useUpdateDeliveryStatus,
   useListProducts,
   getListProductsQueryKey,
   useListCategories,
@@ -27,7 +28,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Plus, Trash2, SendHorizonal, X, CreditCard, Search } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, SendHorizonal, X, CreditCard, Search, Truck, Package, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -46,6 +47,22 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
 };
 
+const DELIVERY_STATUS_LABELS: Record<string, string> = {
+  pending: "Aguardando preparo",
+  preparing: "Em preparo",
+  ready: "Pronto para entrega",
+  out_for_delivery: "Saiu para entrega",
+  delivered: "Entregue",
+};
+
+const DELIVERY_STATUS_COLORS: Record<string, string> = {
+  pending: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400",
+  preparing: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  ready: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  out_for_delivery: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  delivered: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+};
+
 const PAYABLE = ["open", "preparing", "ready"];
 
 export default function OrderDetail() {
@@ -57,6 +74,11 @@ export default function OrderDetail() {
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
+
+  const invalidateOrder = () => {
+    queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderId) });
+    queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+  };
 
   const { data: order, isLoading } = useGetOrder(orderId, {
     query: {
@@ -81,7 +103,7 @@ export default function OrderDetail() {
   const addItem = useAddOrderItem({
     mutation: {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderId) });
+        invalidateOrder();
         toast({ title: "Item adicionado" });
       },
     },
@@ -90,7 +112,7 @@ export default function OrderDetail() {
   const removeItem = useRemoveOrderItem({
     mutation: {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderId) });
+        invalidateOrder();
         toast({ title: "Item removido" });
       },
     },
@@ -99,8 +121,7 @@ export default function OrderDetail() {
   const sendToKitchen = useSendOrderToKitchen({
     mutation: {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderId) });
-        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        invalidateOrder();
         toast({ title: "Pedido enviado para a cozinha!" });
       },
     },
@@ -113,6 +134,18 @@ export default function OrderDetail() {
         queryClient.invalidateQueries({ queryKey: getListTablesQueryKey() });
         toast({ title: "Pedido cancelado" });
         setLocation("/orders");
+      },
+    },
+  });
+
+  const updateDeliveryStatus = useUpdateDeliveryStatus({
+    mutation: {
+      onSuccess: () => {
+        invalidateOrder();
+        toast({ title: "Status de entrega atualizado!" });
+      },
+      onError: () => {
+        toast({ title: "Erro ao atualizar status de entrega", variant: "destructive" });
       },
     },
   });
@@ -141,6 +174,15 @@ export default function OrderDetail() {
 
   const isEditable = order.status === "open";
   const isPayable = PAYABLE.includes(order.status);
+  const isDelivery = order.type === "delivery";
+  const deliveryFee = order.deliveryFee ?? 0;
+  const itemsSubtotal = order.totalAmount - deliveryFee;
+
+  const DELIVERY_NEXT_ACTIONS: { status: string; label: string; variant?: "default" | "outline" }[] = [
+    { status: "ready", label: "✅ Pronto para entrega" },
+    { status: "out_for_delivery", label: "🛵 Saiu para entrega" },
+    { status: "delivered", label: "📦 Entregue" },
+  ];
 
   return (
     <Layout>
@@ -159,10 +201,16 @@ export default function OrderDetail() {
               <span className={`px-3 py-1 rounded-full text-sm font-semibold ${STATUS_COLORS[order.status]}`}>
                 {STATUS_LABELS[order.status]}
               </span>
+              {isDelivery && (
+                <span className="px-3 py-1 rounded-full text-sm font-semibold bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300 flex items-center gap-1">
+                  <Truck className="w-3.5 h-3.5" /> Delivery
+                </span>
+              )}
             </div>
             <div className="text-sm text-muted-foreground space-y-0.5">
               {order.tableNumber && <p>🪑 Mesa {order.tableNumber}</p>}
               {order.customerName && <p>👤 {order.customerName}</p>}
+              {order.customerPhone && <p>📞 {order.customerPhone}</p>}
               {order.notes && <p>💬 {order.notes}</p>}
               <p>🕐 {new Date(order.createdAt).toLocaleString("pt-BR")}</p>
             </div>
@@ -258,7 +306,7 @@ export default function OrderDetail() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Itens */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 space-y-4">
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle>Itens do Pedido</CardTitle>
@@ -312,6 +360,97 @@ export default function OrderDetail() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Seção de Dados de Entrega */}
+            {isDelivery && (
+              <Card className="border-orange-200 dark:border-orange-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-orange-700 dark:text-orange-400">
+                    <Truck className="w-5 h-5" /> Dados de Entrega
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Status de entrega */}
+                  {order.deliveryStatus && (
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="text-sm font-medium text-muted-foreground">Status da entrega:</span>
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${DELIVERY_STATUS_COLORS[order.deliveryStatus] ?? ""}`}>
+                        {DELIVERY_STATUS_LABELS[order.deliveryStatus] ?? order.deliveryStatus}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Botões de avanço de status */}
+                  {order.status !== "cancelled" && order.status !== "closed" && (
+                    <div className="flex gap-2 flex-wrap">
+                      {DELIVERY_NEXT_ACTIONS.map((action) => {
+                        const isCurrent = order.deliveryStatus === action.status;
+                        const isPast = ["pending", "preparing", "ready", "out_for_delivery", "delivered"]
+                          .indexOf(order.deliveryStatus ?? "") >
+                          ["pending", "preparing", "ready", "out_for_delivery", "delivered"]
+                          .indexOf(action.status);
+                        return (
+                          <Button
+                            key={action.status}
+                            size="sm"
+                            variant={isCurrent ? "default" : "outline"}
+                            disabled={isCurrent || isPast || updateDeliveryStatus.isPending}
+                            onClick={() =>
+                              updateDeliveryStatus.mutate({
+                                id: orderId,
+                                data: { deliveryStatus: action.status as "ready" | "out_for_delivery" | "delivered" | "pending" | "preparing" },
+                              })
+                            }
+                            data-testid={`button-delivery-${action.status}`}
+                          >
+                            {action.label}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Dados do cliente e endereço */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm pt-2 border-t">
+                    {order.customerName && (
+                      <div>
+                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Cliente</p>
+                        <p className="font-medium">👤 {order.customerName}</p>
+                      </div>
+                    )}
+                    {order.customerPhone && (
+                      <div>
+                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Telefone</p>
+                        <p className="font-medium">📞 {order.customerPhone}</p>
+                      </div>
+                    )}
+                    {order.deliveryAddress && (
+                      <div className="sm:col-span-2">
+                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Endereço</p>
+                        <div className="flex items-start gap-1.5">
+                          <MapPin className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground" />
+                          <div>
+                            <p className="font-medium">{order.deliveryAddress}</p>
+                            {order.deliveryNeighborhood && (
+                              <p className="text-muted-foreground">{order.deliveryNeighborhood}</p>
+                            )}
+                            {order.deliveryReference && (
+                              <p className="text-muted-foreground italic">{order.deliveryReference}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {order.deliveryNotes && (
+                      <div className="sm:col-span-2">
+                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Obs. de entrega</p>
+                        <p className="italic">💬 {order.deliveryNotes}</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Resumo */}
@@ -330,6 +469,24 @@ export default function OrderDetail() {
                 {order.items.length === 0 && (
                   <p className="text-sm text-muted-foreground">Sem itens</p>
                 )}
+
+                {isDelivery && deliveryFee > 0 && (
+                  <>
+                    <div className="flex justify-between text-sm text-muted-foreground border-t pt-2 mt-1">
+                      <span>Subtotal</span>
+                      <span>R$ {itemsSubtotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="flex items-center gap-1 text-orange-600 dark:text-orange-400">
+                        <Package className="w-3.5 h-3.5" /> Taxa de entrega
+                      </span>
+                      <span className="text-orange-600 dark:text-orange-400 font-medium">
+                        + R$ {deliveryFee.toFixed(2)}
+                      </span>
+                    </div>
+                  </>
+                )}
+
                 <div className="border-t pt-3 mt-2">
                   <div className="flex justify-between font-bold text-xl">
                     <span>Total</span>

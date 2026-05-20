@@ -116,8 +116,19 @@ router.post("/kitchen/tickets/:id/ready", async (req, res): Promise<void> => {
     return;
   }
 
-  // Update order status to ready
-  await db.update(ordersTable).set({ status: "ready" }).where(eq(ordersTable.id, ticket.orderId));
+  // Fetch the order to check its type
+  const [order] = await db.select({ type: ordersTable.type })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, ticket.orderId));
+
+  const orderUpdate: Record<string, string> = { status: "ready" };
+
+  // For delivery orders, advance deliveryStatus to ready (pronto para entrega)
+  if (order?.type === "delivery") {
+    orderUpdate.deliveryStatus = "ready";
+  }
+
+  await db.update(ordersTable).set(orderUpdate).where(eq(ordersTable.id, ticket.orderId));
 
   const full = await getTicketWithItems(ticket.id);
   res.json(MarkTicketReadyResponse.parse(full));

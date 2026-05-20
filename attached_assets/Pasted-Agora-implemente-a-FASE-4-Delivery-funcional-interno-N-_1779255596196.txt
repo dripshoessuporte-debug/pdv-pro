@@ -1,0 +1,147 @@
+Agora implemente a FASE 4 — Delivery funcional interno.
+
+Não refaça o projeto do zero.
+Preserve o design atual.
+Preserve todas as funcionalidades já implementadas:
+- pedidos
+- filtros da tela Pedidos
+- cozinha
+- pagamento
+- dashboard
+- caixa
+- histórico de caixa
+- cardápio funcional
+- proteção contra pagamento duplicado
+- transação atômica no pagamento
+
+Não implemente integração com iFood, Rappi, WhatsApp ou API externa ainda.
+
+Importante:
+O sistema já possui os tipos de pedido:
+- table = Mesa
+- counter = Balcão
+- takeaway = Viagem/retirada
+- delivery = Entrega
+
+Mantenha essa diferença:
+- takeaway é retirada no balcão, sem endereço obrigatório.
+- delivery é entrega, com endereço obrigatório.
+
+Objetivo:
+Criar um fluxo real de delivery interno para restaurante.
+
+Implemente:
+
+1. Novo Pedido
+Quando o tipo for delivery, exibir campos obrigatórios:
+- nome do cliente
+- telefone
+- endereço completo
+- bairro
+- complemento/referência
+- taxa de entrega
+- observação da entrega
+
+Quando o tipo for takeaway, não exigir endereço.
+Pode permitir nome/telefone opcional, mas não obrigatório.
+
+2. Taxa de entrega
+- A taxa de entrega deve ser somada ao total do pedido.
+- Manter subtotal dos itens separado da taxa.
+- Total final = subtotal dos itens + taxa de entrega.
+- Mostrar a taxa no resumo do pedido antes de confirmar.
+
+3. Persistência
+Salvar no banco os dados de entrega:
+- customerName
+- customerPhone
+- deliveryAddress
+- deliveryNeighborhood
+- deliveryReference
+- deliveryFee
+- deliveryNotes
+- deliveryStatus
+
+Se a estrutura atual tiver nomes melhores, use a convenção já existente no projeto.
+
+4. Status de entrega
+Adicionar status interno de delivery:
+- pending = Aguardando preparo
+- preparing = Em preparo
+- ready = Pronto para entrega
+- out_for_delivery = Saiu para entrega
+- delivered = Entregue
+
+Esse status de entrega não deve quebrar o status principal do pedido:
+- open
+- preparing
+- ready
+- closed
+- cancelled
+
+5. Tela Pedidos
+Para pedidos delivery, mostrar:
+- badge Delivery
+- nome do cliente
+- telefone
+- endereço resumido
+- taxa de entrega
+- status de entrega
+
+Os filtros já corrigidos não podem quebrar.
+
+6. Detalhe do Pedido
+Adicionar seção "Dados de Entrega" com:
+- cliente
+- telefone
+- endereço completo
+- bairro
+- referência/complemento
+- taxa de entrega
+- observação
+- status de entrega
+
+Adicionar botões para mudar status de entrega:
+- Pronto para entrega
+- Saiu para entrega
+- Entregue
+
+7. Cozinha
+Pedidos delivery continuam aparecendo normalmente na cozinha.
+Quando o pedido for marcado como pronto, se for delivery, atualizar deliveryStatus para ready/pronto para entrega.
+
+8. Pagamento
+O pagamento deve considerar o total completo com taxa de entrega.
+Não quebrar a transação atômica já implementada.
+O caixa deve registrar o valor total recebido corretamente.
+
+9. Dashboard
+Se couber sem poluir:
+- mostrar quantidade de pedidos delivery do dia
+- mostrar total de taxas de entrega do dia
+- mostrar pedidos aguardando entrega
+
+Se não couber, apenas garanta que os dados sejam possíveis de consultar depois.
+
+10. Testes obrigatórios
+Teste:
+- criar pedido balcão e confirmar que continua funcionando
+- criar pedido mesa e confirmar que continua funcionando
+- criar pedido takeaway sem endereço e confirmar que funciona
+- criar pedido delivery com endereço e taxa
+- confirmar que a taxa entra no total
+- enviar delivery para cozinha
+- marcar como pronto
+- mudar para saiu para entrega
+- mudar para entregue
+- pagar delivery e confirmar que o caixa recebe o valor total
+- atualizar a página e confirmar que os dados continuam salvos
+- confirmar que a tela Pedidos continua filtrando corretamente por Todos, Aberto, Preparando, Pronto, Pago e Cancelado
+
+Ao finalizar, responda em português brasileiro com:
+1. Arquivos alterados.
+2. Tabelas/modelos criados ou modificados.
+3. Endpoints criados ou alterados.
+4. Como testar passo a passo.
+5. Limitações que ainda existem.
+6. Se o módulo Delivery já está seguro para uso interno.

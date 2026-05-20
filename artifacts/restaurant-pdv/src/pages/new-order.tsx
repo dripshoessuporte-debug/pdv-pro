@@ -29,8 +29,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Minus, ShoppingCart, Search, MessageSquare } from "lucide-react";
+import { Plus, Minus, ShoppingCart, Search, MessageSquare, Truck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+type OrderType = "counter" | "table" | "takeaway" | "delivery";
 
 type CartItem = {
   productId: number;
@@ -46,7 +48,7 @@ export default function NewOrder() {
   const params = new URLSearchParams(search);
   const preselectedTableId = params.get("tableId");
 
-  const [orderType, setOrderType] = useState<"table" | "counter" | "takeaway">("counter");
+  const [orderType, setOrderType] = useState<OrderType>("counter");
   const [tableId, setTableId] = useState(preselectedTableId ?? "");
   const [customerId, setCustomerId] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
@@ -54,6 +56,15 @@ export default function NewOrder() {
   const [productSearch, setProductSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [creating, setCreating] = useState(false);
+
+  // Delivery / takeaway fields
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryNeighborhood, setDeliveryNeighborhood] = useState("");
+  const [deliveryReference, setDeliveryReference] = useState("");
+  const [deliveryFee, setDeliveryFee] = useState("");
+  const [deliveryNotes, setDeliveryNotes] = useState("");
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -106,7 +117,9 @@ export default function NewOrder() {
     setCart((prev) => prev.map((i) => i.productId === productId ? { ...i, notes } : i));
   };
 
-  const cartTotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
+  const cartSubtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
+  const parsedFee = orderType === "delivery" ? (parseFloat(deliveryFee) || 0) : 0;
+  const cartTotal = cartSubtotal + parsedFee;
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
 
   const handleCreate = async () => {
@@ -118,12 +131,45 @@ export default function NewOrder() {
       toast({ title: "Selecione uma mesa", variant: "destructive" });
       return;
     }
+    if (orderType === "delivery") {
+      if (!customerName.trim()) {
+        toast({ title: "Nome do cliente é obrigatório para delivery", variant: "destructive" });
+        return;
+      }
+      if (!customerPhone.trim()) {
+        toast({ title: "Telefone é obrigatório para delivery", variant: "destructive" });
+        return;
+      }
+      if (!deliveryAddress.trim()) {
+        toast({ title: "Endereço é obrigatório para delivery", variant: "destructive" });
+        return;
+      }
+      if (!deliveryNeighborhood.trim()) {
+        toast({ title: "Bairro é obrigatório para delivery", variant: "destructive" });
+        return;
+      }
+    }
+
     setCreating(true);
     try {
       const orderData: Record<string, unknown> = { type: orderType };
       if (tableId) orderData.tableId = parseInt(tableId);
       if (customerId) orderData.customerId = parseInt(customerId);
       if (orderNotes.trim()) orderData.notes = orderNotes.trim();
+
+      if (orderType === "delivery" || orderType === "takeaway") {
+        if (customerName.trim()) orderData.customerPhone = customerPhone.trim() || undefined;
+      }
+      if (customerPhone.trim()) orderData.customerPhone = customerPhone.trim();
+
+      if (orderType === "delivery") {
+        if (customerName.trim()) orderData.customerName = customerName.trim();
+        orderData.deliveryAddress = deliveryAddress.trim();
+        orderData.deliveryNeighborhood = deliveryNeighborhood.trim();
+        if (deliveryReference.trim()) orderData.deliveryReference = deliveryReference.trim();
+        if (deliveryNotes.trim()) orderData.deliveryNotes = deliveryNotes.trim();
+        orderData.deliveryFee = parsedFee;
+      }
 
       const order = await new Promise<{ id: number }>((resolve, reject) => {
         createOrder.mutate(
@@ -159,6 +205,13 @@ export default function NewOrder() {
     }
   };
 
+  const ORDER_TYPES: { value: OrderType; label: string }[] = [
+    { value: "counter", label: "🍽 Balcão" },
+    { value: "table", label: "🪑 Mesa" },
+    { value: "takeaway", label: "🛵 Viagem" },
+    { value: "delivery", label: "🚚 Delivery" },
+  ];
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -175,16 +228,16 @@ export default function NewOrder() {
                 {/* Tipo de pedido */}
                 <div>
                   <Label className="mb-2 block text-sm font-medium">Tipo de Pedido</Label>
-                  <div className="grid grid-cols-3 gap-3">
-                    {(["counter", "table", "takeaway"] as const).map((t) => (
+                  <div className="grid grid-cols-4 gap-2">
+                    {ORDER_TYPES.map((t) => (
                       <Button
-                        key={t}
-                        variant={orderType === t ? "default" : "outline"}
-                        onClick={() => { setOrderType(t); if (t !== "table") setTableId(""); }}
-                        className="w-full"
-                        data-testid={`button-type-${t}`}
+                        key={t.value}
+                        variant={orderType === t.value ? "default" : "outline"}
+                        onClick={() => { setOrderType(t.value); if (t.value !== "table") setTableId(""); }}
+                        className="w-full text-sm"
+                        data-testid={`button-type-${t.value}`}
                       >
-                        {t === "counter" ? "🍽 Balcão" : t === "table" ? "🪑 Mesa" : "🛵 Viagem"}
+                        {t.label}
                       </Button>
                     ))}
                   </div>
@@ -209,27 +262,143 @@ export default function NewOrder() {
                   </div>
                 )}
 
-                <div>
-                  <Label>Cliente (opcional)</Label>
-                  <Select value={customerId || "none"} onValueChange={(v) => setCustomerId(v === "none" ? "" : v)}>
-                    <SelectTrigger data-testid="select-customer">
-                      <SelectValue placeholder="Selecionar cliente" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Sem cliente identificado</SelectItem>
-                      {customers?.map((c) => (
-                        <SelectItem key={c.id} value={String(c.id)}>
-                          {c.name}{c.phone ? ` · ${c.phone}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {/* Campos de Delivery */}
+                {orderType === "delivery" && (
+                  <div className="space-y-3 border rounded-lg p-4 bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800">
+                    <div className="flex items-center gap-2 text-orange-700 dark:text-orange-400 font-medium text-sm mb-1">
+                      <Truck className="w-4 h-4" />
+                      Dados de Entrega
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>Nome do Cliente *</Label>
+                        <Input
+                          placeholder="Nome completo"
+                          value={customerName}
+                          onChange={(e) => setCustomerName(e.target.value)}
+                          data-testid="input-customer-name"
+                        />
+                      </div>
+                      <div>
+                        <Label>Telefone *</Label>
+                        <Input
+                          placeholder="(11) 99999-9999"
+                          value={customerPhone}
+                          onChange={(e) => setCustomerPhone(e.target.value)}
+                          data-testid="input-customer-phone"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>Endereço Completo *</Label>
+                      <Input
+                        placeholder="Rua, número"
+                        value={deliveryAddress}
+                        onChange={(e) => setDeliveryAddress(e.target.value)}
+                        data-testid="input-delivery-address"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>Bairro *</Label>
+                        <Input
+                          placeholder="Bairro"
+                          value={deliveryNeighborhood}
+                          onChange={(e) => setDeliveryNeighborhood(e.target.value)}
+                          data-testid="input-delivery-neighborhood"
+                        />
+                      </div>
+                      <div>
+                        <Label>Taxa de Entrega (R$)</Label>
+                        <Input
+                          type="number"
+                          step="0.50"
+                          min="0"
+                          placeholder="0,00"
+                          value={deliveryFee}
+                          onChange={(e) => setDeliveryFee(e.target.value)}
+                          data-testid="input-delivery-fee"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>Complemento / Referência</Label>
+                      <Input
+                        placeholder="Apto, bloco, ponto de referência..."
+                        value={deliveryReference}
+                        onChange={(e) => setDeliveryReference(e.target.value)}
+                        data-testid="input-delivery-reference"
+                      />
+                    </div>
+
+                    <div>
+                      <Label>Observação da Entrega</Label>
+                      <Textarea
+                        placeholder="Ex: ligar ao chegar, portão verde..."
+                        value={deliveryNotes}
+                        onChange={(e) => setDeliveryNotes(e.target.value)}
+                        rows={2}
+                        data-testid="input-delivery-notes"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Campos de Takeaway (nome/tel opcionais) */}
+                {orderType === "takeaway" && (
+                  <div className="space-y-3 border rounded-lg p-4 bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
+                    <div className="text-blue-700 dark:text-blue-400 font-medium text-sm mb-1">
+                      🛵 Dados para Retirada (opcional)
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>Nome (opcional)</Label>
+                        <Input
+                          placeholder="Nome do cliente"
+                          value={customerName}
+                          onChange={(e) => setCustomerName(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label>Telefone (opcional)</Label>
+                        <Input
+                          placeholder="(11) 99999-9999"
+                          value={customerPhone}
+                          onChange={(e) => setCustomerPhone(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Cliente registrado (balcão / mesa) */}
+                {(orderType === "counter" || orderType === "table") && (
+                  <div>
+                    <Label>Cliente (opcional)</Label>
+                    <Select value={customerId || "none"} onValueChange={(v) => setCustomerId(v === "none" ? "" : v)}>
+                      <SelectTrigger data-testid="select-customer">
+                        <SelectValue placeholder="Selecionar cliente" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sem cliente identificado</SelectItem>
+                        {customers?.map((c) => (
+                          <SelectItem key={c.id} value={String(c.id)}>
+                            {c.name}{c.phone ? ` · ${c.phone}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <div>
                   <Label>Observações do Pedido (opcional)</Label>
                   <Textarea
-                    placeholder="Ex: sem cebola, alergia a amendoim, cliente preferencial..."
+                    placeholder="Ex: sem cebola, alergia a amendoim..."
                     value={orderNotes}
                     onChange={(e) => setOrderNotes(e.target.value)}
                     rows={2}
@@ -324,7 +493,7 @@ export default function NewOrder() {
                     <p className="text-sm">Clique nos produtos para adicionar</p>
                   </div>
                 ) : (
-                  <div className="space-y-4 mb-4 max-h-96 overflow-y-auto">
+                  <div className="space-y-4 mb-4 max-h-72 overflow-y-auto">
                     {cart.map((item) => (
                       <div key={item.productId} data-testid={`cart-item-${item.productId}`} className="border-b pb-3 last:border-0">
                         <div className="flex items-center justify-between gap-2">
@@ -344,7 +513,6 @@ export default function NewOrder() {
                             </Button>
                           </div>
                         </div>
-                        {/* Observação por item */}
                         <div className="mt-1.5 flex items-center gap-1">
                           <MessageSquare className="w-3 h-3 text-muted-foreground shrink-0" />
                           <Input
@@ -361,11 +529,20 @@ export default function NewOrder() {
                 )}
 
                 {cart.length > 0 && (
-                  <div className="border-t pt-3 mb-4 space-y-1">
+                  <div className="border-t pt-3 mb-4 space-y-1.5">
                     <div className="flex justify-between text-sm text-muted-foreground">
-                      <span>{cartCount} {cartCount === 1 ? "item" : "itens"}</span>
+                      <span>Subtotal dos itens</span>
+                      <span>R$ {cartSubtotal.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between font-bold text-xl">
+                    {orderType === "delivery" && (
+                      <div className="flex justify-between text-sm text-muted-foreground">
+                        <span>Taxa de entrega</span>
+                        <span className={parsedFee > 0 ? "text-orange-600 dark:text-orange-400 font-medium" : ""}>
+                          {parsedFee > 0 ? `R$ ${parsedFee.toFixed(2)}` : "—"}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold text-xl border-t pt-1.5 mt-1">
                       <span>Total</span>
                       <span className="text-primary">R$ {cartTotal.toFixed(2)}</span>
                     </div>

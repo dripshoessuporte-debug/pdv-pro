@@ -5,6 +5,7 @@
  * Restaurant POS API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { OrderDeliveryStatus } from './orderDeliveryStatus';
 import type { OrderItem } from './orderItem';
 import type { OrderStatus } from './orderStatus';
 import type { OrderType } from './orderType';
@@ -24,6 +25,19 @@ export interface Order {
   /** @nullable */
   notes?: string | null;
   totalAmount: number;
+  /** @nullable */
+  customerPhone?: string | null;
+  /** @nullable */
+  deliveryAddress?: string | null;
+  /** @nullable */
+  deliveryNeighborhood?: string | null;
+  /** @nullable */
+  deliveryReference?: string | null;
+  deliveryFee: number;
+  /** @nullable */
+  deliveryNotes?: string | null;
+  /** @nullable */
+  deliveryStatus?: OrderDeliveryStatus;
   createdAt: string;
   updatedAt?: string;
   items: OrderItem[];

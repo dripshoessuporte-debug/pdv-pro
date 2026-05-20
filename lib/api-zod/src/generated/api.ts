@@ -349,6 +349,13 @@ export const ListOrdersResponseItem = zod.object({
   "type": zod.enum(['table', 'counter', 'takeaway', 'delivery']).optional(),
   "notes": zod.string().nullish(),
   "totalAmount": zod.number(),
+  "customerPhone": zod.string().nullish(),
+  "deliveryAddress": zod.string().nullish(),
+  "deliveryNeighborhood": zod.string().nullish(),
+  "deliveryReference": zod.string().nullish(),
+  "deliveryFee": zod.number(),
+  "deliveryNotes": zod.string().nullish(),
+  "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "items": zod.array(zod.object({
@@ -372,7 +379,13 @@ export const CreateOrderBody = zod.object({
   "tableId": zod.number().optional(),
   "customerId": zod.number().optional(),
   "type": zod.enum(['table', 'counter', 'takeaway', 'delivery']),
-  "notes": zod.string().optional()
+  "notes": zod.string().optional(),
+  "customerPhone": zod.string().optional(),
+  "deliveryAddress": zod.string().optional(),
+  "deliveryNeighborhood": zod.string().optional(),
+  "deliveryReference": zod.string().optional(),
+  "deliveryFee": zod.number().optional(),
+  "deliveryNotes": zod.string().optional()
 })
 
 
@@ -393,6 +406,13 @@ export const GetOrderResponse = zod.object({
   "type": zod.enum(['table', 'counter', 'takeaway', 'delivery']).optional(),
   "notes": zod.string().nullish(),
   "totalAmount": zod.number(),
+  "customerPhone": zod.string().nullish(),
+  "deliveryAddress": zod.string().nullish(),
+  "deliveryNeighborhood": zod.string().nullish(),
+  "deliveryReference": zod.string().nullish(),
+  "deliveryFee": zod.number(),
+  "deliveryNotes": zod.string().nullish(),
+  "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "items": zod.array(zod.object({
@@ -432,6 +452,13 @@ export const UpdateOrderResponse = zod.object({
   "type": zod.enum(['table', 'counter', 'takeaway', 'delivery']).optional(),
   "notes": zod.string().nullish(),
   "totalAmount": zod.number(),
+  "customerPhone": zod.string().nullish(),
+  "deliveryAddress": zod.string().nullish(),
+  "deliveryNeighborhood": zod.string().nullish(),
+  "deliveryReference": zod.string().nullish(),
+  "deliveryFee": zod.number(),
+  "deliveryNotes": zod.string().nullish(),
+  "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "items": zod.array(zod.object({
@@ -490,6 +517,13 @@ export const SendOrderToKitchenResponse = zod.object({
   "type": zod.enum(['table', 'counter', 'takeaway', 'delivery']).optional(),
   "notes": zod.string().nullish(),
   "totalAmount": zod.number(),
+  "customerPhone": zod.string().nullish(),
+  "deliveryAddress": zod.string().nullish(),
+  "deliveryNeighborhood": zod.string().nullish(),
+  "deliveryReference": zod.string().nullish(),
+  "deliveryFee": zod.number(),
+  "deliveryNotes": zod.string().nullish(),
+  "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "items": zod.array(zod.object({
@@ -522,6 +556,56 @@ export const CancelOrderResponse = zod.object({
   "type": zod.enum(['table', 'counter', 'takeaway', 'delivery']).optional(),
   "notes": zod.string().nullish(),
   "totalAmount": zod.number(),
+  "customerPhone": zod.string().nullish(),
+  "deliveryAddress": zod.string().nullish(),
+  "deliveryNeighborhood": zod.string().nullish(),
+  "deliveryReference": zod.string().nullish(),
+  "deliveryFee": zod.number(),
+  "deliveryNotes": zod.string().nullish(),
+  "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional(),
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "orderId": zod.number(),
+  "productId": zod.number(),
+  "productName": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "totalPrice": zod.number(),
+  "notes": zod.string().nullish()
+}))
+})
+
+
+/**
+ * @summary Update delivery status of an order
+ */
+export const UpdateDeliveryStatusParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateDeliveryStatusBody = zod.object({
+  "deliveryStatus": zod.enum(['pending', 'preparing', 'ready', 'out_for_delivery', 'delivered'])
+})
+
+export const UpdateDeliveryStatusResponse = zod.object({
+  "id": zod.number(),
+  "tableId": zod.number().nullish(),
+  "tableNumber": zod.number().nullish(),
+  "customerId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "status": zod.enum(['open', 'preparing', 'ready', 'closed', 'cancelled']),
+  "type": zod.enum(['table', 'counter', 'takeaway', 'delivery']).optional(),
+  "notes": zod.string().nullish(),
+  "totalAmount": zod.number(),
+  "customerPhone": zod.string().nullish(),
+  "deliveryAddress": zod.string().nullish(),
+  "deliveryNeighborhood": zod.string().nullish(),
+  "deliveryReference": zod.string().nullish(),
+  "deliveryFee": zod.number(),
+  "deliveryNotes": zod.string().nullish(),
+  "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "items": zod.array(zod.object({
@@ -570,6 +654,13 @@ export const GetReceiptResponse = zod.object({
   "type": zod.enum(['table', 'counter', 'takeaway', 'delivery']).optional(),
   "notes": zod.string().nullish(),
   "totalAmount": zod.number(),
+  "customerPhone": zod.string().nullish(),
+  "deliveryAddress": zod.string().nullish(),
+  "deliveryNeighborhood": zod.string().nullish(),
+  "deliveryReference": zod.string().nullish(),
+  "deliveryFee": zod.number(),
+  "deliveryNotes": zod.string().nullish(),
+  "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "items": zod.array(zod.object({
@@ -684,6 +775,13 @@ export const GetRecentOrdersResponseItem = zod.object({
   "type": zod.enum(['table', 'counter', 'takeaway', 'delivery']).optional(),
   "notes": zod.string().nullish(),
   "totalAmount": zod.number(),
+  "customerPhone": zod.string().nullish(),
+  "deliveryAddress": zod.string().nullish(),
+  "deliveryNeighborhood": zod.string().nullish(),
+  "deliveryReference": zod.string().nullish(),
+  "deliveryFee": zod.number(),
+  "deliveryNotes": zod.string().nullish(),
+  "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "items": zod.array(zod.object({

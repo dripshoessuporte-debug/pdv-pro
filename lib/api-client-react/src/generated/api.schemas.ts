@@ -164,6 +164,20 @@ export const OrderType = {
   delivery: 'delivery',
 } as const;
 
+/**
+ * @nullable
+ */
+export type OrderDeliveryStatus = typeof OrderDeliveryStatus[keyof typeof OrderDeliveryStatus] | null;
+
+
+export const OrderDeliveryStatus = {
+  pending: 'pending',
+  preparing: 'preparing',
+  ready: 'ready',
+  out_for_delivery: 'out_for_delivery',
+  delivered: 'delivered',
+} as const;
+
 export interface OrderItem {
   id: number;
   orderId: number;
@@ -191,6 +205,19 @@ export interface Order {
   /** @nullable */
   notes?: string | null;
   totalAmount: number;
+  /** @nullable */
+  customerPhone?: string | null;
+  /** @nullable */
+  deliveryAddress?: string | null;
+  /** @nullable */
+  deliveryNeighborhood?: string | null;
+  /** @nullable */
+  deliveryReference?: string | null;
+  deliveryFee: number;
+  /** @nullable */
+  deliveryNotes?: string | null;
+  /** @nullable */
+  deliveryStatus?: OrderDeliveryStatus;
   createdAt: string;
   updatedAt?: string;
   items: OrderItem[];
@@ -211,6 +238,12 @@ export interface OrderInput {
   customerId?: number;
   type: OrderInputType;
   notes?: string;
+  customerPhone?: string;
+  deliveryAddress?: string;
+  deliveryNeighborhood?: string;
+  deliveryReference?: string;
+  deliveryFee?: number;
+  deliveryNotes?: string;
 }
 
 export type OrderUpdateStatus = typeof OrderUpdateStatus[keyof typeof OrderUpdateStatus];
@@ -229,6 +262,21 @@ export interface OrderUpdate {
   customerId?: number;
   status?: OrderUpdateStatus;
   notes?: string;
+}
+
+export type DeliveryStatusUpdateDeliveryStatus = typeof DeliveryStatusUpdateDeliveryStatus[keyof typeof DeliveryStatusUpdateDeliveryStatus];
+
+
+export const DeliveryStatusUpdateDeliveryStatus = {
+  pending: 'pending',
+  preparing: 'preparing',
+  ready: 'ready',
+  out_for_delivery: 'out_for_delivery',
+  delivered: 'delivered',
+} as const;
+
+export interface DeliveryStatusUpdate {
+  deliveryStatus: DeliveryStatusUpdateDeliveryStatus;
 }
 
 export interface OrderItemInput {

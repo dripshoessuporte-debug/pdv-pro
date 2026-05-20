@@ -13,6 +13,14 @@ export const ordersTable = pgTable("orders", {
   type: text("type").notNull().default("counter"),
   notes: text("notes"),
   totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  // Delivery / takeaway fields
+  customerPhone: text("customer_phone"),
+  deliveryAddress: text("delivery_address"),
+  deliveryNeighborhood: text("delivery_neighborhood"),
+  deliveryReference: text("delivery_reference"),
+  deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 }).notNull().default("0"),
+  deliveryNotes: text("delivery_notes"),
+  deliveryStatus: text("delivery_status"), // null for non-delivery orders
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

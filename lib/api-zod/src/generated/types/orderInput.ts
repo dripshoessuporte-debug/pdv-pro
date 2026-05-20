@@ -12,4 +12,10 @@ export interface OrderInput {
   customerId?: number;
   type: OrderInputType;
   notes?: string;
+  customerPhone?: string;
+  deliveryAddress?: string;
+  deliveryNeighborhood?: string;
+  deliveryReference?: string;
+  deliveryFee?: number;
+  deliveryNotes?: string;
 }

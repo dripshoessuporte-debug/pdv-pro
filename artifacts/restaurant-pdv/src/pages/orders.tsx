@@ -11,7 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, ChevronRight, SendHorizonal, X, CreditCard, CalendarDays } from "lucide-react";
+import { Plus, ChevronRight, SendHorizonal, X, CreditCard, CalendarDays, Truck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -28,6 +28,14 @@ const STATUS_COLORS: Record<string, string> = {
   ready: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
   closed: "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400",
   cancelled: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+};
+
+const DELIVERY_STATUS_LABELS: Record<string, string> = {
+  pending: "Aguardando preparo",
+  preparing: "Em preparo",
+  ready: "Pronto para entrega",
+  out_for_delivery: "Saiu para entrega",
+  delivered: "Entregue",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -59,9 +67,6 @@ export default function Orders() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  // Always fetch ALL orders — filtering is done entirely in the frontend.
-  // This ensures statusCounts are always accurate for every button,
-  // and avoids separate cache entries per status (which caused stale/empty lists).
   const { data: allOrders, isLoading } = useListOrders(undefined, {
     query: {
       queryKey: getListOrdersQueryKey(),
@@ -69,14 +74,12 @@ export default function Orders() {
     },
   });
 
-  // Step 1: apply the date filter
   const periodOrders = useMemo(() => {
     if (!allOrders) return [];
     if (!todayOnly) return allOrders;
     return allOrders.filter((o) => isToday(o.createdAt));
   }, [allOrders, todayOnly]);
 
-  // Step 2: compute per-status counts from the date-filtered set
   const statusCounts = useMemo(() => {
     return periodOrders.reduce(
       (acc, o) => {
@@ -87,7 +90,6 @@ export default function Orders() {
     );
   }, [periodOrders]);
 
-  // Step 3: apply the status filter on top of the date filter
   const displayed = useMemo(() => {
     if (statusFilter === "all") return periodOrders;
     return periodOrders.filter((o) => o.status === statusFilter);
@@ -153,7 +155,6 @@ export default function Orders() {
             </Button>
             <div className="h-5 w-px bg-border mx-1" />
             {STATUS_FILTERS.map((f) => {
-              // "Todos" shows count of the whole period; others show per-status count
               const count = f === "all" ? periodOrders.length : (statusCounts[f] ?? 0);
               return (
                 <Button
@@ -196,112 +197,134 @@ export default function Orders() {
           </div>
         ) : (
           <div className="space-y-3">
-            {displayed.map((order) => (
-              <Card
-                key={order.id}
-                className="hover:shadow-md transition-shadow"
-                data-testid={`card-order-${order.id}`}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <p className="font-semibold text-lg">#{order.id}</p>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            STATUS_COLORS[order.status] ?? ""
-                          }`}
-                        >
-                          {STATUS_LABELS[order.status] ?? order.status}
-                        </span>
-                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                          {order.type ? (TYPE_LABELS[order.type] ?? order.type) : ""}
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {order.tableNumber ? `Mesa ${order.tableNumber}` : ""}
-                        {order.tableNumber && order.customerName ? " · " : ""}
-                        {order.customerName ?? ""}
-                        {!order.tableNumber && !order.customerName ? "Sem identificação" : ""}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {order.items.length} {order.items.length === 1 ? "item" : "itens"} ·{" "}
-                        {new Date(order.createdAt).toLocaleString("pt-BR", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          day: "2-digit",
-                          month: "2-digit",
-                        })}
-                      </p>
-                      {order.notes && (
-                        <p className="text-xs text-muted-foreground italic mt-0.5 truncate">
-                          💬 {order.notes}
+            {displayed.map((order) => {
+              const isDelivery = order.type === "delivery";
+              const deliveryFee = order.deliveryFee ?? 0;
+              return (
+                <Card
+                  key={order.id}
+                  className="hover:shadow-md transition-shadow"
+                  data-testid={`card-order-${order.id}`}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <p className="font-semibold text-lg">#{order.id}</p>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                              STATUS_COLORS[order.status] ?? ""
+                            }`}
+                          >
+                            {STATUS_LABELS[order.status] ?? order.status}
+                          </span>
+                          {isDelivery ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300 flex items-center gap-1">
+                              <Truck className="w-3 h-3" /> Delivery
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                              {order.type ? (TYPE_LABELS[order.type] ?? order.type) : ""}
+                            </span>
+                          )}
+                          {isDelivery && order.deliveryStatus && (
+                            <span className="text-xs text-muted-foreground italic">
+                              · {DELIVERY_STATUS_LABELS[order.deliveryStatus] ?? order.deliveryStatus}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Cliente e endereço */}
+                        <p className="text-sm text-muted-foreground truncate">
+                          {order.tableNumber ? `Mesa ${order.tableNumber}` : ""}
+                          {order.tableNumber && order.customerName ? " · " : ""}
+                          {order.customerName ?? ""}
+                          {isDelivery && order.customerPhone ? ` · 📞 ${order.customerPhone}` : ""}
+                          {!order.tableNumber && !order.customerName && !isDelivery ? "Sem identificação" : ""}
                         </p>
-                      )}
+
+                        {isDelivery && order.deliveryAddress && (
+                          <p className="text-xs text-muted-foreground truncate">
+                            📍 {order.deliveryAddress}
+                            {order.deliveryNeighborhood ? ` · ${order.deliveryNeighborhood}` : ""}
+                          </p>
+                        )}
+
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {order.items.length} {order.items.length === 1 ? "item" : "itens"} ·{" "}
+                          {new Date(order.createdAt).toLocaleString("pt-BR", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            day: "2-digit",
+                            month: "2-digit",
+                          })}
+                          {isDelivery && deliveryFee > 0 ? ` · Taxa R$ ${deliveryFee.toFixed(2)}` : ""}
+                        </p>
+
+                        {order.notes && (
+                          <p className="text-xs text-muted-foreground italic mt-0.5 truncate">💬 {order.notes}</p>
+                        )}
+                      </div>
+
+                      {/* Valor + Ações */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <p className="font-bold text-lg text-right">
+                          R$ {order.totalAmount.toFixed(2)}
+                        </p>
+
+                        {order.status === "open" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => sendToKitchen.mutate({ id: order.id })}
+                            disabled={sendToKitchen.isPending || order.items.length === 0}
+                            title="Enviar para cozinha"
+                            data-testid={`button-send-kitchen-${order.id}`}
+                          >
+                            <SendHorizonal className="w-4 h-4" />
+                          </Button>
+                        )}
+
+                        {PAYABLE.includes(order.status) && (
+                          <Button
+                            size="sm"
+                            onClick={() => setLocation(`/payments/${order.id}`)}
+                            disabled={order.items.length === 0}
+                            data-testid={`button-pay-${order.id}`}
+                          >
+                            <CreditCard className="w-3.5 h-3.5 mr-1" /> Pagar
+                          </Button>
+                        )}
+
+                        {PAYABLE.includes(order.status) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => cancel.mutate({ id: order.id })}
+                            disabled={cancel.isPending}
+                            title="Cancelar pedido"
+                            data-testid={`button-cancel-${order.id}`}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        )}
+
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setLocation(`/orders/${order.id}`)}
+                          data-testid={`button-view-${order.id}`}
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
-
-                    {/* Valor + Ações */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      <p className="font-bold text-lg text-right">
-                        R$ {order.totalAmount.toFixed(2)}
-                      </p>
-
-                      {/* Enviar para cozinha (só status aberto) */}
-                      {order.status === "open" && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => sendToKitchen.mutate({ id: order.id })}
-                          disabled={sendToKitchen.isPending || order.items.length === 0}
-                          title="Enviar para cozinha"
-                          data-testid={`button-send-kitchen-${order.id}`}
-                        >
-                          <SendHorizonal className="w-4 h-4" />
-                        </Button>
-                      )}
-
-                      {/* Pagar: qualquer status ativo */}
-                      {PAYABLE.includes(order.status) && (
-                        <Button
-                          size="sm"
-                          onClick={() => setLocation(`/payments/${order.id}`)}
-                          disabled={order.items.length === 0}
-                          data-testid={`button-pay-${order.id}`}
-                        >
-                          <CreditCard className="w-3.5 h-3.5 mr-1" /> Pagar
-                        </Button>
-                      )}
-
-                      {/* Cancelar (status ativo) */}
-                      {PAYABLE.includes(order.status) && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => cancel.mutate({ id: order.id })}
-                          disabled={cancel.isPending}
-                          title="Cancelar pedido"
-                          data-testid={`button-cancel-${order.id}`}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      )}
-
-                      {/* Ver detalhes */}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setLocation(`/orders/${order.id}`)}
-                        data-testid={`button-view-${order.id}`}
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>

@@ -17,6 +17,9 @@ import {
   UpdateOrderResponse,
   SendOrderToKitchenResponse,
   CancelOrderResponse,
+  UpdateDeliveryStatusParams,
+  UpdateDeliveryStatusBody,
+  UpdateDeliveryStatusResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -33,6 +36,13 @@ async function getOrderWithItems(orderId: number) {
       type: ordersTable.type,
       notes: ordersTable.notes,
       totalAmount: ordersTable.totalAmount,
+      customerPhone: ordersTable.customerPhone,
+      deliveryAddress: ordersTable.deliveryAddress,
+      deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+      deliveryReference: ordersTable.deliveryReference,
+      deliveryFee: ordersTable.deliveryFee,
+      deliveryNotes: ordersTable.deliveryNotes,
+      deliveryStatus: ordersTable.deliveryStatus,
       createdAt: ordersTable.createdAt,
       updatedAt: ordersTable.updatedAt,
     })
@@ -61,6 +71,7 @@ async function getOrderWithItems(orderId: number) {
   return {
     ...order,
     totalAmount: parseFloat(String(order.totalAmount)),
+    deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
     createdAt: order.createdAt.toISOString(),
     updatedAt: order.updatedAt.toISOString(),
     items: items.map((item) => ({
@@ -73,8 +84,13 @@ async function getOrderWithItems(orderId: number) {
 
 async function recalcOrderTotal(orderId: number) {
   const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, orderId));
-  const total = items.reduce((sum, item) => sum + parseFloat(String(item.totalPrice)), 0);
-  await db.update(ordersTable).set({ totalAmount: String(total) }).where(eq(ordersTable.id, orderId));
+  const itemsTotal = items.reduce((sum, item) => sum + parseFloat(String(item.totalPrice)), 0);
+  const [order] = await db
+    .select({ deliveryFee: ordersTable.deliveryFee })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, orderId));
+  const fee = parseFloat(String(order?.deliveryFee ?? "0"));
+  await db.update(ordersTable).set({ totalAmount: String(itemsTotal + fee) }).where(eq(ordersTable.id, orderId));
 }
 
 router.get("/orders", async (req, res): Promise<void> => {
@@ -96,6 +112,13 @@ router.get("/orders", async (req, res): Promise<void> => {
       type: ordersTable.type,
       notes: ordersTable.notes,
       totalAmount: ordersTable.totalAmount,
+      customerPhone: ordersTable.customerPhone,
+      deliveryAddress: ordersTable.deliveryAddress,
+      deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+      deliveryReference: ordersTable.deliveryReference,
+      deliveryFee: ordersTable.deliveryFee,
+      deliveryNotes: ordersTable.deliveryNotes,
+      deliveryStatus: ordersTable.deliveryStatus,
       createdAt: ordersTable.createdAt,
       updatedAt: ordersTable.updatedAt,
     })
@@ -124,6 +147,7 @@ router.get("/orders", async (req, res): Promise<void> => {
     return {
       ...order,
       totalAmount: parseFloat(String(order.totalAmount)),
+      deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
       items: items.map((item) => ({
@@ -144,9 +168,16 @@ router.post("/orders", async (req, res): Promise<void> => {
     return;
   }
 
-  const [order] = await db.insert(ordersTable).values(parsed.data).returning();
+  const { deliveryFee, ...restData } = parsed.data;
+  const fee = deliveryFee ?? 0;
 
-  // Mark table as occupied if tableId provided
+  const [order] = await db.insert(ordersTable).values({
+    ...restData,
+    deliveryFee: String(fee),
+    totalAmount: String(fee), // items added after via addOrderItem; recalcOrderTotal updates this
+    ...(parsed.data.type === "delivery" ? { deliveryStatus: "pending" } : {}),
+  }).returning();
+
   if (parsed.data.tableId) {
     await db.update(tablesTable)
       .set({ status: "occupied", currentOrderId: order.id })
@@ -268,7 +299,16 @@ router.post("/orders/:id/send-to-kitchen", async (req, res): Promise<void> => {
     return;
   }
 
-  await db.update(ordersTable).set({ status: "preparing" }).where(eq(ordersTable.id, params.data.id));
+  const updateData: Record<string, string> = { status: "preparing" };
+
+  // For delivery orders, advance deliveryStatus from pending → preparing
+  const [current] = await db.select({ type: ordersTable.type, deliveryStatus: ordersTable.deliveryStatus })
+    .from(ordersTable).where(eq(ordersTable.id, params.data.id));
+  if (current?.type === "delivery" && current.deliveryStatus === "pending") {
+    updateData.deliveryStatus = "preparing";
+  }
+
+  await db.update(ordersTable).set(updateData).where(eq(ordersTable.id, params.data.id));
   await db.insert(kitchenTicketsTable).values({ orderId: params.data.id, status: "pending" });
 
   const order = await getOrderWithItems(params.data.id);
@@ -295,7 +335,6 @@ router.post("/orders/:id/cancel", async (req, res): Promise<void> => {
 
   await db.update(ordersTable).set({ status: "cancelled" }).where(eq(ordersTable.id, params.data.id));
 
-  // Free up the table if it was occupied by this order
   if (order.tableId) {
     await db.update(tablesTable)
       .set({ status: "available", currentOrderId: null })
@@ -304,6 +343,33 @@ router.post("/orders/:id/cancel", async (req, res): Promise<void> => {
 
   const full = await getOrderWithItems(params.data.id);
   res.json(CancelOrderResponse.parse(full));
+});
+
+router.patch("/orders/:id/delivery-status", async (req, res): Promise<void> => {
+  const params = UpdateDeliveryStatusParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const parsed = UpdateDeliveryStatusBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [existing] = await db.select({ id: ordersTable.id }).from(ordersTable).where(eq(ordersTable.id, params.data.id));
+  if (!existing) {
+    res.status(404).json({ error: "Order not found" });
+    return;
+  }
+
+  await db.update(ordersTable)
+    .set({ deliveryStatus: parsed.data.deliveryStatus })
+    .where(eq(ordersTable.id, params.data.id));
+
+  const order = await getOrderWithItems(params.data.id);
+  res.json(UpdateDeliveryStatusResponse.parse(order));
 });
 
 export default router;

@@ -576,6 +576,33 @@ paths:
               schema:
                 $ref: "#/components/schemas/Order"
 
+  /orders/{id}/delivery-status:
+    patch:
+      operationId: updateDeliveryStatus
+      tags: [orders]
+      summary: Update delivery status of an order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliveryStatusUpdate"
+      responses:
+        "200":
+          description: Delivery status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Not found
+
   # Payments
   /payments:
     post:
@@ -1005,7 +1032,7 @@ components:
     # Orders
     Order:
       type: object
-      required: [id, status, totalAmount, createdAt, items]
+      required: [id, status, totalAmount, deliveryFee, createdAt, items]
       properties:
         id:
           type: integer
@@ -1027,6 +1054,21 @@ components:
           type: ["string", "null"]
         totalAmount:
           type: number
+        customerPhone:
+          type: ["string", "null"]
+        deliveryAddress:
+          type: ["string", "null"]
+        deliveryNeighborhood:
+          type: ["string", "null"]
+        deliveryReference:
+          type: ["string", "null"]
+        deliveryFee:
+          type: number
+        deliveryNotes:
+          type: ["string", "null"]
+        deliveryStatus:
+          type: ["string", "null"]
+          enum: [pending, preparing, ready, out_for_delivery, delivered, null]
         createdAt:
           type: string
         updatedAt:
@@ -1049,6 +1091,18 @@ components:
           enum: [table, counter, takeaway, delivery]
         notes:
           type: string
+        customerPhone:
+          type: string
+        deliveryAddress:
+          type: string
+        deliveryNeighborhood:
+          type: string
+        deliveryReference:
+          type: string
+        deliveryFee:
+          type: number
+        deliveryNotes:
+          type: string
 
     OrderUpdate:
       type: object
@@ -1062,6 +1116,14 @@ components:
           enum: [open, preparing, ready, closed, cancelled]
         notes:
           type: string
+
+    DeliveryStatusUpdate:
+      type: object
+      required: [deliveryStatus]
+      properties:
+        deliveryStatus:
+          type: string
+          enum: [pending, preparing, ready, out_for_delivery, delivered]
 
     OrderItem:
       type: object
