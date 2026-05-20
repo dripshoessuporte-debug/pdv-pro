@@ -1,0 +1,337 @@
+Ajuste a identidade visual do sistema e especialmente a página Rotas com uma lógica visual por valor financeiro da rota.
+
+Não refaça o projeto do zero.
+Preserve todas as funcionalidades já existentes:
+- pedidos
+- cozinha
+- caixa
+- pagamento
+- cardápio
+- delivery
+- rotas
+- configurações
+- QR Code
+- pagamento na entrega
+- alertas de tempo
+- agrupamento por CEP/bairro
+- limite de pedidos por rota vindo das configurações
+
+PARTE 1 — Nova identidade visual
+
+Trocar a cor principal do sistema para uma identidade mais moderna em verde esmeralda.
+
+Use esta paleta:
+
+- Fundo principal: #111827
+- Sidebar: #161B22
+- Cards: #1F2937
+- Cards destacados: #243244
+- Bordas: #374151
+- Cor principal/acento: #10B981
+- Cor principal hover: #059669
+- Glow principal: rgba(16, 185, 129, 0.25)
+- Texto principal: #F9FAFB
+- Texto secundário: #9CA3AF
+- Texto apagado: #6B7280
+- Sucesso: #22C55E
+- Aviso: #FACC15
+- Erro/Atraso: #EF4444
+- Informação: #38BDF8
+- Roxo premium: #A855F7
+
+Regras:
+- Verde esmeralda deve ser a cor principal de ação do sistema.
+- Botões principais, destaques ativos e CTAs devem usar verde.
+- Vermelho continua apenas para erro, cancelar, excluir e atraso.
+- Amarelo continua para atenção/preparando.
+- Azul fica para informação.
+- Evitar excesso de cores grandes.
+- Manter o tema dark, limpo, flat e operacional.
+- O operador precisa bater o olho e entender as informações rapidamente.
+
+PARTE 2 — Rotas com cor baseada no valor financeiro
+
+Na página Rotas, quero que a cor visual da rota seja calculada com base no valor financeiro total da rota.
+
+Como no nosso tipo de operação uma rota acima de R$ 60,00 já é considerada muito boa, ajuste as faixas assim:
+
+1. Rota baixa:
+- até R$ 15,00
+- cor: #38BDF8
+- label: Baixa
+
+2. Rota média:
+- de R$ 15,01 até R$ 30,00
+- cor: #10B981
+- label: Média
+
+3. Rota boa:
+- de R$ 30,01 até R$ 45,00
+- cor: #FACC15
+- label: Boa
+
+4. Rota alta:
+- de R$ 45,01 até R$ 60,00
+- cor: #A855F7
+- label: Alta
+
+5. Rota premium:
+- acima de R$ 60,00
+- cor: #F43F5E
+- label: Premium
+
+Usar como base de cálculo:
+- valor total da rota
+- total a receber na entrega
+- taxa total da rota
+- se já existir uma métrica melhor calculada, use o total financeiro mais útil para o motoboy
+
+Criar uma função visual, por exemplo:
+getRouteValueTier(route)
+
+Essa função deve retornar:
+- label da faixa
+- cor
+- classe/estilo visual
+- descrição curta, se útil
+
+PARTE 3 — Visual dos cards de rota
+
+Manter todos os cards com base neutra e dark:
+
+- fundo do card: #1F2937
+- borda base: #374151
+- texto claro
+- layout limpo
+
+A cor da rota baseada no valor deve aparecer como:
+
+- glow suave ao redor do card
+- barrinha lateral fina
+- marcador circular
+- badge pequeno com o nível da rota: Baixa, Média, Boa, Alta, Premium
+
+Não pintar o card inteiro.
+Não criar poluição visual.
+Não usar bordas neon exageradas.
+O glow deve ser bonito, controlado e elegante.
+
+Exemplo:
+Rota de R$ 12,00:
+- card escuro
+- glow azul suave
+- badge "Baixa"
+
+Rota de R$ 24,00:
+- card escuro
+- glow verde suave
+- badge "Média"
+
+Rota de R$ 38,00:
+- card escuro
+- glow dourado suave
+- badge "Boa"
+
+Rota de R$ 52,00:
+- card escuro
+- glow roxo suave
+- badge "Alta"
+
+Rota de R$ 70,00:
+- card escuro
+- glow rosa/vermelho premium suave
+- badge "Premium"
+
+PARTE 4 — Valores visíveis para o motoboy
+
+Na página Rotas, destacar melhor:
+
+- valor total da rota
+- total a receber na entrega
+- total de troco necessário
+- taxa total da entrega
+- quantidade de pedidos
+
+O motoboy precisa bater o olho e entender se aquela rota é baixa, média, boa, alta ou premium.
+
+Mostrar, por exemplo:
+
+Valor da rota: R$ 52,00
+Nível: Alta
+Receber na entrega: R$ 38,00
+Troco necessário: R$ 12,00
+Taxas: R$ 14,00
+
+Se a rota tiver pagamento na entrega, destacar:
+- método de pagamento
+- valor a receber
+- troco necessário
+
+PARTE 5 — Padronização geral do sistema
+
+Atualizar as telas principais para harmonizar com a nova cor principal:
+
+- Dashboard
+- Pedidos
+- Caixa
+- Cardápio
+- Mesas
+- Cozinha
+- Rotas
+- Configurações
+- Motoboys, se já existir
+
+Trocar destaques laranja por verde esmeralda quando forem:
+- botões principais
+- item ativo do menu
+- CTA
+- seleção ativa
+- destaque de ação positiva
+
+Manter vermelho apenas para:
+- cancelamento
+- exclusão
+- erro
+- atraso crítico
+
+Manter amarelo apenas para:
+- atenção
+- preparando
+- quase atrasando
+- ocupado
+
+Manter azul apenas para:
+- informação
+- neutro
+- dados auxiliares
+
+PARTE 6 — Organização por data dos pedidos
+
+Também implemente a organização de pedidos por período.
+
+Na tela Pedidos, substituir ou complementar os filtros atuais de data com:
+
+- Hoje
+- Ontem
+- Esta semana
+- Este mês
+- Todos
+
+Regras:
+
+1. Hoje:
+Mostrar apenas pedidos criados entre 00:00 e 23:59 do dia atual, considerando o timezone local.
+
+2. Ontem:
+Mostrar apenas pedidos criados no dia anterior.
+
+3. Esta semana:
+Mostrar pedidos da semana atual.
+
+4. Este mês:
+Mostrar pedidos do mês atual.
+
+5. Todos:
+Mostrar histórico completo.
+
+Importante:
+- Não apagar pedidos antigos.
+- Apenas organizar visualmente e filtrar por período.
+- Quando virar meia-noite, a aba Hoje deve começar zerada automaticamente.
+- Os pedidos do dia anterior devem aparecer em Ontem.
+- Depois continuam acessíveis em Esta semana, Este mês e Todos.
+
+PARTE 7 — Agrupamento visual por data em "Todos"
+
+Quando o filtro for "Todos", agrupar visualmente os pedidos por data.
+
+Exemplo:
+
+Hoje
+- Pedido #120
+- Pedido #121
+
+Ontem
+- Pedido #110
+- Pedido #111
+
+18/05/2026
+- Pedido #90
+
+17/05/2026
+- Pedido #80
+
+Se for mais simples, usar separadores por data:
+- Hoje
+- Ontem
+- 18/05/2026
+- 17/05/2026
+
+PARTE 8 — Contadores corretos
+
+Os contadores dos filtros de status precisam respeitar o período selecionado.
+
+Exemplo:
+Se estiver em Hoje:
+- Todos = pedidos de hoje
+- Aberto = pedidos abertos de hoje
+- Preparando = pedidos preparando de hoje
+- Pronto = pedidos prontos de hoje
+- Pago = pedidos pagos de hoje
+- Cancelado = pedidos cancelados de hoje
+
+Se estiver em Ontem:
+- os contadores consideram apenas pedidos de ontem
+
+Se estiver em Esta semana:
+- os contadores consideram apenas pedidos da semana
+
+Se estiver em Este mês:
+- os contadores consideram apenas pedidos do mês
+
+Se estiver em Todos:
+- os contadores consideram o histórico completo
+
+PARTE 9 — Dashboard
+
+A Dashboard deve mostrar apenas dados de hoje:
+
+- Faturamento Hoje = apenas pagamentos de hoje
+- Pedidos Hoje = apenas pedidos criados hoje
+- Pedidos Ativos = pedidos ativos de hoje
+- Fila da Cozinha = pedidos de hoje aguardando/preparando
+- Pedidos Recentes = pedidos recentes de hoje
+
+Pedidos antigos não devem inflar a Dashboard de hoje.
+
+PARTE 10 — Testes obrigatórios
+
+Teste:
+
+1. Verificar se o tema mudou para verde esmeralda.
+2. Verificar se botões principais usam verde.
+3. Verificar se a página Rotas mantém cards escuros/neutros.
+4. Verificar se o glow das rotas muda conforme o valor financeiro.
+5. Criar/testar rotas com valores diferentes:
+   - até R$ 15,00 = Baixa / azul
+   - até R$ 30,00 = Média / verde
+   - até R$ 45,00 = Boa / dourado
+   - até R$ 60,00 = Alta / roxo
+   - acima de R$ 60,00 = Premium / rosa/vermelho
+6. Verificar se os valores da rota aparecem claramente para o motoboy.
+7. Verificar se pedidos aparecem corretamente nos filtros Hoje, Ontem, Esta semana, Este mês e Todos.
+8. Verificar se a aba Hoje zera automaticamente quando muda o dia, sem apagar histórico.
+9. Verificar se, em Todos, os pedidos são agrupados por data.
+10. Verificar se Dashboard mostra apenas dados de hoje.
+11. Rodar typecheck sem erros.
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Qual paleta foi aplicada.
+3. Como funciona a cor das rotas por valor.
+4. Quais são as faixas de valor usadas nas rotas.
+5. Como os pedidos são organizados por data.
+6. Como funciona a virada de meia-noite.
+7. Como testar passo a passo.
+8. Limitações restantes.

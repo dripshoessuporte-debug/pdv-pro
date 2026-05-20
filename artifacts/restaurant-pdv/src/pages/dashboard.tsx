@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/layout";
 import {
@@ -45,12 +46,20 @@ export default function Dashboard() {
       refetchInterval: 30_000,
     },
   });
-  const { data: recentOrders, isLoading: loadingOrders } = useGetRecentOrders({
+  const { data: allRecentOrders, isLoading: loadingOrders } = useGetRecentOrders({
     query: {
       queryKey: getGetRecentOrdersQueryKey(),
       refetchInterval: 30_000,
     },
   });
+
+  // Show only today's orders in the dashboard
+  const recentOrders = useMemo(() => {
+    if (!allRecentOrders) return allRecentOrders;
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    return allRecentOrders.filter((o) => new Date(o.createdAt) >= todayStart);
+  }, [allRecentOrders]);
   const { data: sales, isLoading: loadingSales } = useGetSalesByCategory({
     query: {
       queryKey: getGetSalesByCategoryQueryKey(),

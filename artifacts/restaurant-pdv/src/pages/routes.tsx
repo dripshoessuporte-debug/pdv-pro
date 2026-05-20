@@ -985,13 +985,19 @@ function PendingOrderRow({
   );
 }
 
-// ─── Rarity system based on total delivery fee ────────────────────────────────
+// ─── Route value tier based on total delivery fee ─────────────────────────────
 
-function getRarity(fee: number): { color: string; glow: string; label: string } {
-  if (fee > 50) return { color: "#eab308", glow: "rgba(234,179,8,0.35)",  label: "Ouro"  };
-  if (fee > 20) return { color: "#a855f7", glow: "rgba(168,85,247,0.35)", label: "Roxo"  };
-  if (fee > 10) return { color: "#22c55e", glow: "rgba(34,197,94,0.35)",  label: "Verde" };
-  return          { color: "#3b82f6", glow: "rgba(59,130,246,0.35)",  label: "Azul"  };
+function getRouteValueTier(fee: number): {
+  color: string;
+  glow: string;
+  label: string;
+  description: string;
+} {
+  if (fee > 60)  return { color: "#F43F5E", glow: "rgba(244,63,94,0.18)",   label: "Premium", description: "Acima de R$60" };
+  if (fee > 45)  return { color: "#A855F7", glow: "rgba(168,85,247,0.18)",  label: "Alta",    description: "R$45–R$60"    };
+  if (fee > 30)  return { color: "#FACC15", glow: "rgba(250,204,21,0.18)",  label: "Boa",     description: "R$30–R$45"    };
+  if (fee > 15)  return { color: "#10B981", glow: "rgba(16,185,129,0.18)",  label: "Média",   description: "R$15–R$30"    };
+  return         { color: "#38BDF8", glow: "rgba(56,189,248,0.18)",  label: "Baixa",   description: "Até R$15"     };
 }
 
 // ─── RouteCard ────────────────────────────────────────────────────────────────
@@ -1028,23 +1034,26 @@ function RouteCard({
   const totalCount = route.orders.length;
   const allOrdersReady = totalCount > 0 && readyCount === totalCount;
 
-  const rarity = getRarity(route.totalDeliveryFee);
+  const tier = getRouteValueTier(route.totalDeliveryFee);
 
   const progressRatio = isCompleted ? 1 : isInProgress ? 1 : (totalCount > 0 ? deliveredCount / totalCount : 0);
   const ringR = 20;
   const ringCirc = 2 * Math.PI * ringR;
   const ringOffset = ringCirc * (1 - progressRatio);
-  const ringColor = isCompleted ? "#22c55e" : rarity.color;
+  const ringColor = isCompleted ? "#22C55E" : tier.color;
 
   const otherNeighborhoods = route.includedNeighborhoods.filter((n) => n !== route.mainNeighborhood);
 
   return (
     <div
-      className="rounded-2xl border-2 overflow-hidden flex flex-col bg-zinc-100 text-zinc-900 transition-shadow"
+      className="rounded-2xl overflow-hidden flex flex-col transition-shadow"
       data-testid={`card-route-${route.id}`}
       style={{
-        borderColor: rarity.color,
-        boxShadow: `0 0 28px 6px ${rarity.glow}, 0 4px 16px -4px rgba(0,0,0,0.4)`,
+        backgroundColor: "#1F2937",
+        border: "1px solid #374151",
+        borderLeft: `4px solid ${tier.color}`,
+        boxShadow: `0 0 18px 0px ${tier.glow}, 0 4px 12px -4px rgba(0,0,0,0.5)`,
+        color: "#F9FAFB",
       }}
     >
       <div className="p-4 flex flex-col gap-3 flex-1">
@@ -1081,27 +1090,34 @@ function RouteCard({
             <div
               className="absolute inset-0 flex items-center justify-center font-black text-sm"
               style={{
-                color: rarity.color,
-                textShadow: `0 0 8px ${rarity.glow}, 0 0 20px ${rarity.glow}`,
-                WebkitTextStroke: `0.5px ${rarity.color}`,
+                color: tier.color,
+                textShadow: `0 0 8px ${tier.glow}, 0 0 18px ${tier.glow}`,
               }}
             >
               {totalCount}
             </div>
-            {/* Color dot */}
-            <span
-              className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-card"
-              style={{ backgroundColor: route.color }}
-            />
           </div>
 
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-sm leading-snug">{route.name}</h3>
-            <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-semibold text-sm leading-snug text-[#F9FAFB]">{route.name}</h3>
+              {/* Tier badge */}
+              <span
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{
+                  backgroundColor: `${tier.color}22`,
+                  color: tier.color,
+                  border: `1px solid ${tier.color}55`,
+                }}
+              >
+                {tier.label}
+              </span>
+            </div>
+            <div className="flex items-center gap-1 mt-0.5 text-xs" style={{ color: "#9CA3AF" }}>
               <MapPin className="w-3 h-3 shrink-0" />
               <span className="font-medium">{route.mainNeighborhood}</span>
               {otherNeighborhoods.length > 0 && (
-                <span className="opacity-60 truncate">· {otherNeighborhoods.join(", ")}</span>
+                <span className="opacity-70 truncate">· {otherNeighborhoods.join(", ")}</span>
               )}
             </div>
           </div>
@@ -1155,7 +1171,10 @@ function RouteCard({
             return (
               <div
                 key={order.id}
-                className="flex items-center gap-2.5 px-3 py-2.5 bg-zinc-800 hover:bg-zinc-700 transition-colors text-xs group rounded-lg mx-1 my-0.5"
+                className="flex items-center gap-2.5 px-3 py-2.5 transition-colors text-xs group rounded-lg mx-1 my-0.5"
+                style={{ backgroundColor: "#111827" }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#1a2435")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#111827")}
                 data-testid={`route-order-${order.orderId}`}
               >
                 {/* Stop number */}
@@ -1163,9 +1182,9 @@ function RouteCard({
                   className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-black shrink-0 border"
                   style={{
                     backgroundColor: "transparent",
-                    borderColor: rarity.color,
-                    color: rarity.color,
-                    boxShadow: `0 0 6px ${rarity.glow}`,
+                    borderColor: tier.color,
+                    color: tier.color,
+                    boxShadow: `0 0 5px ${tier.glow}`,
                   }}
                 >
                   {order.stopOrder}
@@ -1250,18 +1269,38 @@ function RouteCard({
           </div>
         )}
 
-        {/* ── Footer ── */}
-        <div className="flex items-center gap-2 pt-1 mt-auto border-t border-border/40">
-          <div className="flex-1 text-xs flex items-center gap-2">
-            <span className="text-emerald-600 font-semibold">
-              Taxa R$ {route.totalDeliveryFee.toFixed(2)}
+        {/* ── Value info panel ── */}
+        <div
+          className="rounded-xl px-3 py-2.5 text-xs space-y-1"
+          style={{ backgroundColor: "#111827", border: "1px solid #374151" }}
+        >
+          <div className="flex items-center justify-between">
+            <span style={{ color: "#9CA3AF" }}>Valor da rota</span>
+            <span className="font-bold" style={{ color: tier.color }}>
+              R$ {route.totalDeliveryFee.toFixed(2)} · {tier.label}
             </span>
-            {route.totalToReceive > 0 && (
-              <span className="text-amber-600">
-                · Cobrar R$ {route.totalToReceive.toFixed(2)}
-              </span>
-            )}
           </div>
+          {route.totalToReceive > 0 && (
+            <div className="flex items-center justify-between">
+              <span style={{ color: "#9CA3AF" }}>Receber na entrega</span>
+              <span className="font-semibold text-amber-400">R$ {route.totalToReceive.toFixed(2)}</span>
+            </div>
+          )}
+          {route.totalChangeNeeded > 0 && (
+            <div className="flex items-center justify-between">
+              <span style={{ color: "#9CA3AF" }}>Troco necessário</span>
+              <span className="font-semibold text-orange-400">R$ {route.totalChangeNeeded.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span style={{ color: "#9CA3AF" }}>Pedidos</span>
+            <span className="font-semibold" style={{ color: "#F9FAFB" }}>{totalCount}</span>
+          </div>
+        </div>
+
+        {/* ── Footer ── */}
+        <div className="flex items-center gap-2 pt-1 mt-auto" style={{ borderTop: "1px solid #374151" }}>
+          <div className="flex-1" />
 
           <Button
             variant="outline"
@@ -1277,7 +1316,7 @@ function RouteCard({
             <Button
               size="sm"
               className="h-8 gap-1.5 rounded-lg font-semibold text-white border-0"
-              style={{ backgroundColor: rarity.color }}
+              style={{ backgroundColor: tier.color }}
               onClick={onAssign}
               title="Assumir esta rota"
               data-testid={`button-assign-${route.id}`}
