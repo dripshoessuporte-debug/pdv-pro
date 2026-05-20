@@ -6,6 +6,7 @@ import {
   getListOrdersQueryKey,
   useCancelOrder,
   useSendOrderToKitchen,
+  type ListOrdersStatus,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -57,7 +58,7 @@ export default function Orders() {
   const [, setLocation] = useLocation();
 
   const { data: orders, isLoading } = useListOrders(
-    statusFilter === "all" ? {} : { status: statusFilter as string },
+    statusFilter === "all" ? {} : { status: statusFilter as ListOrdersStatus },
     {
       query: {
         queryKey: getListOrdersQueryKey(statusFilter === "all" ? {} : { status: statusFilter }),
@@ -189,7 +190,7 @@ export default function Orders() {
                           {STATUS_LABELS[order.status]}
                         </span>
                         <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                          {TYPE_LABELS[order.type]}
+                          {order.type ? (TYPE_LABELS[order.type] ?? order.type) : ""}
                         </span>
                       </div>
                       <p className="text-sm text-muted-foreground truncate">

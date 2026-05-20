@@ -127,7 +127,7 @@ export default function NewOrder() {
 
       const order = await new Promise<{ id: number }>((resolve, reject) => {
         createOrder.mutate(
-          { data: orderData as Parameters<typeof createOrder.mutate>[0]["data"] },
+          { data: orderData as unknown as Parameters<typeof createOrder.mutate>[0]["data"] },
           { onSuccess: (o) => resolve(o), onError: (e) => reject(e) }
         );
       });

@@ -12,6 +12,7 @@ import {
   getListOrdersQueryKey,
   getListTablesQueryKey,
   getGetDashboardSummaryQueryKey,
+  ApiError,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, CheckCircle2, CreditCard, Banknote, Wallet, QrCode, Receipt, AlertTriangle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CreditCard, Banknote, Wallet, QrCode, Receipt, AlertTriangle, Ban } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const PAYMENT_METHODS = [
@@ -42,6 +43,7 @@ export default function Payment() {
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [amountTendered, setAmountTendered] = useState("");
   const [paid, setPaid] = useState(false);
+  const [alreadyPaid, setAlreadyPaid] = useState(false);
   const [cashWarningDismissed, setCashWarningDismissed] = useState(false);
 
   const { data: order, isLoading } = useGetOrder(orderIdNum, {
@@ -75,14 +77,20 @@ export default function Payment() {
         setPaid(true);
         toast({ title: "✅ Pagamento realizado com sucesso!" });
       },
-      onError: () => {
-        toast({ title: "Erro ao processar pagamento", variant: "destructive" });
+      onError: (error) => {
+        if (error instanceof ApiError && error.status === 409) {
+          setAlreadyPaid(true);
+          queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderIdNum) });
+          return;
+        }
+        toast({ title: "Erro ao processar pagamento. Tente novamente.", variant: "destructive" });
       },
     },
   });
 
   const handlePay = () => {
-    if (!order) return;
+    // Guard against double-click or re-submission
+    if (!order || createPayment.isPending || paid || alreadyPaid) return;
     createPayment.mutate({
       data: {
         orderId: orderIdNum,
@@ -173,10 +181,10 @@ export default function Payment() {
                     <span>Forma de pagamento</span>
                     <span>{PAYMENT_METHODS.find((m) => m.value === receipt.payment.method)?.label}</span>
                   </div>
-                  {receipt.payment.change !== null && receipt.payment.change > 0 && (
+                  {receipt.payment.change != null && receipt.payment.change > 0 && (
                     <div className="flex justify-between text-xs text-green-600 dark:text-green-400 font-semibold">
                       <span>Troco</span>
-                      <span>R$ {receipt.payment.change.toFixed(2)}</span>
+                      <span>R$ {(receipt.payment.change as number).toFixed(2)}</span>
                     </div>
                   )}
                   {cashRegister && (
@@ -196,6 +204,31 @@ export default function Payment() {
             </Button>
             <Button variant="outline" onClick={() => setLocation("/orders")} data-testid="button-back-orders">
               Ver Pedidos
+            </Button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  /* ─── Tela: Pedido já pago (409) ─── */
+  if (alreadyPaid) {
+    return (
+      <Layout>
+        <div className="max-w-md mx-auto text-center space-y-6 py-12">
+          <div>
+            <Ban className="w-20 h-20 text-amber-500 mx-auto mb-4" />
+            <h1 className="text-2xl font-bold">Pedido já pago</h1>
+            <p className="text-muted-foreground mt-2">
+              O Pedido #{orderIdNum} já foi finalizado e não pode ser pago novamente.
+            </p>
+          </div>
+          <div className="flex gap-3 justify-center">
+            <Button onClick={() => setLocation(`/orders/${orderIdNum}`)} variant="outline">
+              Ver Pedido
+            </Button>
+            <Button onClick={() => setLocation("/orders")}>
+              Ver Todos os Pedidos
             </Button>
           </div>
         </div>
@@ -364,6 +397,8 @@ export default function Payment() {
                   onClick={handlePay}
                   disabled={
                     createPayment.isPending ||
+                    paid ||
+                    alreadyPaid ||
                     order.items.length === 0 ||
                     (method === "cash" && !!amountTendered && !!insufficient)
                   }

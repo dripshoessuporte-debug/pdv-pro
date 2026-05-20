@@ -1,0 +1,45 @@
+Corrija os bugs críticos encontrados na auditoria da Fase 2 — Controle de Caixa.
+
+Não implemente novas funcionalidades.
+Não avance para Cardápio, Delivery, Estoque ou Financeiro avançado.
+Preserve o design atual.
+Preserve todas as funcionalidades já existentes.
+
+Corrija especificamente:
+
+1. Bloqueio de pagamento duplicado:
+   - No backend, no endpoint POST /payments, antes de criar qualquer pagamento, verifique o status do pedido.
+   - Se o pedido já estiver com status "closed", "paid", "finalized" ou equivalente no projeto, retorne erro 409.
+   - A mensagem deve ser clara: "Este pedido já foi pago/finalizado."
+   - Essa proteção precisa estar no backend, não apenas no frontend.
+
+2. Transação atômica no pagamento:
+   - Coloque toda a sequência do pagamento dentro de uma transação do banco:
+     a) criar o registro em payments
+     b) atualizar o status do pedido para fechado/finalizado
+     c) liberar a mesa, se o pedido estiver vinculado a uma mesa
+     d) registrar a movimentação no caixa aberto em cash_movements
+   - Se qualquer etapa falhar, nenhuma alteração deve ser salva parcialmente.
+
+3. Prevenção de movimentação duplicada no caixa:
+   - Garanta que um mesmo pedido não gere duas movimentações de pagamento no caixa.
+   - Se já existir cash_movement do tipo payment para aquele orderId, não crie outra.
+   - Preferencialmente trate isso no backend de forma segura.
+
+4. Frontend:
+   - Garanta que, após confirmar pagamento, o botão não permita novo envio.
+   - Se o backend retornar 409 porque o pedido já foi pago, mostre uma mensagem amigável para o usuário.
+
+5. Testes manuais obrigatórios:
+   - Tentar pagar o mesmo pedido duas vezes.
+   - Dar double-click rápido em Confirmar Pagamento.
+   - Atualizar a página após pagar e tentar pagar novamente.
+   - Confirmar que só existe 1 payment e 1 cash_movement para o mesmo pedido.
+   - Confirmar que o caixa não soma pagamento duplicado.
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. O que foi corrigido.
+3. Como testar passo a passo.
+4. Se ainda existe algum risco financeiro antes de avançarmos.

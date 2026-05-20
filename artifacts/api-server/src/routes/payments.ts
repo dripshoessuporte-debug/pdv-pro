@@ -1,6 +1,16 @@
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
-import { db, paymentsTable, ordersTable, tablesTable, orderItemsTable, productsTable, customersTable, cashRegistersTable, cashMovementsTable } from "@workspace/db";
+import { eq, sql, and } from "drizzle-orm";
+import {
+  db,
+  paymentsTable,
+  ordersTable,
+  tablesTable,
+  orderItemsTable,
+  productsTable,
+  customersTable,
+  cashRegistersTable,
+  cashMovementsTable,
+} from "@workspace/db";
 import {
   CreatePaymentBody,
   GetReceiptParams,
@@ -16,51 +26,111 @@ router.post("/payments", async (req, res): Promise<void> => {
     return;
   }
 
-  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, parsed.data.orderId));
+  // Pre-check order exists — outside transaction for a fast early exit
+  const [order] = await db
+    .select()
+    .from(ordersTable)
+    .where(eq(ordersTable.id, parsed.data.orderId));
+
   if (!order) {
-    res.status(404).json({ error: "Order not found" });
+    res.status(404).json({ error: "Pedido não encontrado." });
     return;
   }
 
-  let change: string | null = null;
-  if (parsed.data.method === "cash" && parsed.data.amountTendered !== undefined) {
-    const changeVal = parsed.data.amountTendered - parsed.data.amount;
-    change = String(Math.max(0, changeVal));
+  if (order.status === "closed") {
+    res.status(409).json({ error: "Este pedido já foi pago/finalizado." });
+    return;
   }
 
-  const [payment] = await db.insert(paymentsTable).values({
-    orderId: parsed.data.orderId,
-    amount: String(parsed.data.amount),
-    method: parsed.data.method,
-    status: "approved",
-    change,
-  }).returning();
+  // Execute every payment step atomically
+  let payment;
+  try {
+    payment = await db.transaction(async (tx) => {
+      // SELECT … FOR UPDATE acquires a row-level lock so concurrent transactions
+      // must wait until this one commits — prevents the double-payment race.
+      const [freshOrder] = await tx
+        .select({ status: ordersTable.status, tableId: ordersTable.tableId })
+        .from(ordersTable)
+        .where(eq(ordersTable.id, parsed.data.orderId))
+        .for("update");
 
-  // Close the order and free the table
-  await db.update(ordersTable).set({ status: "closed" }).where(eq(ordersTable.id, parsed.data.orderId));
-  if (order.tableId) {
-    await db.update(tablesTable)
-      .set({ status: "available", currentOrderId: null })
-      .where(eq(tablesTable.id, order.tableId));
-  }
+      if (!freshOrder || freshOrder.status === "closed") {
+        const err = new Error("Este pedido já foi pago/finalizado.") as Error & { alreadyPaid: true };
+        err.alreadyPaid = true;
+        throw err;
+      }
 
-  // Auto-register in open cash register if one exists
-  const [openRegister] = await db
-    .select()
-    .from(cashRegistersTable)
-    .where(eq(cashRegistersTable.status, "open"))
-    .orderBy(sql`${cashRegistersTable.openedAt} DESC`)
-    .limit(1);
+      let change: string | null = null;
+      if (parsed.data.method === "cash" && parsed.data.amountTendered !== undefined) {
+        change = String(Math.max(0, parsed.data.amountTendered - parsed.data.amount));
+      }
 
-  if (openRegister) {
-    await db.insert(cashMovementsTable).values({
-      cashRegisterId: openRegister.id,
-      type: "payment",
-      amount: String(parsed.data.amount),
-      paymentMethod: parsed.data.method,
-      reason: `Pagamento Pedido #${parsed.data.orderId}`,
-      orderId: parsed.data.orderId,
+      // Step 1: create payment record
+      const [newPayment] = await tx
+        .insert(paymentsTable)
+        .values({
+          orderId: parsed.data.orderId,
+          amount: String(parsed.data.amount),
+          method: parsed.data.method,
+          status: "approved",
+          change,
+        })
+        .returning();
+
+      // Step 2: close the order
+      await tx
+        .update(ordersTable)
+        .set({ status: "closed" })
+        .where(eq(ordersTable.id, parsed.data.orderId));
+
+      // Step 3: release the table if linked
+      if (order.tableId) {
+        await tx
+          .update(tablesTable)
+          .set({ status: "available", currentOrderId: null })
+          .where(eq(tablesTable.id, order.tableId));
+      }
+
+      // Step 4: register in open cash register with idempotency guard
+      const [openRegister] = await tx
+        .select({ id: cashRegistersTable.id })
+        .from(cashRegistersTable)
+        .where(eq(cashRegistersTable.status, "open"))
+        .orderBy(sql`${cashRegistersTable.openedAt} DESC`)
+        .limit(1);
+
+      if (openRegister) {
+        const [existingMovement] = await tx
+          .select({ id: cashMovementsTable.id })
+          .from(cashMovementsTable)
+          .where(
+            and(
+              eq(cashMovementsTable.orderId, parsed.data.orderId),
+              eq(cashMovementsTable.type, "payment")
+            )
+          )
+          .limit(1);
+
+        if (!existingMovement) {
+          await tx.insert(cashMovementsTable).values({
+            cashRegisterId: openRegister.id,
+            type: "payment",
+            amount: String(parsed.data.amount),
+            paymentMethod: parsed.data.method,
+            reason: `Pagamento Pedido #${parsed.data.orderId}`,
+            orderId: parsed.data.orderId,
+          });
+        }
+      }
+
+      return newPayment!;
     });
+  } catch (err) {
+    if (err && typeof err === "object" && (err as { alreadyPaid?: boolean }).alreadyPaid) {
+      res.status(409).json({ error: "Este pedido já foi pago/finalizado." });
+      return;
+    }
+    throw err;
   }
 
   res.status(201).json({
@@ -98,13 +168,17 @@ router.get("/payments/:orderId/receipt", async (req, res): Promise<void> => {
     .where(eq(ordersTable.id, params.data.orderId));
 
   if (!order) {
-    res.status(404).json({ error: "Order not found" });
+    res.status(404).json({ error: "Pedido não encontrado." });
     return;
   }
 
-  const [payment] = await db.select().from(paymentsTable).where(eq(paymentsTable.orderId, params.data.orderId));
+  const [payment] = await db
+    .select()
+    .from(paymentsTable)
+    .where(eq(paymentsTable.orderId, params.data.orderId));
+
   if (!payment) {
-    res.status(404).json({ error: "Payment not found" });
+    res.status(404).json({ error: "Pagamento não encontrado." });
     return;
   }
 

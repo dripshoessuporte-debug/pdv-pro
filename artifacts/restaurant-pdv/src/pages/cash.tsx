@@ -8,6 +8,7 @@ import {
   useListCashRegisters,
   getGetCurrentCashRegisterQueryKey,
   getListCashRegistersQueryKey,
+  type CashRegisterDetail,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -612,7 +613,7 @@ function HistoryView({
   registers,
   loading,
 }: {
-  registers: ReturnType<typeof useListCashRegisters>["data"];
+  registers: CashRegisterDetail[] | undefined;
   loading: boolean;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
