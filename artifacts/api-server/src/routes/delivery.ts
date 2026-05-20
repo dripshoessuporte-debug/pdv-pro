@@ -223,17 +223,27 @@ function orderPairScore(a: EligibleOrder, b: EligibleOrder): number {
  */
 const MIN_PAIR_SCORE = 18;
 
+/** Max kitchen-time spread allowed within a single route (20 minutes). */
+const MAX_TIME_SPREAD_MS = 20 * 60_000;
+
+/** Returns the reference time used for urgency (kitchen acceptance, or creation). */
+function kitchenTimeMs(o: EligibleOrder): number {
+  return o.kitchenAcceptedAt?.getTime() ?? o.createdAt.getTime();
+}
+
 /**
- * Greedy proximity-based grouping algorithm.
+ * Greedy grouping algorithm — urgency-first, proximity-within-time-window.
  *
- * 1. Sort all orders by proximity to the store CEP (closest first).
- * 2. For each unassigned order (seed), fill a batch with the most compatible
- *    remaining orders that exceed MIN_PAIR_SCORE.
- * 3. Routes may be smaller than maxPerRoute — distant leftovers form their
- *    own routes rather than being forced into a nearby one.
+ * 1. Sort all orders by kitchen acceptance time (oldest = most urgent first).
+ * 2. Seed each route with the next unassigned (most urgent) order.
+ * 3. Fill the batch greedily: a candidate is accepted only when it:
+ *    a) scores >= MIN_PAIR_SCORE against at least one current batch member
+ *       (geographic proximity), AND
+ *    b) does not push the batch's kitchen-time spread beyond 20 minutes.
+ * 4. Routes may be smaller than maxPerRoute — geographically or temporally
+ *    incompatible leftovers form their own routes.
  *
- * The store CEP is the reference for seeding order (closest to the store
- * seeds first) and for sorting stops within each route.
+ * Stops within each route are sorted closest-to-store first.
  */
 function generateRoutePlan(
   orders: EligibleOrder[],
@@ -243,15 +253,10 @@ function generateRoutePlan(
   const assigned = new Set<number>();
   const routes: Array<{ mainNeighborhood: string; orders: EligibleOrder[] }> = [];
 
-  // Pre-sort by proximity to store so we seed routes with the nearest orders first
-  const byProximity = [...orders].sort((a, b) => {
-    const sA = proximityToStore(storeCep, a.deliveryCep ?? "");
-    const sB = proximityToStore(storeCep, b.deliveryCep ?? "");
-    if (sB !== sA) return sB - sA;
-    return normalizeCep(a.deliveryCep ?? "").localeCompare(normalizeCep(b.deliveryCep ?? ""));
-  });
+  // Sort oldest-first so the most urgent orders seed routes first
+  const byUrgency = [...orders].sort((a, b) => kitchenTimeMs(a) - kitchenTimeMs(b));
 
-  for (const seed of byProximity) {
+  for (const seed of byUrgency) {
     if (assigned.has(seed.id)) continue;
 
     assigned.add(seed.id);
@@ -259,22 +264,28 @@ function generateRoutePlan(
 
     // Fill batch greedily up to maxPerRoute.
     //
-    // At each step, score each unassigned candidate against the BEST (maximum)
-    // match with any current batch member — not just the seed. This ensures
-    // that once a Batel order is in the batch, other Batel orders score much
-    // higher (same neighbourhood + matching CEP) and are preferred over orders
-    // from a different neighbourhood that only scored well against the seed.
-    //
-    // Only candidates that reach MIN_PAIR_SCORE against at least one batch
-    // member are considered, preventing geographically distant orders from
-    // being pulled in just to fill the route.
+    // A candidate qualifies only when:
+    //   1. Its geographic score vs at least one batch member >= MIN_PAIR_SCORE.
+    //   2. Adding it would not increase the batch's kitchen-time spread beyond
+    //      MAX_TIME_SPREAD_MS (20 min) — avoids mixing a just-dispatched order
+    //      with one that has been waiting 30+ minutes.
     while (batch.length < maxPerRoute) {
       let bestOrder: EligibleOrder | null = null;
       let bestScore = MIN_PAIR_SCORE - 1; // must exceed threshold to qualify
 
-      for (const o of byProximity) {
+      const batchTimes = batch.map(kitchenTimeMs);
+      const batchTimeMin = Math.min(...batchTimes);
+      const batchTimeMax = Math.max(...batchTimes);
+
+      for (const o of byUrgency) {
         if (assigned.has(o.id)) continue;
-        // Score vs every current batch member; keep the maximum
+
+        // Time-spread gate: reject if adding this order would exceed 20 min spread
+        const t = kitchenTimeMs(o);
+        const newSpread = Math.max(batchTimeMax, t) - Math.min(batchTimeMin, t);
+        if (newSpread > MAX_TIME_SPREAD_MS) continue;
+
+        // Geographic score vs every current batch member; keep the maximum
         const score = batch.reduce(
           (max, batchMember) => Math.max(max, orderPairScore(batchMember, o)),
           0
@@ -283,11 +294,8 @@ function generateRoutePlan(
           bestScore = score;
           bestOrder = o;
         } else if (score === bestScore && bestOrder !== null) {
-          // Tiebreak: lower CEP numeric string wins (i.e. closer to store)
-          if (
-            normalizeCep(o.deliveryCep ?? "") <
-            normalizeCep(bestOrder.deliveryCep ?? "")
-          ) {
+          // Tiebreak: prefer the more urgent (older kitchen time) order
+          if (kitchenTimeMs(o) < kitchenTimeMs(bestOrder)) {
             bestOrder = o;
           }
         }
