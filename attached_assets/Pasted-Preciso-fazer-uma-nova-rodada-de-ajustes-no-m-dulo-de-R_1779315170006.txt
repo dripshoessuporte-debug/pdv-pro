@@ -1,0 +1,275 @@
+Preciso fazer uma nova rodada de ajustes no módulo de Rotas, mantendo o visual clean atual, mas corrigindo a organização da tela e preparando uma nova massa de testes.
+
+Não refaça o projeto do zero.
+Não altere funcionalidades que já estão funcionando fora do necessário.
+Preserve:
+- pedidos
+- cozinha
+- caixa
+- pagamento
+- cardápio
+- delivery
+- rotas
+- configurações
+- QR Code
+- pagamento na entrega
+- alertas de tempo
+- agrupamento por CEP/bairro
+- organização dos pedidos por data
+
+OBJETIVO:
+1. Separar Rotas Prontas e Rotas em Andamento por botão/filtro no topo.
+2. Melhorar o nome/identificação das rotas.
+3. Corrigir a barra de progresso para refletir quantos pedidos da rota já estão prontos na cozinha.
+4. Limpar os dados atuais de teste.
+5. Criar 20 novas entregas de teste com bairros diferentes de Curitiba.
+6. Deixar essas novas entregas em aguardando, sem já aparecerem em Rotas Prontas.
+
+==================================================
+PARTE 1 — ROTAS EM ANDAMENTO EM BOTÃO SEPARADO
+==================================================
+
+Hoje as Rotas em Andamento aparecem na mesma tela do painel de rotas.
+Não quero mais isso.
+
+Ajustar para funcionar assim:
+
+No topo da página Rotas, ao lado de:
+- Atualizar
+- Rotas Prontas
+
+criar também um botão/aba/filtro:
+
+- Rotas em Andamento
+
+Comportamento:
+1. A tela principal deve mostrar apenas a área correspondente ao filtro/aba selecionado.
+2. Quando eu estiver em "Rotas Prontas", mostrar apenas as rotas prontas para assumir.
+3. Quando eu estiver em "Rotas em Andamento", mostrar apenas as rotas já assumidas.
+4. Não quero mais as duas listas empilhadas na mesma tela.
+5. Escolher a abordagem mais clean:
+   - abas
+   - ou botões-toggle
+   - ou filtro segmentado
+
+Precisa ficar simples de usar.
+
+==================================================
+PARTE 2 — COMPORTAMENTO AO ASSUMIR ROTA
+==================================================
+
+Quando eu clicar em "Assumir Rota":
+
+1. A rota deve mudar para status "em andamento".
+2. Ela deve sair da visualização "Rotas Prontas".
+3. Ela deve aparecer na visualização "Rotas em Andamento".
+4. Manter o nome do motoboy, se já estiver sendo preenchido.
+5. Mostrar claramente que a rota está em andamento.
+
+==================================================
+PARTE 3 — NOME DAS ROTAS
+==================================================
+
+Hoje está aparecendo algo como:
+- Rota 6 — Rebouças
+- Rota 7 — Batel
+
+Não quero esse formato.
+
+Quero assim:
+- 1 Rebouças
+- 2 Batel
+- 3 Mercês
+- 4 Centro
+
+Regra:
+1. Remover a palavra "Rota".
+2. Remover aquela numeração quebrada (6, 7, 8 etc).
+3. Reindexar as rotas de forma simples e limpa na exibição:
+   - 1, 2, 3, 4...
+4. Mostrar:
+   - número curto
+   - nome do bairro principal
+5. Exemplo final:
+   - 1 Rebouças
+   - 2 Batel
+   - 3 Água Verde
+
+Se internamente a rota continuar com id próprio, tudo bem.
+Mas na interface visual quero esse formato mais limpo.
+
+==================================================
+PARTE 4 — BARRA DE PROGRESSO DA ROTA
+==================================================
+
+Hoje a barrinha/progresso precisa refletir corretamente a situação da rota.
+
+Quero a barra baseada em:
+- quantidade de pedidos da rota que já estão prontos na cozinha
+dividido por
+- quantidade total de pedidos da rota
+
+Exemplo:
+- rota com 3 pedidos
+- 0 prontos = 0%
+- 1 pronto = 33%
+- 2 prontos = 66%
+- 3 prontos = 100%
+
+Ajustes:
+1. A barra deve crescer conforme os pedidos da rota forem ficando prontos.
+2. Quando todos os pedidos estiverem prontos, a barra deve mostrar 100%.
+3. O texto ao lado ou abaixo pode mostrar algo como:
+   - 0/3 prontos
+   - 1/3 prontos
+   - 2/3 prontos
+   - 3/3 prontos
+4. Usar como base os pedidos da rota e o status correto de cozinha / delivery.
+5. O progresso deve ser visualmente claro e fácil de entender.
+
+==================================================
+PARTE 5 — INDICADOR DE QUANTIDADE DE ENTREGAS
+==================================================
+
+Manter a melhoria do indicador da rota, mas deixar claro:
+
+1. Mostrar quantos pedidos/entregas a rota possui.
+2. Exemplo:
+   - 3 entregas
+   - ou 3 pedidos
+3. Manter também a taxa de ocupação da rota, se fizer sentido:
+   - 3 entregas • 75%
+4. O miolo do indicador deve continuar bem legível.
+5. Pode manter o número grande, mas com um texto pequeno logo abaixo ou ao lado.
+
+==================================================
+PARTE 6 — MASSA DE TESTE: LIMPAR E CRIAR 20 NOVAS ENTREGAS
+==================================================
+
+Agora preciso resetar os dados de teste do delivery/rotas.
+
+Ação desejada:
+1. Excluir ou limpar as rotas de teste atuais.
+2. Excluir ou limpar as entregas/pedidos de teste atuais relacionados a esse fluxo, se necessário.
+3. Criar 20 novas entregas/pedidos de teste.
+
+Essas 20 novas entregas devem:
+- ser do tipo delivery
+- ter bairros variados de Curitiba
+- ter nome de cliente, endereço, CEP e taxa de entrega
+- estar em estado de aguardando / listadas
+- NÃO devem aparecer automaticamente em "Rotas Prontas"
+- NÃO devem já estar agrupadas em rota
+- devem ficar disponíveis para eu testar manualmente depois
+
+Ou seja:
+quero criar a massa de pedidos, mas deixar que eu mesmo clique depois no botão "Rotas Prontas" / gerar rotas / fluxo correspondente para testar manualmente.
+
+==================================================
+PARTE 7 — BAIRROS PARA USAR NO TESTE
+==================================================
+
+Use bairros reais de Curitiba para distribuir esses 20 pedidos de teste.
+Pode usar uma mistura como:
+
+- Batel
+- Rebouças
+- Água Verde
+- Centro
+- Mercês
+- Bigorrilho
+- Portão
+- Xaxim
+- Boqueirão
+- Hauer
+- Cristo Rei
+- Juvevê
+- Cabral
+- Alto da XV
+- Santa Felicidade
+- Pinheirinho
+- Sítio Cercado
+- Cajuru
+- Capão Raso
+- Bairro Alto
+
+Distribuir os 20 pedidos entre esses bairros.
+
+Cada pedido deve ter:
+- nome do cliente
+- telefone
+- endereço coerente
+- CEP coerente ou compatível
+- taxa de entrega
+- itens
+- total
+
+==================================================
+PARTE 8 — STATUS INICIAL DESSAS NOVAS ENTREGAS
+==================================================
+
+Importante:
+Esses novos pedidos não devem cair direto em "Rotas Prontas".
+
+Quero que fiquem no estado inicial correto de aguardando/listados.
+
+Ou seja:
+1. Criar os pedidos delivery.
+2. Deixar eles fora da lista de rotas prontas inicialmente.
+3. Eu mesmo quero testar manualmente depois apertando no fluxo de Rotas Prontas / gerar rotas.
+
+Se existir uma tela/lista de pedidos aguardando rota, deixar eles ali.
+Se existir uma seção “Aguardando rota”, deixar eles lá.
+Mas não pré-gerar as rotas automáticas para esses novos testes.
+
+==================================================
+PARTE 9 — MANTER VISUAL CLEAN
+==================================================
+
+Preservar o visual clean atual:
+- fundo claro
+- cards brancos
+- laranja como cor principal
+- borda colorida nas rotas
+- glow leve
+- boa legibilidade
+
+Não voltar para tema escuro.
+
+==================================================
+PARTE 10 — TESTES OBRIGATÓRIOS
+==================================================
+
+Teste:
+
+1. Verificar se agora existe um botão/aba/filtro para "Rotas em Andamento".
+2. Verificar se "Rotas Prontas" e "Rotas em Andamento" não aparecem mais empilhadas na mesma tela.
+3. Verificar se ao clicar em "Assumir Rota":
+   - a rota sai de Rotas Prontas
+   - a rota aparece em Rotas em Andamento
+4. Verificar se os nomes das rotas agora aparecem no formato:
+   - 1 Rebouças
+   - 2 Batel
+   - 3 Mercês
+5. Verificar se a barra de progresso reflete quantos pedidos estão prontos na cozinha.
+6. Verificar exemplos:
+   - 0/3 = 0%
+   - 1/3 = ~33%
+   - 2/3 = ~66%
+   - 3/3 = 100%
+7. Verificar se os dados antigos de teste foram limpos.
+8. Verificar se foram criados 20 novos pedidos delivery de teste.
+9. Verificar se eles usam bairros variados de Curitiba.
+10. Verificar se esses novos pedidos ficaram em aguardando/listados e NÃO apareceram automaticamente em Rotas Prontas.
+11. Rodar typecheck sem erros.
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Como ficou a separação entre Rotas Prontas e Rotas em Andamento.
+3. Como ficou o novo formato dos nomes das rotas.
+4. Como ficou a lógica da barra de progresso.
+5. Como foi feita a limpeza e criação dos 20 novos pedidos de teste.
+6. Quais bairros de Curitiba foram usados.
+7. Como testar passo a passo.
+8. Limitações restantes.

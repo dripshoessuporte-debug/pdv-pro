@@ -217,6 +217,7 @@ export default function Routes() {
   const [addingToRoute, setAddingToRoute] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
   const [maxOrdersPerRoute, setMaxOrdersPerRoute] = useState(4);
+  const [routeView, setRouteView] = useState<"available" | "in_progress">("available");
 
   const fetchRoutes = useCallback(async () => {
     try {
@@ -323,6 +324,7 @@ export default function Routes() {
       setAssignRoute(null);
       setCourierName("");
       setSelectedCourierId(null);
+      setRouteView("in_progress");
     } catch (e) {
       toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
     } finally {
@@ -550,49 +552,55 @@ export default function Routes() {
           </section>
         )}
 
-        {/* ── Available routes ── */}
-        {availableRoutes.length > 0 && (
-          <section>
-            <div className="flex items-center gap-2 mb-2">
+        {/* ── View toggle tabs ── */}
+        {(availableRoutes.length > 0 || inProgressRoutes.length > 0 || !loading) && (
+          <div className="flex items-center gap-1 bg-muted/40 rounded-xl p-1 self-start w-fit">
+            <button
+              onClick={() => setRouteView("available")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                routeView === "available"
+                  ? "bg-white shadow-sm text-[#0F172A]"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              data-testid="tab-available"
+            >
               <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
-              <h2 className="text-base font-semibold">Rotas Disponíveis</h2>
-              <span className="text-sm text-muted-foreground">({availableRoutes.length})</span>
-              <span className="text-xs text-muted-foreground hidden sm:block">— prontas para assumir</span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {availableRoutes.map((route) => (
-                <RouteCard
-                  key={route.id}
-                  route={route}
-                  allActiveRoutes={activeRoutes}
-                  maxOrders={maxOrdersPerRoute}
-                  onAssign={() => { setAssignRoute(route); setCourierName(""); }}
-                  onComplete={() => handleComplete(route)}
-                  onQrCode={() => setQrRoute(route)}
-                  onMoveOrder={(orderId, customerName) =>
-                    setMoveOrderState({ orderId, routeId: route.id, customerName })
-                  }
-                  completing={completing === route.id}
-                />
-              ))}
-            </div>
-          </section>
+              Rotas Disponíveis
+              {availableRoutes.length > 0 && (
+                <span className={`text-xs font-semibold rounded-full px-1.5 leading-5 min-w-[1.2rem] text-center ${routeView === "available" ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground"}`}>
+                  {availableRoutes.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setRouteView("in_progress")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                routeView === "in_progress"
+                  ? "bg-white shadow-sm text-[#0F172A]"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              data-testid="tab-in-progress"
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${inProgressRoutes.length > 0 ? "bg-amber-400 animate-pulse" : "bg-amber-300"}`} />
+              Rotas em Andamento
+              {inProgressRoutes.length > 0 && (
+                <span className={`text-xs font-semibold rounded-full px-1.5 leading-5 min-w-[1.2rem] text-center ${routeView === "in_progress" ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground"}`}>
+                  {inProgressRoutes.length}
+                </span>
+              )}
+            </button>
+          </div>
         )}
 
-        {/* ── In-progress routes ── */}
-        {inProgressRoutes.length > 0 && (
-          <section>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
-              <h2 className="text-base font-semibold">Rotas em Andamento</h2>
-              <span className="text-sm text-muted-foreground">({inProgressRoutes.length})</span>
-              <span className="text-xs text-muted-foreground hidden sm:block">— já assumidas por motoboy</span>
-            </div>
+        {/* ── Routes grid (tab-controlled) ── */}
+        {routeView === "available" ? (
+          availableRoutes.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {inProgressRoutes.map((route) => (
+              {availableRoutes.map((route, idx) => (
                 <RouteCard
                   key={route.id}
                   route={route}
+                  index={idx}
                   allActiveRoutes={activeRoutes}
                   maxOrders={maxOrdersPerRoute}
                   onAssign={() => { setAssignRoute(route); setCourierName(""); }}
@@ -605,7 +613,40 @@ export default function Routes() {
                 />
               ))}
             </div>
-          </section>
+          ) : !loading && (
+            <div className="text-center py-10 border-2 border-dashed rounded-xl text-muted-foreground">
+              <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm font-medium">Nenhuma rota disponível</p>
+              <p className="text-xs mt-1">Clique em <strong>Rotas Prontas</strong> para agrupar os pedidos</p>
+            </div>
+          )
+        ) : (
+          inProgressRoutes.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {inProgressRoutes.map((route, idx) => (
+                <RouteCard
+                  key={route.id}
+                  route={route}
+                  index={idx}
+                  allActiveRoutes={activeRoutes}
+                  maxOrders={maxOrdersPerRoute}
+                  onAssign={() => { setAssignRoute(route); setCourierName(""); }}
+                  onComplete={() => handleComplete(route)}
+                  onQrCode={() => setQrRoute(route)}
+                  onMoveOrder={(orderId, customerName) =>
+                    setMoveOrderState({ orderId, routeId: route.id, customerName })
+                  }
+                  completing={completing === route.id}
+                />
+              ))}
+            </div>
+          ) : !loading && (
+            <div className="text-center py-10 border-2 border-dashed rounded-xl text-muted-foreground">
+              <Truck className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm font-medium">Nenhuma rota em andamento</p>
+              <p className="text-xs mt-1">Rotas assumidas por motoboys aparecerão aqui</p>
+            </div>
+          )
         )}
 
         {/* ── Completed routes ── */}
@@ -623,10 +664,11 @@ export default function Routes() {
             </button>
             {showCompleted && (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mt-3 opacity-60">
-                {completedRoutes.map((route) => (
+                {completedRoutes.map((route, idx) => (
                   <RouteCard
                     key={route.id}
                     route={route}
+                    index={idx}
                     allActiveRoutes={[]}
                     maxOrders={maxOrdersPerRoute}
                     onAssign={() => {}}
@@ -1054,8 +1096,9 @@ const ROUTE_VALUE_LEGEND = [
 
 function RouteCard({
   route,
+  index,
   allActiveRoutes,
-  maxOrders,
+  maxOrders: _maxOrders,
   onAssign,
   onComplete,
   onQrCode,
@@ -1063,6 +1106,7 @@ function RouteCard({
   completing,
 }: {
   route: DeliveryRoute;
+  index: number;
   allActiveRoutes: DeliveryRoute[];
   maxOrders: number;
   onAssign: () => void;
@@ -1088,7 +1132,7 @@ function RouteCard({
 
   const vc = getRouteValueColor(route.totalDeliveryFee);
 
-  const occupancyPct = Math.min(100, Math.round((totalCount / Math.max(1, maxOrders)) * 100));
+  const readinessPct = totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
 
   const otherNeighborhoods = route.includedNeighborhoods.filter((n) => n !== route.mainNeighborhood);
 
@@ -1107,7 +1151,7 @@ function RouteCard({
 
         {/* ── Header ── */}
         <div className="flex items-start gap-3">
-          {/* Occupancy pill */}
+          {/* Readiness pill */}
           <div
             className="flex flex-col items-center justify-center shrink-0 rounded-xl px-2.5 py-2 min-w-[58px]"
             style={{ backgroundColor: `${vc.color}12`, border: `1px solid ${vc.color}40` }}
@@ -1122,15 +1166,20 @@ function RouteCard({
               <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden w-full">
                 <div
                   className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${occupancyPct}%`, backgroundColor: vc.color }}
+                  style={{ width: `${readinessPct}%`, backgroundColor: readinessPct === 100 ? "#22C55E" : vc.color }}
                 />
               </div>
-              <span className="text-[10px] text-[#64748B] block text-center mt-0.5">{occupancyPct}%</span>
+              <span className="text-[10px] text-[#64748B] block text-center mt-0.5">
+                {readyCount}/{totalCount} prontos
+              </span>
             </div>
           </div>
 
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-sm leading-snug text-[#0F172A]">{route.name}</h3>
+            <h3 className="font-semibold text-sm leading-snug text-[#0F172A]">
+              <span style={{ color: vc.color }} className="font-black">{index + 1}</span>
+              {" "}{route.mainNeighborhood}
+            </h3>
             <div className="flex items-center gap-1 mt-0.5 text-xs" style={{ color: "#64748B" }}>
               <MapPin className="w-3 h-3 shrink-0" />
               <span className="font-medium">{route.mainNeighborhood}</span>
