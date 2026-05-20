@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Layout } from "@/components/layout";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Truck, RefreshCw, Sparkles, MapPin, Package, DollarSign, User, Phone,
+  Banknote, CreditCard, Smartphone, QrCode, Play, CheckCircle2, Clock,
+  AlertTriangle, AlertCircle, Hash, Plus, Minus, ArrowRightLeft, Zap, X,
+  ChevronRight, Timer,
+} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -9,46 +15,19 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
-import {
-  Truck,
-  MapPin,
-  Phone,
-  User,
-  QrCode,
-  Play,
-  CheckCircle2,
-  RefreshCw,
-  Package,
-  DollarSign,
-  Sparkles,
-  Clock,
-  Plus,
-  Minus,
-  Banknote,
-  CreditCard,
-  Smartphone,
-  AlertTriangle,
-  AlertCircle,
-  Hash,
-} from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { Layout } from "@/components/layout";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type RouteStatus = "available" | "in_progress" | "completed";
-
-type DeliveryOrderStatus =
-  | "pending"
-  | "preparing"
-  | "ready"
-  | "out_for_delivery"
-  | "delivered";
+type DeliveryOrderStatus = "pending" | "preparing" | "ready" | "out_for_delivery" | "delivered";
 
 interface RouteOrder {
   id: number;
-  routeId: number;
   orderId: number;
+  routeId: number;
   stopOrder: number;
   customerName: string | null;
   customerPhone: string | null;
@@ -56,25 +35,23 @@ interface RouteOrder {
   deliveryNeighborhood: string | null;
   deliveryCep: string | null;
   deliveryFee: number;
-  deliveryStatus: DeliveryOrderStatus | null;
   totalAmount: number;
-  paymentTiming: "now" | "on_delivery";
-  deliveryPaymentMethod: string | null;
+  deliveryStatus: string | null;
+  paymentTiming: string | null;
   needsChange: string | null;
   changeFor: number | null;
+  deliveryPaymentMethod: string | null;
   deliveryPaymentNotes: string | null;
-  orderCreatedAt: string | null;
 }
 
 interface DeliveryRoute {
   id: number;
   name: string;
-  mainNeighborhood: string;
-  includedNeighborhoods: string[];
   status: RouteStatus;
   color: string;
   courierName: string | null;
-  storeOrigin: string;
+  mainNeighborhood: string;
+  includedNeighborhoods: string[];
   mapsUrl: string | null;
   totalDeliveryFee: number;
   totalToReceive: number;
@@ -84,6 +61,31 @@ interface DeliveryRoute {
   completedAt: string | null;
   createdAt: string;
   orders: RouteOrder[];
+}
+
+interface PendingDeliveryOrder {
+  id: number;
+  customerName: string | null;
+  customerPhone: string | null;
+  deliveryAddress: string | null;
+  deliveryNeighborhood: string | null;
+  deliveryCep: string | null;
+  deliveryFee: number;
+  totalAmount: number;
+  deliveryStatus: string | null;
+  paymentTiming: string;
+  needsChange: string | null;
+  changeFor: number | null;
+  deliveryPaymentMethod: string | null;
+  createdAt: string;
+  kitchenAcceptedAt: string | null;
+  dispatchDeadline: string | null;
+}
+
+interface MoveOrderState {
+  orderId: number;
+  routeId: number;
+  customerName: string | null;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -186,9 +188,12 @@ const TIME_URGENCY_STYLES: Record<
 export default function Routes() {
   const { toast } = useToast();
   const [routes, setRoutes] = useState<DeliveryRoute[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<PendingDeliveryOrder[]>([]);
+  const [dispatchMinutes, setDispatchMinutes] = useState(20);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [, setTick] = useState(0); // force re-render for timer
+  const [savingDispatch, setSavingDispatch] = useState(false);
+  const [, setTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   const [qrRoute, setQrRoute] = useState<DeliveryRoute | null>(null);
@@ -196,7 +201,8 @@ export default function Routes() {
   const [courierName, setCourierName] = useState("");
   const [assigning, setAssigning] = useState(false);
   const [completing, setCompleting] = useState<number | null>(null);
-  const [adjusting, setAdjusting] = useState<number | null>(null);
+  const [moveOrderState, setMoveOrderState] = useState<MoveOrderState | null>(null);
+  const [movingOrder, setMovingOrder] = useState(false);
 
   const fetchRoutes = useCallback(async () => {
     try {
@@ -204,30 +210,54 @@ export default function Routes() {
       setRoutes(data);
     } catch {
       toast({ title: "Erro ao carregar rotas", variant: "destructive" });
-    } finally {
-      setLoading(false);
     }
   }, [toast]);
 
+  const fetchPendingOrders = useCallback(async () => {
+    try {
+      const data = await apiFetch<PendingDeliveryOrder[]>("/delivery/orders/pending");
+      setPendingOrders(data);
+    } catch {
+      // silently ignore — pending orders are auxiliary
+    }
+  }, []);
+
+  const fetchSettings = useCallback(async () => {
+    try {
+      const s = await apiFetch<{ deliveryDispatchTimeMinutes: number }>("/settings");
+      setDispatchMinutes(s.deliveryDispatchTimeMinutes);
+    } catch {
+      // silently ignore
+    }
+  }, []);
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([fetchRoutes(), fetchPendingOrders(), fetchSettings()]);
+    setLoading(false);
+  }, [fetchRoutes, fetchPendingOrders, fetchSettings]);
+
   useEffect(() => {
-    fetchRoutes();
-    const pollInterval = setInterval(fetchRoutes, 30_000);
-    // Timer tick every 30 seconds for deadline countdown
-    timerRef.current = setInterval(() => setTick((t) => t + 1), 30_000);
+    fetchAll();
+    const pollInterval = setInterval(() => {
+      void fetchRoutes();
+      void fetchPendingOrders();
+    }, 15_000);
+    timerRef.current = setInterval(() => setTick((t) => t + 1), 10_000);
     return () => {
       clearInterval(pollInterval);
       clearInterval(timerRef.current);
     };
-  }, [fetchRoutes]);
+  }, [fetchAll, fetchRoutes, fetchPendingOrders]);
 
-  const handleGenerate = async () => {
+  const handleGroupRoutes = async () => {
     setGenerating(true);
     try {
       const { created } = await apiFetch<{ created: number }>(
         "/delivery/routes/generate",
         { method: "POST" }
       );
-      await fetchRoutes();
+      await Promise.all([fetchRoutes(), fetchPendingOrders()]);
       toast({
         title:
           created === 0
@@ -238,6 +268,24 @@ export default function Routes() {
       toast({ title: "Erro ao gerar rotas", variant: "destructive" });
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleUpdateDispatchTime = async (delta: number) => {
+    const newMinutes = Math.max(5, Math.min(120, dispatchMinutes + delta));
+    setDispatchMinutes(newMinutes);
+    setSavingDispatch(true);
+    try {
+      await apiFetch("/settings", {
+        method: "PUT",
+        body: JSON.stringify({ deliveryDispatchTimeMinutes: newMinutes }),
+      });
+      await fetchPendingOrders();
+    } catch {
+      toast({ title: "Erro ao atualizar prazo de despacho", variant: "destructive" });
+      setDispatchMinutes(dispatchMinutes); // revert
+    } finally {
+      setSavingDispatch(false);
     }
   };
 
@@ -279,18 +327,65 @@ export default function Routes() {
     }
   };
 
-  const handleAdjustTime = async (routeId: number, minutesDelta: number) => {
-    setAdjusting(routeId);
+  const handleMoveToRoute = async (targetRouteId: number) => {
+    if (!moveOrderState) return;
+    setMovingOrder(true);
     try {
-      const updated = await apiFetch<DeliveryRoute>(
-        `/delivery/routes/${routeId}/adjust-time`,
-        { method: "POST", body: JSON.stringify({ minutesDelta }) }
-      );
-      setRoutes((prev) => prev.map((r) => (r.id === routeId ? updated : r)));
-    } catch {
-      toast({ title: "Erro ao ajustar prazo", variant: "destructive" });
+      await apiFetch(`/delivery/routes/${moveOrderState.routeId}/move-order`, {
+        method: "POST",
+        body: JSON.stringify({ orderId: moveOrderState.orderId, targetRouteId }),
+      });
+      await Promise.all([fetchRoutes(), fetchPendingOrders()]);
+      toast({ title: "Pedido movido com sucesso!" });
+      setMoveOrderState(null);
+    } catch (e) {
+      toast({
+        title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`,
+        variant: "destructive",
+      });
     } finally {
-      setAdjusting(null);
+      setMovingOrder(false);
+    }
+  };
+
+  const handleRemoveFromRoute = async () => {
+    if (!moveOrderState) return;
+    setMovingOrder(true);
+    try {
+      await apiFetch(`/delivery/routes/${moveOrderState.routeId}/move-order`, {
+        method: "POST",
+        body: JSON.stringify({ orderId: moveOrderState.orderId }),
+      });
+      await Promise.all([fetchRoutes(), fetchPendingOrders()]);
+      toast({ title: "Pedido removido da rota e voltou para aguardando." });
+      setMoveOrderState(null);
+    } catch (e) {
+      toast({
+        title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`,
+        variant: "destructive",
+      });
+    } finally {
+      setMovingOrder(false);
+    }
+  };
+
+  const handleCreateEmergency = async (orderId: number, sourceRouteId?: number) => {
+    setMovingOrder(true);
+    try {
+      await apiFetch("/delivery/routes/emergency", {
+        method: "POST",
+        body: JSON.stringify({ orderId }),
+      });
+      await Promise.all([fetchRoutes(), fetchPendingOrders()]);
+      toast({ title: "Rota de emergência criada!" });
+      if (sourceRouteId) setMoveOrderState(null);
+    } catch (e) {
+      toast({
+        title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`,
+        variant: "destructive",
+      });
+    } finally {
+      setMovingOrder(false);
     }
   };
 
@@ -308,31 +403,65 @@ export default function Routes() {
               Painel de Rotas
             </h1>
             <p className="text-muted-foreground mt-1">
-              Gerencie as rotas de entrega para motoboys
+              Pedidos delivery em tempo real — agrupe em rotas quando estiver pronto
             </p>
           </div>
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={fetchRoutes} disabled={loading} size="sm">
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Global dispatch time control */}
+            <div className="flex items-center gap-1.5 bg-muted rounded-lg px-3 py-2">
+              <Timer className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="text-xs text-muted-foreground">Prazo:</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                onClick={() => handleUpdateDispatchTime(-5)}
+                disabled={savingDispatch || dispatchMinutes <= 5}
+                title="-5 min"
+              >
+                <Minus className="w-3 h-3" />
+              </Button>
+              <span className="text-sm font-semibold w-16 text-center">
+                {savingDispatch ? "..." : `${dispatchMinutes} min`}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                onClick={() => handleUpdateDispatchTime(5)}
+                disabled={savingDispatch || dispatchMinutes >= 120}
+                title="+5 min"
+              >
+                <Plus className="w-3 h-3" />
+              </Button>
+            </div>
+
+            <Button variant="outline" onClick={fetchAll} disabled={loading} size="sm">
               <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
               Atualizar
             </Button>
             <Button
-              onClick={handleGenerate}
+              onClick={handleGroupRoutes}
               disabled={generating}
               size="lg"
               className="gap-2"
               data-testid="button-generate-routes"
             >
               <Sparkles className="w-5 h-5" />
-              {generating ? "Gerando..." : "Gerar Rotas"}
+              {generating ? "Agrupando..." : "Rotas Prontas"}
             </Button>
           </div>
         </div>
 
         {/* Stats */}
-        {routes.length > 0 && (
-          <div className="grid grid-cols-3 gap-4">
+        {(routes.length > 0 || pendingOrders.length > 0) && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
+              {
+                label: "Aguardando",
+                count: pendingOrders.length,
+                color: "text-orange-600",
+              },
               {
                 label: "Disponíveis",
                 count: routes.filter((r) => r.status === "available").length,
@@ -361,24 +490,45 @@ export default function Routes() {
         {loading && (
           <div className="text-center py-16 text-muted-foreground">
             <RefreshCw className="w-8 h-8 mx-auto mb-3 animate-spin opacity-40" />
-            <p>Carregando rotas...</p>
+            <p>Carregando...</p>
           </div>
         )}
 
-        {/* Empty */}
-        {!loading && routes.length === 0 && (
+        {/* Empty state */}
+        {!loading && routes.length === 0 && pendingOrders.length === 0 && (
           <div className="text-center py-20 border-2 border-dashed rounded-xl text-muted-foreground">
             <Truck className="w-14 h-14 mx-auto mb-4 opacity-20" />
-            <p className="text-xl font-semibold mb-2">Nenhuma rota criada</p>
-            <p className="text-sm max-w-sm mx-auto mb-6">
-              Pedidos delivery em preparação ou prontos aparecem aqui. Clique em{" "}
-              <strong>Gerar Rotas</strong> para agrupar automaticamente.
+            <p className="text-xl font-semibold mb-2">Nenhum pedido delivery</p>
+            <p className="text-sm max-w-sm mx-auto">
+              Pedidos de delivery aparecem aqui assim que são registrados. Use{" "}
+              <strong>Rotas Prontas</strong> para agrupá-los automaticamente.
             </p>
-            <Button onClick={handleGenerate} disabled={generating} size="lg">
-              <Sparkles className="w-5 h-5 mr-2" />
-              {generating ? "Gerando..." : "Gerar Rotas Agora"}
-            </Button>
           </div>
+        )}
+
+        {/* Pending orders */}
+        {!loading && pendingOrders.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-semibold">Aguardando Rota</h2>
+              <span className="bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 text-sm font-semibold px-2.5 py-0.5 rounded-full">
+                {pendingOrders.length}
+              </span>
+              <p className="text-sm text-muted-foreground hidden sm:block">
+                — clique em <strong>Rotas Prontas</strong> para agrupar
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {pendingOrders.map((order) => (
+                <PendingOrderCard
+                  key={order.id}
+                  order={order}
+                  dispatchMinutes={dispatchMinutes}
+                  onEmergency={() => handleCreateEmergency(order.id)}
+                />
+              ))}
+            </div>
+          </section>
         )}
 
         {/* Active routes */}
@@ -390,22 +540,24 @@ export default function Routes() {
                 <RouteCard
                   key={route.id}
                   route={route}
+                  allActiveRoutes={activeRoutes}
                   onAssign={() => {
                     setAssignRoute(route);
                     setCourierName("");
                   }}
                   onComplete={() => handleComplete(route)}
                   onQrCode={() => setQrRoute(route)}
-                  onAdjustTime={(delta) => handleAdjustTime(route.id, delta)}
+                  onMoveOrder={(orderId, customerName) =>
+                    setMoveOrderState({ orderId, routeId: route.id, customerName })
+                  }
                   completing={completing === route.id}
-                  adjusting={adjusting === route.id}
                 />
               ))}
             </div>
           </section>
         )}
 
-        {/* Completed */}
+        {/* Completed routes */}
         {completedRoutes.length > 0 && (
           <section className="space-y-4">
             <h2 className="text-xl font-semibold text-muted-foreground">Rotas Concluídas</h2>
@@ -414,12 +566,12 @@ export default function Routes() {
                 <RouteCard
                   key={route.id}
                   route={route}
+                  allActiveRoutes={[]}
                   onAssign={() => {}}
                   onComplete={() => {}}
                   onQrCode={() => setQrRoute(route)}
-                  onAdjustTime={() => {}}
+                  onMoveOrder={() => {}}
                   completing={false}
-                  adjusting={false}
                 />
               ))}
             </div>
@@ -435,12 +587,12 @@ export default function Routes() {
               <QrCode className="w-5 h-5" />
               QR Code — {qrRoute?.name}
             </DialogTitle>
+            <DialogDescription>
+              Escaneie para abrir a rota no Google Maps
+            </DialogDescription>
           </DialogHeader>
           {qrRoute?.mapsUrl ? (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground text-center">
-                Escaneie para abrir a rota no Google Maps
-              </p>
               <div className="flex justify-center p-4 bg-white rounded-xl border">
                 <QRCodeSVG value={qrRoute.mapsUrl} size={220} level="M" includeMargin={false} />
               </div>
@@ -487,6 +639,9 @@ export default function Routes() {
             <DialogTitle className="flex items-center gap-2">
               <User className="w-5 h-5" /> Assumir Rota
             </DialogTitle>
+            <DialogDescription>
+              Informe o nome do motoboy que vai assumir esta rota.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
@@ -527,7 +682,191 @@ export default function Routes() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Move Order Modal */}
+      <Dialog open={!!moveOrderState} onOpenChange={(open) => { if (!open) setMoveOrderState(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRightLeft className="w-5 h-5" />
+              Mover Pedido
+            </DialogTitle>
+            <DialogDescription>
+              Pedido de{" "}
+              <strong>{moveOrderState?.customerName ?? `#${moveOrderState?.orderId}`}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {/* Other routes to move to */}
+            {routes.filter((r) => r.status !== "completed" && r.id !== moveOrderState?.routeId).length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Mover para outra rota:</p>
+                {routes
+                  .filter((r) => r.status !== "completed" && r.id !== moveOrderState?.routeId)
+                  .map((r) => (
+                    <Button
+                      key={r.id}
+                      variant="outline"
+                      className="w-full justify-between gap-2"
+                      onClick={() => handleMoveToRoute(r.id)}
+                      disabled={movingOrder}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="w-3 h-3 rounded-full shrink-0"
+                          style={{ backgroundColor: r.color }}
+                        />
+                        <span className="truncate text-sm">{r.name}</span>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          ({r.orders.length} ped.)
+                        </span>
+                      </div>
+                      <ChevronRight className="w-4 h-4 shrink-0 text-muted-foreground" />
+                    </Button>
+                  ))}
+              </div>
+            )}
+
+            <div className="border-t pt-3 space-y-2">
+              <Button
+                variant="outline"
+                className="w-full gap-2 border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-400 dark:hover:bg-orange-950"
+                onClick={() =>
+                  moveOrderState &&
+                  handleCreateEmergency(moveOrderState.orderId, moveOrderState.routeId)
+                }
+                disabled={movingOrder}
+              >
+                <Zap className="w-4 h-4" />
+                Criar rota de emergência
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full gap-2 text-muted-foreground"
+                onClick={handleRemoveFromRoute}
+                disabled={movingOrder}
+              >
+                <X className="w-4 h-4" />
+                Remover desta rota (volta para aguardo)
+              </Button>
+            </div>
+
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => setMoveOrderState(null)}
+              disabled={movingOrder}
+            >
+              Cancelar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
+  );
+}
+
+// ─── PendingOrderCard ─────────────────────────────────────────────────────────
+
+function PendingOrderCard({
+  order,
+  dispatchMinutes,
+  onEmergency,
+}: {
+  order: PendingDeliveryOrder;
+  dispatchMinutes: number;
+  onEmergency: () => void;
+}) {
+  const deadlineMs = order.kitchenAcceptedAt
+    ? new Date(order.kitchenAcceptedAt).getTime() + dispatchMinutes * 60_000
+    : null;
+  const timeStatus = deadlineMs
+    ? getTimeStatus(new Date(deadlineMs).toISOString())
+    : null;
+  const timeStyle = timeStatus ? TIME_URGENCY_STYLES[timeStatus.urgency] : null;
+  const TimeIcon = timeStyle?.icon ?? Clock;
+
+  const ds = order.deliveryStatus as DeliveryOrderStatus | null;
+  const dsLabel = ds ? DELIVERY_STATUS_LABELS[ds] : null;
+  const dsColor = ds ? DELIVERY_STATUS_COLORS[ds] : "";
+
+  return (
+    <Card className="border border-border hover:shadow-md transition-shadow">
+      <CardHeader className="pb-2 pt-3 px-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold truncate text-sm">
+                {order.customerName ?? `Pedido #${order.id}`}
+              </span>
+              {dsLabel && (
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${dsColor}`}>
+                  {dsLabel}
+                </span>
+              )}
+            </div>
+            {order.customerPhone && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                <Phone className="w-3 h-3" />
+                {order.customerPhone}
+              </p>
+            )}
+          </div>
+          <div className="text-xs font-medium text-green-600 dark:text-green-400 shrink-0">
+            R$ {order.deliveryFee.toFixed(2)}
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="px-3 pb-3 space-y-2">
+        {/* Address */}
+        <div className="space-y-0.5">
+          <p className="text-xs text-muted-foreground truncate">
+            <MapPin className="w-3 h-3 inline mr-0.5" />
+            {order.deliveryAddress ?? "—"}
+            {order.deliveryNeighborhood ? ` · ${order.deliveryNeighborhood}` : ""}
+          </p>
+          {order.deliveryCep && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <Hash className="w-3 h-3" />
+              CEP: {order.deliveryCep}
+            </p>
+          )}
+        </div>
+
+        {/* Timer */}
+        {timeStatus && timeStyle ? (
+          <div className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium ${timeStyle.bg} ${timeStyle.text}`}>
+            <TimeIcon className="w-3.5 h-3.5 shrink-0" />
+            {timeStatus.label}
+          </div>
+        ) : !order.kitchenAcceptedAt ? (
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-muted-foreground bg-muted">
+            <Clock className="w-3.5 h-3.5 shrink-0" />
+            Aguardando cozinha
+          </div>
+        ) : null}
+
+        {/* Payment on delivery */}
+        {order.paymentTiming === "on_delivery" && (
+          <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded px-2 py-1.5 flex items-center gap-1.5">
+            <Banknote className="w-3.5 h-3.5 shrink-0" />
+            Cobrar R$ {order.totalAmount.toFixed(2)} na entrega
+          </div>
+        )}
+
+        {/* Emergency action */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full h-7 text-xs gap-1.5 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950"
+          onClick={onEmergency}
+        >
+          <Zap className="w-3.5 h-3.5" />
+          Criar rota de emergência
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -535,20 +874,20 @@ export default function Routes() {
 
 function RouteCard({
   route,
+  allActiveRoutes,
   onAssign,
   onComplete,
   onQrCode,
-  onAdjustTime,
+  onMoveOrder,
   completing,
-  adjusting,
 }: {
   route: DeliveryRoute;
+  allActiveRoutes: DeliveryRoute[];
   onAssign: () => void;
   onComplete: () => void;
   onQrCode: () => void;
-  onAdjustTime: (delta: number) => void;
+  onMoveOrder: (orderId: number, customerName: string | null) => void;
   completing: boolean;
-  adjusting: boolean;
 }) {
   const isAvailable = route.status === "available";
   const isInProgress = route.status === "in_progress";
@@ -561,7 +900,6 @@ function RouteCard({
 
   const onDeliveryOrders = sortedOrders.filter((o) => o.paymentTiming === "on_delivery");
 
-  // Unique CEP prefixes (first 5 digits) for display
   const cepPrefixes = [
     ...new Set(
       sortedOrders
@@ -569,6 +907,8 @@ function RouteCard({
         .filter(Boolean)
     ),
   ].slice(0, 4);
+
+  const canMoveOrders = isAvailable && !isCompleted;
 
   return (
     <Card
@@ -580,7 +920,6 @@ function RouteCard({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Colored dot indicator */}
               <span
                 className="w-3 h-3 rounded-full shrink-0 mt-0.5"
                 style={{ backgroundColor: route.color }}
@@ -655,36 +994,9 @@ function RouteCard({
 
         {/* Time Alert */}
         {timeStatus && timeStyle && !isCompleted && (
-          <div className={`mt-3 flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm font-medium ${timeStyle.bg} ${timeStyle.text}`}>
-            <div className="flex items-center gap-2">
-              <TimeIcon className="w-4 h-4 shrink-0" />
-              {timeStatus.label}
-            </div>
-            {!isCompleted && (
-              <div className="flex items-center gap-1">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 w-6 p-0 hover:bg-black/10"
-                  onClick={() => onAdjustTime(-5)}
-                  disabled={adjusting}
-                  title="-5 min"
-                >
-                  <Minus className="w-3 h-3" />
-                </Button>
-                <span className="text-xs opacity-60">5</span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 w-6 p-0 hover:bg-black/10"
-                  onClick={() => onAdjustTime(5)}
-                  disabled={adjusting}
-                  title="+5 min"
-                >
-                  <Plus className="w-3 h-3" />
-                </Button>
-              </div>
-            )}
+          <div className={`mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${timeStyle.bg} ${timeStyle.text}`}>
+            <TimeIcon className="w-4 h-4 shrink-0" />
+            {timeStatus.label}
           </div>
         )}
       </CardHeader>
@@ -772,9 +1084,22 @@ function RouteCard({
                   )}
                 </div>
 
-                {/* Fee */}
-                <div className="text-xs font-medium text-green-600 dark:text-green-400 shrink-0">
-                  R$ {order.deliveryFee.toFixed(2)}
+                {/* Fee + move action */}
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className="text-xs font-medium text-green-600 dark:text-green-400">
+                    R$ {order.deliveryFee.toFixed(2)}
+                  </span>
+                  {canMoveOrders && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => onMoveOrder(order.orderId, order.customerName)}
+                      title="Mover pedido"
+                    >
+                      <ArrowRightLeft className="w-3 h-3" />
+                    </Button>
+                  )}
                 </div>
               </div>
             );

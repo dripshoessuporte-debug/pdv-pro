@@ -310,16 +310,18 @@ router.post("/orders/:id/send-to-kitchen", async (req, res): Promise<void> => {
     return;
   }
 
-  const updateData: Record<string, string> = { status: "preparing" };
-
   // For delivery orders, advance deliveryStatus from pending → preparing
   const [current] = await db.select({ type: ordersTable.type, deliveryStatus: ordersTable.deliveryStatus })
     .from(ordersTable).where(eq(ordersTable.id, params.data.id));
-  if (current?.type === "delivery" && current.deliveryStatus === "pending") {
-    updateData.deliveryStatus = "preparing";
-  }
 
-  await db.update(ordersTable).set(updateData).where(eq(ordersTable.id, params.data.id));
+  const now = new Date();
+  await db.update(ordersTable).set({
+    status: "preparing",
+    kitchenAcceptedAt: now,
+    ...(current?.type === "delivery" && current.deliveryStatus === "pending"
+      ? { deliveryStatus: "preparing" }
+      : {}),
+  }).where(eq(ordersTable.id, params.data.id));
   await db.insert(kitchenTicketsTable).values({ orderId: params.data.id, status: "pending" });
 
   const order = await getOrderWithItems(params.data.id);
@@ -369,14 +371,20 @@ router.patch("/orders/:id/delivery-status", async (req, res): Promise<void> => {
     return;
   }
 
-  const [existing] = await db.select({ id: ordersTable.id }).from(ordersTable).where(eq(ordersTable.id, params.data.id));
+  const [existing] = await db.select({ id: ordersTable.id, kitchenAcceptedAt: ordersTable.kitchenAcceptedAt }).from(ordersTable).where(eq(ordersTable.id, params.data.id));
   if (!existing) {
     res.status(404).json({ error: "Order not found" });
     return;
   }
 
+  const newDeliveryStatus = parsed.data.deliveryStatus;
+  const setData: Record<string, string | Date | null> = { deliveryStatus: newDeliveryStatus };
+  if (newDeliveryStatus === "preparing" && !existing.kitchenAcceptedAt) {
+    setData.kitchenAcceptedAt = new Date();
+  }
+
   await db.update(ordersTable)
-    .set({ deliveryStatus: parsed.data.deliveryStatus })
+    .set(setData)
     .where(eq(ordersTable.id, params.data.id));
 
   const order = await getOrderWithItems(params.data.id);

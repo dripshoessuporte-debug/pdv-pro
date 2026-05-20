@@ -29,6 +29,7 @@ export const ordersTable = pgTable("orders", {
   needsChange: text("needs_change"), // "true" | "false" (stored as text for simplicity)
   changeFor: numeric("change_for", { precision: 10, scale: 2 }),
   deliveryPaymentNotes: text("delivery_payment_notes"),
+  kitchenAcceptedAt: timestamp("kitchen_accepted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
