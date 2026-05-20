@@ -4,7 +4,7 @@ import {
   Truck, RefreshCw, Sparkles, MapPin, Package, DollarSign, User, Phone,
   Banknote, CreditCard, Smartphone, QrCode, Play, CheckCircle2, Clock,
   AlertTriangle, AlertCircle, Hash, Plus, Minus, ArrowRightLeft, Zap, X,
-  ChevronRight, Timer, PlusCircle,
+  ChevronRight, Timer, PlusCircle, Lock,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
@@ -948,139 +948,159 @@ function RouteCard({
   const isInProgress = route.status === "in_progress";
   const isCompleted = route.status === "completed";
   const sortedOrders = [...route.orders].sort((a, b) => a.stopOrder - b.stopOrder);
-  const canMoveOrders = isAvailable && !isCompleted;
+  const canMoveOrders = isAvailable;
 
   const timeStatus = !isCompleted ? getTimeStatus(route.dispatchDeadline) : null;
   const urgency = timeStatus?.urgency ?? "ok";
   const TimeIcon = URGENCY_ICON[urgency];
 
+  const readyCount = route.orders.filter((o) => o.deliveryStatus === "ready").length;
+  const totalCount = route.orders.length;
+  const allOrdersReady = totalCount > 0 && readyCount === totalCount;
+
+  const otherNeighborhoods = route.includedNeighborhoods.filter((n) => n !== route.mainNeighborhood);
+
   return (
-    <Card
-      className="overflow-hidden border border-border shadow-sm"
-      style={{ borderLeft: `3px solid ${route.color}` }}
+    <div
+      className="rounded-2xl border border-border/50 bg-card shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col"
       data-testid={`card-route-${route.id}`}
     >
-      {/* Route header */}
-      <CardHeader className="pb-2 pt-3 px-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
+      {/* ── Top accent bar ── */}
+      <div className="h-1 w-full" style={{ backgroundColor: route.color }} />
+
+      <div className="p-4 flex flex-col gap-3 flex-1">
+
+        {/* ── Header ── */}
+        <div className="flex items-start gap-3">
+          {/* Color badge with stop count */}
+          <div
+            className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm"
+            style={{ backgroundColor: route.color }}
+          >
+            {totalCount}
+          </div>
+
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-0.5" style={{ backgroundColor: route.color }} />
-              <h3 className="font-semibold text-sm leading-tight truncate">{route.name}</h3>
-              <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[route.status]}`}>
+              <h3 className="font-semibold text-sm leading-snug">{route.name}</h3>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${STATUS_COLORS[route.status]}`}>
                 {STATUS_LABELS[route.status]}
               </span>
             </div>
-            <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground flex-wrap">
+            <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
               <MapPin className="w-3 h-3 shrink-0" />
               <span className="font-medium">{route.mainNeighborhood}</span>
-              {route.includedNeighborhoods.filter((n) => n !== route.mainNeighborhood).length > 0 && (
-                <span className="opacity-70">
-                  +{route.includedNeighborhoods.filter((n) => n !== route.mainNeighborhood).join(", ")}
-                </span>
+              {otherNeighborhoods.length > 0 && (
+                <span className="opacity-60 truncate">· {otherNeighborhoods.join(", ")}</span>
               )}
             </div>
-          </div>
-
-          <div className="text-right shrink-0 space-y-0.5">
-            <div className="flex items-center gap-1 justify-end text-xs font-medium">
-              <Package className="w-3 h-3" />
-              {route.orders.length} ped.
-            </div>
-            <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-              Taxa R$ {route.totalDeliveryFee.toFixed(2)}
-            </div>
-            {route.totalToReceive > 0 && (
-              <div className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                Cobrar R$ {route.totalToReceive.toFixed(2)}
+            {route.courierName && (
+              <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
+                <User className="w-3 h-3 shrink-0" />
+                <span>{route.courierName}</span>
+                {route.startedAt && (
+                  <span className="opacity-60">
+                    · saiu {new Date(route.startedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                )}
               </div>
             )}
           </div>
+
+          {/* Time pill */}
+          {timeStatus && !isCompleted && (
+            <div className={`shrink-0 flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full
+              ${urgency === "ok" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : ""}
+              ${urgency === "warning" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : ""}
+              ${urgency === "danger" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" : ""}
+            `}>
+              <TimeIcon className="w-3 h-3 shrink-0" />
+              <span>{timeStatus.label}</span>
+            </div>
+          )}
+          {isCompleted && route.completedAt && (
+            <div className="shrink-0 flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              {new Date(route.completedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            </div>
+          )}
         </div>
 
-        {/* Courier info */}
-        {route.courierName && (
-          <div className="flex items-center gap-1.5 mt-1.5 text-xs text-muted-foreground">
-            <User className="w-3 h-3" />
-            <span>{route.courierName}</span>
-            {route.startedAt && (
-              <span className="opacity-60">
-                · {new Date(route.startedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-              </span>
-            )}
-          </div>
-        )}
-        {isCompleted && route.completedAt && (
-          <div className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 mt-1">
-            <CheckCircle2 className="w-3 h-3" />
-            Concluída às {new Date(route.completedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-          </div>
-        )}
-
-        {/* Time alert */}
-        {timeStatus && !isCompleted && (
-          <div className={`mt-2 flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium
-            ${urgency === "ok" ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : ""}
-            ${urgency === "warning" ? "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400" : ""}
-            ${urgency === "danger" ? "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400" : ""}
-          `}>
-            <TimeIcon className="w-3.5 h-3.5 shrink-0" />
-            {urgency === "ok" ? `Sai em até ${timeStatus.label}` : urgency === "warning" ? `Faltam ${timeStatus.label}` : `Atrasado: ${timeStatus.label}`}
-          </div>
-        )}
-      </CardHeader>
-
-      <CardContent className="px-3 pb-3 pt-0 space-y-2">
-        {/* Orders list */}
-        <div className="space-y-1">
+        {/* ── Orders list ── */}
+        <div className="space-y-1.5">
           {sortedOrders.map((order) => {
             const ds = order.deliveryStatus as DeliveryOrderStatus | null;
+            const isReady = ds === "ready";
+            const isPrep = ds === "preparing";
+            const isOut = ds === "out_for_delivery";
+            const isDelivered = ds === "delivered";
+            const dotColor = isReady
+              ? "bg-emerald-500"
+              : isPrep
+              ? "bg-amber-400"
+              : isOut
+              ? "bg-blue-500"
+              : isDelivered
+              ? "bg-gray-400"
+              : "bg-gray-300";
             const dsLabel = ds ? DELIVERY_STATUS_LABELS[ds] : null;
-            const dsColor = ds ? DELIVERY_STATUS_COLORS[ds] : "";
-            const PayIcon = order.paymentTiming === "on_delivery" && order.deliveryPaymentMethod
-              ? PAYMENT_METHOD_ICONS[order.deliveryPaymentMethod] ?? Banknote : null;
-            const changeAmt = order.needsChange === "true" && order.changeFor
-              ? Math.max(0, order.changeFor - order.totalAmount) : null;
+            const PayIcon =
+              order.paymentTiming === "on_delivery" && order.deliveryPaymentMethod
+                ? (PAYMENT_METHOD_ICONS[order.deliveryPaymentMethod] ?? Banknote)
+                : null;
+            const changeAmt =
+              order.needsChange === "true" && order.changeFor
+                ? Math.max(0, order.changeFor - order.totalAmount)
+                : null;
 
             return (
               <div
                 key={order.id}
-                className="flex items-start gap-2 p-2 rounded-md bg-muted/40 text-xs"
+                className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl bg-muted/40 hover:bg-muted/60 transition-colors text-xs group"
                 data-testid={`route-order-${order.orderId}`}
               >
-                <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 mt-0.5"
-                  style={{ backgroundColor: route.color }}>
+                {/* Stop number badge */}
+                <div
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                  style={{ backgroundColor: route.color + "cc" }}
+                >
                   {order.stopOrder}
                 </div>
-                <div className="flex-1 min-w-0 space-y-0.5">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-medium truncate">{order.customerName ?? `Pedido #${order.orderId}`}</span>
-                    {dsLabel && (
-                      <span className={`text-xs px-1 py-px rounded-full ${dsColor}`}>{dsLabel}</span>
-                    )}
-                  </div>
+
+                {/* Status dot */}
+                <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{order.customerName ?? `Pedido #${order.orderId}`}</p>
                   <p className="text-muted-foreground truncate">
-                    <MapPin className="w-2.5 h-2.5 inline mr-0.5" />
                     {order.deliveryAddress ?? "—"}
                     {order.deliveryNeighborhood ? ` · ${order.deliveryNeighborhood}` : ""}
                   </p>
                   {order.paymentTiming === "on_delivery" && (
-                    <div className="text-amber-700 dark:text-amber-400 font-medium flex items-center gap-1">
+                    <div className="text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-1 mt-0.5">
                       {PayIcon && <PayIcon className="w-3 h-3 shrink-0" />}
                       Cobrar R$ {order.totalAmount.toFixed(2)}
-                      {changeAmt !== null && ` · Troco: R$ ${changeAmt.toFixed(2)}`}
+                      {changeAmt !== null && ` · Troco R$ ${changeAmt.toFixed(2)}`}
                     </div>
                   )}
                 </div>
+
+                {/* Right: status label + move button */}
                 <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                    R$ {order.deliveryFee.toFixed(2)}
-                  </span>
+                  {dsLabel && (
+                    <span className={`px-1.5 py-px rounded-full font-medium ${DELIVERY_STATUS_COLORS[ds!]}`}>
+                      {dsLabel}
+                    </span>
+                  )}
                   {canMoveOrders && (
-                    <Button variant="ghost" size="sm"
-                      className="h-5 px-1 text-xs text-muted-foreground hover:text-foreground"
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 w-5 p-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                       onClick={() => onMoveOrder(order.orderId, order.customerName)}
-                      title="Mover pedido">
+                      title="Mover pedido"
+                    >
                       <ArrowRightLeft className="w-3 h-3" />
                     </Button>
                   )}
@@ -1090,9 +1110,34 @@ function RouteCard({
           })}
         </div>
 
-        {/* Courier summary for on-delivery orders */}
+        {/* ── Readiness indicator (available only) ── */}
+        {isAvailable && (
+          <div
+            className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl
+              ${allOrdersReady
+                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
+                : "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+              }`}
+          >
+            {allOrdersReady ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                <span className="font-medium">Todos prontos — pronto para sair!</span>
+              </>
+            ) : (
+              <>
+                <Clock className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  <strong>{readyCount}/{totalCount}</strong> pedidos prontos na cozinha
+                </span>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Cobrança summary ── */}
         {sortedOrders.some((o) => o.paymentTiming === "on_delivery") && !isCompleted && (
-          <div className="rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-2.5 py-2 text-xs space-y-0.5">
+          <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs space-y-0.5">
             <p className="font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1">
               <Banknote className="w-3.5 h-3.5" />
               Resumo de cobrança
@@ -1104,36 +1149,84 @@ function RouteCard({
           </div>
         )}
 
-        {/* Actions */}
-        <div className="flex gap-2 pt-1">
-          <Button variant="outline" size="sm" className="gap-1" onClick={onQrCode}
-            data-testid={`button-qr-${route.id}`}>
+        {/* ── Footer ── */}
+        <div className="flex items-center gap-2 pt-1 mt-auto border-t border-border/40">
+          {/* Fee summary */}
+          <div className="flex-1 text-xs space-y-0.5">
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+              Taxa R$ {route.totalDeliveryFee.toFixed(2)}
+            </span>
+            {route.totalToReceive > 0 && (
+              <span className="text-amber-600 dark:text-amber-400 ml-2">
+                · Cobrar R$ {route.totalToReceive.toFixed(2)}
+              </span>
+            )}
+          </div>
+
+          {/* QR */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 w-8 p-0 rounded-lg"
+            onClick={onQrCode}
+            data-testid={`button-qr-${route.id}`}
+          >
             <QrCode className="w-3.5 h-3.5" />
-            QR
           </Button>
+
+          {/* Main CTA */}
           {isAvailable && (
-            <Button size="sm" className="flex-1 gap-1" onClick={onAssign}
-              data-testid={`button-assign-${route.id}`}>
-              <Play className="w-3.5 h-3.5" />
-              Assumir Rota
+            <Button
+              size="sm"
+              className={`h-8 gap-1.5 rounded-lg font-semibold transition-all ${
+                allOrdersReady
+                  ? "bg-primary hover:bg-primary/90 text-primary-foreground"
+                  : "bg-muted text-muted-foreground cursor-not-allowed border border-border"
+              }`}
+              onClick={allOrdersReady ? onAssign : undefined}
+              disabled={!allOrdersReady}
+              title={
+                !allOrdersReady
+                  ? `Aguardando ${totalCount - readyCount} pedido(s) ficarem prontos`
+                  : "Assumir esta rota"
+              }
+              data-testid={`button-assign-${route.id}`}
+            >
+              {allOrdersReady ? (
+                <>
+                  <Play className="w-3.5 h-3.5" />
+                  Assumir Rota
+                </>
+              ) : (
+                <>
+                  <Lock className="w-3.5 h-3.5" />
+                  {readyCount}/{totalCount} Prontos
+                </>
+              )}
             </Button>
           )}
+
           {isInProgress && (
-            <Button size="sm" className="flex-1 gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={onComplete} disabled={completing}
-              data-testid={`button-complete-${route.id}`}>
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              {completing ? "Concluindo..." : "Concluir Rota"}
+            <Button
+              size="sm"
+              className="flex-1 h-8 gap-1.5 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={onComplete}
+              disabled={completing}
+              data-testid={`button-complete-${route.id}`}
+            >
+              <Truck className="w-3.5 h-3.5" />
+              {completing ? "Concluindo..." : "Entrega em Andamento"}
             </Button>
           )}
+
           {isCompleted && (
-            <div className="flex-1 flex items-center justify-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+            <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
               <CheckCircle2 className="w-3.5 h-3.5" />
               Rota concluída
             </div>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

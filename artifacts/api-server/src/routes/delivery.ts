@@ -881,4 +881,39 @@ router.post("/delivery/routes/:id/move-order", async (req, res): Promise<void> =
   res.json({ sourceRoute, targetRoute });
 });
 
+// ─── POST /delivery/orders/:orderId/delivered ─────────────────────────────────
+// Marca um pedido de delivery individual como entregue e fecha o pedido.
+
+router.post("/delivery/orders/:orderId/delivered", async (req, res): Promise<void> => {
+  const orderId = parseInt(req.params.orderId, 10);
+  if (isNaN(orderId)) {
+    res.status(400).json({ error: "orderId inválido" });
+    return;
+  }
+
+  const [order] = await db
+    .select({ id: ordersTable.id, type: ordersTable.type, deliveryStatus: ordersTable.deliveryStatus })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, orderId))
+    .limit(1);
+
+  if (!order) {
+    res.status(404).json({ error: "Pedido não encontrado" });
+    return;
+  }
+
+  if (order.type !== "delivery") {
+    res.status(400).json({ error: "Apenas pedidos de delivery podem ser baixados aqui" });
+    return;
+  }
+
+  await db
+    .update(ordersTable)
+    .set({ deliveryStatus: "delivered", status: "closed" })
+    .where(eq(ordersTable.id, orderId));
+
+  req.log.info({ orderId }, "delivery order marked as delivered");
+  res.json({ ok: true });
+});
+
 export default router;

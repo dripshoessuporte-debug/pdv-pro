@@ -11,7 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, ChevronRight, SendHorizonal, X, CreditCard, CalendarDays, Truck } from "lucide-react";
+import { Plus, ChevronRight, SendHorizonal, X, CreditCard, CalendarDays, Truck, PackageCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -63,9 +63,24 @@ const PAYABLE = ["open", "preparing", "ready"];
 export default function Orders() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [todayOnly, setTodayOnly] = useState(true);
+  const [completingDelivery, setCompletingDelivery] = useState<number | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+
+  const markDelivered = async (orderId: number) => {
+    setCompletingDelivery(orderId);
+    try {
+      const res = await fetch(`/api/delivery/orders/${orderId}/delivered`, { method: "POST" });
+      if (!res.ok) throw new Error(await res.text());
+      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+      toast({ title: "Entrega confirmada! Pedido encerrado." });
+    } catch (e) {
+      toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
+    } finally {
+      setCompletingDelivery(null);
+    }
+  };
 
   const { data: allOrders, isLoading } = useListOrders(undefined, {
     query: {
@@ -285,6 +300,21 @@ export default function Orders() {
                             data-testid={`button-send-kitchen-${order.id}`}
                           >
                             <SendHorizonal className="w-4 h-4" />
+                          </Button>
+                        )}
+
+                        {isDelivery && order.deliveryStatus === "out_for_delivery" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                            onClick={() => markDelivered(order.id)}
+                            disabled={completingDelivery === order.id}
+                            title="Confirmar entrega"
+                            data-testid={`button-dar-baixa-${order.id}`}
+                          >
+                            <PackageCheck className="w-4 h-4" />
+                            {completingDelivery === order.id ? "..." : "Dar Baixa"}
                           </Button>
                         )}
 
