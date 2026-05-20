@@ -1146,8 +1146,8 @@ function RouteCard({
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-zinc-900 truncate">{order.customerName ?? `Pedido #${order.orderId}`}</p>
-                  <p className="text-zinc-600 truncate">
+                  <p className="font-semibold text-foreground truncate">{order.customerName ?? `Pedido #${order.orderId}`}</p>
+                  <p className="text-muted-foreground truncate">
                     {order.deliveryAddress ?? "—"}
                     {order.deliveryNeighborhood ? ` · ${order.deliveryNeighborhood}` : ""}
                   </p>

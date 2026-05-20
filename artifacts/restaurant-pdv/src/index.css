@@ -68,40 +68,40 @@
 }
 
 :root {
-  --button-outline: rgba(0,0,0, .10);
-  --badge-outline: rgba(0,0,0, .05);
-  --opaque-button-border-intensity: -8;
-  --elevate-1: rgba(0,0,0, .03);
-  --elevate-2: rgba(0,0,0, .08);
+  --button-outline: rgba(255,255,255, .10);
+  --badge-outline: rgba(255,255,255, .06);
+  --opaque-button-border-intensity: 9;
+  --elevate-1: rgba(255,255,255, .04);
+  --elevate-2: rgba(255,255,255, .08);
 
-  --background: 30 15% 91%;
-  --foreground: 20 10% 10%;
-  --border: 30 20% 85%;
-  --card: 0 0% 100%;
-  --card-foreground: 20 10% 10%;
-  --card-border: 30 20% 85%;
-  --sidebar: 0 0% 100%;
-  --sidebar-foreground: 20 10% 10%;
-  --sidebar-border: 30 20% 85%;
+  --background: 20 8% 12%;
+  --foreground: 0 0% 92%;
+  --border: 0 0% 22%;
+  --card: 0 0% 17%;
+  --card-foreground: 0 0% 92%;
+  --card-border: 0 0% 22%;
+  --sidebar: 20 8% 9%;
+  --sidebar-foreground: 0 0% 80%;
+  --sidebar-border: 0 0% 18%;
   --sidebar-primary: 15 85% 55%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 30 20% 90%;
-  --sidebar-accent-foreground: 20 10% 10%;
+  --sidebar-accent: 0 0% 18%;
+  --sidebar-accent-foreground: 0 0% 92%;
   --sidebar-ring: 15 85% 55%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 20 10% 10%;
-  --popover-border: 30 20% 85%;
+  --popover: 0 0% 17%;
+  --popover-foreground: 0 0% 92%;
+  --popover-border: 0 0% 22%;
   --primary: 15 85% 55%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 30 20% 90%;
-  --secondary-foreground: 20 10% 10%;
-  --muted: 30 20% 90%;
-  --muted-foreground: 20 10% 40%;
-  --accent: 15 85% 95%;
-  --accent-foreground: 15 85% 45%;
+  --secondary: 0 0% 22%;
+  --secondary-foreground: 0 0% 90%;
+  --muted: 0 0% 20%;
+  --muted-foreground: 0 0% 55%;
+  --accent: 15 40% 22%;
+  --accent-foreground: 15 85% 65%;
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  --input: 30 20% 85%;
+  --input: 0 0% 22%;
   --ring: 15 85% 55%;
   
   --chart-1: 15 85% 55%;
