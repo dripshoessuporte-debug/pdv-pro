@@ -1019,11 +1019,13 @@ function RouteCard({
   const totalCount = route.orders.length;
   const allOrdersReady = totalCount > 0 && readyCount === totalCount;
 
-  const progressRatio = totalCount > 0 ? deliveredCount / totalCount : 0;
+  const progressRatio = isCompleted ? 1 : isInProgress ? 0.75 : (totalCount > 0 ? deliveredCount / totalCount : 0);
   const ringR = 20;
   const ringCirc = 2 * Math.PI * ringR;
   const ringOffset = ringCirc * (1 - progressRatio);
-  const ringColor = progressRatio === 1 ? "#22c55e" : "hsl(var(--primary))";
+  const ringColor = isCompleted ? "#22c55e" : isInProgress ? route.color : "hsl(var(--primary))";
+
+  const otherNeighborhoods = route.includedNeighborhoods.filter((n) => n !== route.mainNeighborhood);
 
   return (
     <div
@@ -1072,11 +1074,32 @@ function RouteCard({
           </div>
 
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-sm leading-snug">{route.name}</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {deliveredCount}/{totalCount} entregues
-              {route.courierName && <span className="ml-1.5">· {route.courierName}</span>}
-            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-semibold text-sm leading-snug">{route.name}</h3>
+              {!isAvailable && (
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${STATUS_COLORS[route.status]}`}>
+                  {STATUS_LABELS[route.status]}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
+              <MapPin className="w-3 h-3 shrink-0" />
+              <span className="font-medium">{route.mainNeighborhood}</span>
+              {otherNeighborhoods.length > 0 && (
+                <span className="opacity-60 truncate">· {otherNeighborhoods.join(", ")}</span>
+              )}
+            </div>
+            {route.courierName && (
+              <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
+                <User className="w-3 h-3 shrink-0" />
+                <span>{route.courierName}</span>
+                {route.startedAt && (
+                  <span className="opacity-60">
+                    · saiu {new Date(route.startedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Time pill */}
@@ -1128,11 +1151,11 @@ function RouteCard({
             return (
               <div
                 key={order.id}
-                className="flex items-center gap-2.5 px-3 py-2.5 bg-zinc-100 hover:bg-zinc-200 transition-colors text-xs group"
+                className="flex items-center gap-2.5 px-3 py-2.5 bg-zinc-200 hover:bg-zinc-300 transition-colors text-xs group"
                 data-testid={`route-order-${order.orderId}`}
               >
                 {/* Stop number */}
-                <div className="w-5 h-5 rounded-full flex items-center justify-center bg-zinc-400 text-white text-xs font-bold shrink-0">
+                <div className="w-5 h-5 rounded-full flex items-center justify-center bg-zinc-500 text-white text-xs font-bold shrink-0">
                   {order.stopOrder}
                 </div>
 
@@ -1141,13 +1164,13 @@ function RouteCard({
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-white truncate">{order.customerName ?? `Pedido #${order.orderId}`}</p>
-                  <p className="text-zinc-400 truncate">
+                  <p className="font-semibold text-zinc-900 truncate">{order.customerName ?? `Pedido #${order.orderId}`}</p>
+                  <p className="text-zinc-600 truncate">
                     {order.deliveryAddress ?? "—"}
                     {order.deliveryNeighborhood ? ` · ${order.deliveryNeighborhood}` : ""}
                   </p>
                   {order.paymentTiming === "on_delivery" && (
-                    <div className="text-amber-400 font-semibold flex items-center gap-1 mt-0.5">
+                    <div className="text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
                       {PayIcon && <PayIcon className="w-3 h-3 shrink-0" />}
                       Cobrar R$ {order.totalAmount.toFixed(2)}
                       {changeAmt !== null && ` · Troco R$ ${changeAmt.toFixed(2)}`}
@@ -1166,7 +1189,7 @@ function RouteCard({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-6 w-6 p-0 text-zinc-500 hover:text-white hover:bg-zinc-700 opacity-0 group-hover:opacity-100 transition-all rounded-lg"
+                      className="h-6 w-6 p-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg"
                       onClick={() => onMoveOrder(order.orderId, order.customerName)}
                       title="Mover pedido"
                     >
@@ -1217,13 +1240,13 @@ function RouteCard({
 
         {/* ── Footer ── */}
         <div className="flex items-center gap-2 pt-1 mt-auto border-t border-border/40">
-          <div className="flex-1 text-xs">
-            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-              Taxa R$ {route.totalDeliveryFee.toFixed(2)}
+          <div className="flex-1 text-xs flex items-center gap-2 flex-wrap">
+            <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+              Taxa total R$ {route.totalDeliveryFee.toFixed(2)}
             </span>
             {route.totalToReceive > 0 && (
-              <span className="text-amber-600 dark:text-amber-400 ml-2">
-                · Cobrar R$ {route.totalToReceive.toFixed(2)}
+              <span className="bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded-full">
+                Cobrar R$ {route.totalToReceive.toFixed(2)}
               </span>
             )}
           </div>
