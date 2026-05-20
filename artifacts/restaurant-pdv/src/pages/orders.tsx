@@ -111,7 +111,9 @@ const PAYABLE = ["open", "preparing", "ready"];
 export default function Orders() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [period, setPeriod] = useState<PeriodFilter>("today");
-  const [deliveryOnly, setDeliveryOnly] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<"all" | "local" | "delivery">("all");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
   const [completingDelivery, setCompletingDelivery] = useState<number | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -143,18 +145,23 @@ export default function Orders() {
     return filterByPeriod(allOrders, period) as typeof allOrders;
   }, [allOrders, period]);
 
+  const typeFilteredList = useMemo(() => {
+    if (typeFilter === "delivery") return periodOrders.filter((o) => o.type === "delivery");
+    if (typeFilter === "local") return periodOrders.filter((o) => o.type !== "delivery");
+    return periodOrders;
+  }, [periodOrders, typeFilter]);
+
   const statusCounts = useMemo(() => {
-    return periodOrders.reduce((acc, o) => {
+    return typeFilteredList.reduce((acc, o) => {
       acc[o.status] = (acc[o.status] ?? 0) + 1;
       return acc;
     }, {} as Record<string, number>);
-  }, [periodOrders]);
+  }, [typeFilteredList]);
 
   const displayed = useMemo(() => {
-    let list = deliveryOnly ? periodOrders.filter((o) => o.type === "delivery") : periodOrders;
-    if (statusFilter !== "all") list = list.filter((o) => o.status === statusFilter);
-    return list;
-  }, [periodOrders, statusFilter, deliveryOnly]);
+    if (statusFilter === "all") return typeFilteredList;
+    return typeFilteredList.filter((o) => o.status === statusFilter);
+  }, [typeFilteredList, statusFilter]);
 
   // Group by date only in "all" period
   const groupedDisplayed = useMemo(() => {
@@ -172,6 +179,45 @@ export default function Orders() {
 
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size > 0) setSelectedIds(new Set());
+    else setSelectedIds(new Set(displayed.map((o) => o.id)));
+  };
+
+  const bulkSendToKitchen = async () => {
+    const eligible = displayed.filter((o) => selectedIds.has(o.id) && o.status === "open" && o.items.length > 0);
+    if (eligible.length === 0) { toast({ title: "Nenhum pedido aberto com itens selecionado", variant: "destructive" }); return; }
+    setBulkLoading(true);
+    try {
+      await Promise.all(eligible.map((o) => sendToKitchen.mutateAsync({ id: o.id })));
+      setSelectedIds(new Set());
+      invalidateAll();
+      toast({ title: `${eligible.length} pedido(s) enviados para a cozinha!` });
+    } catch { toast({ title: "Erro ao enviar pedidos", variant: "destructive" }); }
+    finally { setBulkLoading(false); }
+  };
+
+  const bulkCancel = async () => {
+    const eligible = displayed.filter((o) => selectedIds.has(o.id) && PAYABLE.includes(o.status));
+    if (eligible.length === 0) { toast({ title: "Nenhum pedido cancelável selecionado", variant: "destructive" }); return; }
+    setBulkLoading(true);
+    try {
+      await Promise.all(eligible.map((o) => cancel.mutateAsync({ id: o.id })));
+      setSelectedIds(new Set());
+      invalidateAll();
+      toast({ title: `${eligible.length} pedido(s) cancelado(s)!` });
+    } catch { toast({ title: "Erro ao cancelar pedidos", variant: "destructive" }); }
+    finally { setBulkLoading(false); }
   };
 
   const cancel = useCancelOrder({
@@ -195,14 +241,29 @@ export default function Orders() {
   const renderOrder = (order: (typeof displayed)[number]) => {
     const isDelivery = order.type === "delivery";
     const deliveryFee = order.deliveryFee ?? 0;
+    const isSelected = selectedIds.has(order.id);
     return (
       <Card
         key={order.id}
-        className="hover:shadow-md transition-shadow"
+        className={`hover:shadow-md transition-shadow ${isSelected ? "ring-2 ring-primary/40 bg-blue-50/40 dark:bg-blue-900/10" : ""}`}
         data-testid={`card-order-${order.id}`}
       >
         <CardContent className="p-4">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {/* Checkbox */}
+            <button
+              onClick={() => toggleSelect(order.id)}
+              className={`shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors self-start mt-1 ${isSelected ? "bg-primary border-primary" : "border-[#CBD5E1] hover:border-primary"}`}
+              title={isSelected ? "Desmarcar" : "Selecionar"}
+              data-testid={`checkbox-order-${order.id}`}
+            >
+              {isSelected && (
+                <svg viewBox="0 0 10 8" className="w-2.5 h-2" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </button>
+            <div className="flex-1 flex items-center justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <p className="font-semibold text-lg">#{order.id}</p>
@@ -329,6 +390,7 @@ export default function Orders() {
                 <ChevronRight className="w-4 h-4" />
               </Button>
             </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -353,36 +415,71 @@ export default function Orders() {
           </Button>
         </div>
 
-        {/* ── Aba Delivery ── */}
-        <div className="flex items-center gap-1 bg-muted/40 rounded-xl p-1 self-start w-fit">
-          <button
-            onClick={() => setDeliveryOnly(false)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-              !deliveryOnly ? "bg-white shadow-sm text-[#0F172A]" : "text-muted-foreground hover:text-foreground"
-            }`}
-            data-testid="tab-all-orders"
-          >
-            Todos os pedidos
-          </button>
-          <button
-            onClick={() => setDeliveryOnly(true)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-              deliveryOnly ? "bg-white shadow-sm text-[#0F172A]" : "text-muted-foreground hover:text-foreground"
-            }`}
-            data-testid="tab-delivery-only"
-          >
-            <Truck className="w-3.5 h-3.5" />
-            Delivery
-            {(() => {
-              const cnt = periodOrders.filter((o) => o.type === "delivery").length;
-              return cnt > 0 ? (
-                <span className={`text-xs font-semibold rounded-full px-1.5 leading-5 min-w-[1.2rem] text-center ${deliveryOnly ? "bg-[#0F172A] text-white" : "bg-muted text-muted-foreground"}`}>
-                  {cnt}
-                </span>
-              ) : null;
-            })()}
-          </button>
+        {/* ── Tipo de pedido ── */}
+        <div className="flex items-center gap-1 bg-muted/40 rounded-xl p-1 self-start">
+          {(["all", "local", "delivery"] as const).map((key) => {
+            const label = key === "all" ? "Todos" : key === "local" ? "Local" : "Delivery";
+            const count =
+              key === "all"
+                ? periodOrders.length
+                : key === "delivery"
+                ? periodOrders.filter((o) => o.type === "delivery").length
+                : periodOrders.filter((o) => o.type !== "delivery").length;
+            const active = typeFilter === key;
+            return (
+              <button
+                key={key}
+                onClick={() => { setTypeFilter(key); setSelectedIds(new Set()); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${active ? "bg-white shadow-sm text-[#0F172A]" : "text-muted-foreground hover:text-foreground"}`}
+                data-testid={`tab-type-${key}`}
+              >
+                {key === "delivery" && <Truck className="w-3.5 h-3.5" />}
+                {label}
+                {count > 0 && (
+                  <span className={`text-xs font-semibold rounded-full px-1.5 leading-5 min-w-[1.2rem] text-center ${active ? "bg-[#0F172A] text-white" : "bg-muted text-muted-foreground"}`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
+
+        {/* ── Seleção em massa ── */}
+        {displayed.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={toggleSelectAll}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="btn-select-all"
+            >
+              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${selectedIds.size > 0 && selectedIds.size === displayed.length ? "bg-primary border-primary" : "border-[#CBD5E1] hover:border-primary"}`}>
+                {selectedIds.size > 0 && selectedIds.size === displayed.length && (
+                  <svg viewBox="0 0 10 8" className="w-2.5 h-2" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+                {selectedIds.size > 0 && selectedIds.size < displayed.length && (
+                  <div className="w-2 h-0.5 bg-primary rounded" />
+                )}
+              </div>
+              <span>{selectedIds.size === 0 ? "Selecionar todos" : `${selectedIds.size} selecionado${selectedIds.size !== 1 ? "s" : ""}`}</span>
+            </button>
+            {selectedIds.size > 0 && (
+              <>
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-emerald-300 text-emerald-700 hover:bg-emerald-50" onClick={bulkSendToKitchen} disabled={bulkLoading} data-testid="btn-bulk-kitchen">
+                  <SendHorizonal className="w-3.5 h-3.5" /> Enviar p/ cozinha
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-red-300 text-red-600 hover:bg-red-50" onClick={bulkCancel} disabled={bulkLoading} data-testid="btn-bulk-cancel">
+                  <X className="w-3.5 h-3.5" /> Cancelar selecionados
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs ml-auto text-muted-foreground" onClick={() => setSelectedIds(new Set())}>
+                  Limpar seleção
+                </Button>
+              </>
+            )}
+          </div>
+        )}
 
         {/* ── Filtros de período ── */}
         <div className="flex gap-2 flex-wrap items-center">
@@ -404,7 +501,7 @@ export default function Orders() {
         {/* ── Filtros de status ── */}
         <div className="flex gap-2 flex-wrap items-center">
           {STATUS_FILTERS.map((f) => {
-            const count = f === "all" ? periodOrders.length : (statusCounts[f] ?? 0);
+            const count = f === "all" ? typeFilteredList.length : (statusCounts[f] ?? 0);
             return (
               <Button
                 key={f}

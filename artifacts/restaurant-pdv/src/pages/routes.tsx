@@ -425,6 +425,45 @@ export default function Routes() {
     }
   };
 
+  const [pendingSelected, setPendingSelected] = useState<Set<number>>(new Set());
+  const [bulkAddOpen, setBulkAddOpen] = useState(false);
+  const [bulkAdding, setBulkAdding] = useState(false);
+
+  const togglePending = (id: number) => {
+    setPendingSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllPending = () => {
+    if (pendingSelected.size > 0) setPendingSelected(new Set());
+    else setPendingSelected(new Set(pendingOrders.map((o) => o.id)));
+  };
+
+  const handleBulkAddToRoute = async (routeId: number) => {
+    setBulkAdding(true);
+    try {
+      await Promise.all(
+        Array.from(pendingSelected).map((orderId) =>
+          apiFetch(`/delivery/routes/${routeId}/add-order`, {
+            method: "POST",
+            body: JSON.stringify({ orderId }),
+          })
+        )
+      );
+      await Promise.all([fetchRoutes(), fetchPendingOrders()]);
+      toast({ title: `${pendingSelected.size} pedido(s) adicionado(s) à rota!` });
+      setPendingSelected(new Set());
+      setBulkAddOpen(false);
+    } catch (e) {
+      toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
+    } finally {
+      setBulkAdding(false);
+    }
+  };
+
   const activeRoutes = routes.filter((r) => r.status !== "completed");
   const availableRoutes = routes.filter((r) => r.status === "available");
   const inProgressRoutes = routes.filter((r) => r.status === "in_progress");
@@ -529,20 +568,45 @@ export default function Routes() {
         {/* ── Pending orders (compact list) ── */}
         {!loading && pendingOrders.length > 0 && (
           <section>
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <h2 className="text-base font-semibold">Aguardando Rota</h2>
               <Badge variant="secondary" className="bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
                 {pendingOrders.length}
               </Badge>
-              {activeRoutes.length > 0 ? (
-                <span className="text-xs text-muted-foreground hidden sm:block">
-                  — selecione <strong>Adicionar à Rota</strong> ou clique em <strong>Rotas Prontas</strong>
-                </span>
-              ) : (
-                <span className="text-xs text-muted-foreground hidden sm:block">
-                  — clique em <strong>Rotas Prontas</strong> para agrupar
-                </span>
-              )}
+              <div className="flex items-center gap-2 ml-auto flex-wrap">
+                {/* Select all toggle */}
+                <button
+                  onClick={toggleSelectAllPending}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  data-testid="btn-select-all-pending"
+                >
+                  <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors ${pendingSelected.size === pendingOrders.length && pendingOrders.length > 0 ? "bg-primary border-primary" : pendingSelected.size > 0 ? "bg-primary/40 border-primary" : "border-[#CBD5E1] hover:border-primary"}`}>
+                    {pendingSelected.size > 0 && (
+                      <div className={`${pendingSelected.size === pendingOrders.length ? "w-2 h-1.5" : "w-1.5 h-0.5"} bg-white rounded`} />
+                    )}
+                  </div>
+                  {pendingSelected.size === 0 ? "Selecionar todos" : `${pendingSelected.size} selecionado${pendingSelected.size !== 1 ? "s" : ""}`}
+                </button>
+
+                {/* Bulk actions */}
+                {pendingSelected.size > 0 && activeRoutes.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1 border-primary/40 text-primary hover:bg-primary/5"
+                    onClick={() => setBulkAddOpen(true)}
+                    data-testid="btn-bulk-add-route"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Adicionar {pendingSelected.size} à rota
+                  </Button>
+                )}
+                {pendingSelected.size > 0 && (
+                  <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setPendingSelected(new Set())}>
+                    Limpar
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="rounded-xl border border-border overflow-hidden bg-card">
@@ -553,6 +617,8 @@ export default function Routes() {
                   dispatchMinutes={dispatchMinutes}
                   activeRoutes={activeRoutes}
                   isLast={idx === pendingOrders.length - 1}
+                  selected={pendingSelected.has(order.id)}
+                  onToggle={() => togglePending(order.id)}
                   onAddToRoute={() => setAddPendingState({ orderId: order.id, customerName: order.customerName })}
                   onEmergency={() => handleCreateEmergency(order.id)}
                 />
@@ -905,6 +971,50 @@ export default function Routes() {
         </DialogContent>
       </Dialog>
 
+      {/* ── Bulk Add to Route Modal ── */}
+      <Dialog open={bulkAddOpen} onOpenChange={(open) => { if (!open) setBulkAddOpen(false); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="w-5 h-5" />
+              Adicionar {pendingSelected.size} pedido{pendingSelected.size !== 1 ? "s" : ""} à rota
+            </DialogTitle>
+            <DialogDescription>Escolha a rota de destino</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {activeRoutes.filter((r) => r.status !== "completed").map((r) => {
+              const ts = getTimeStatus(r.dispatchDeadline);
+              return (
+                <Button
+                  key={r.id}
+                  variant="outline"
+                  className="w-full justify-between gap-2 h-auto py-2.5"
+                  onClick={() => handleBulkAddToRoute(r.id)}
+                  disabled={bulkAdding}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
+                    <div className="text-left min-w-0">
+                      <p className="text-sm font-medium truncate">{r.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {r.orders.length} pedido{r.orders.length !== 1 ? "s" : ""} · {r.mainNeighborhood}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className={`text-xs ${URGENCY_TEXT[ts.urgency]}`}>{ts.label}</span>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                </Button>
+              );
+            })}
+            <Button variant="ghost" className="w-full" onClick={() => setBulkAddOpen(false)} disabled={bulkAdding}>
+              Cancelar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Move Order Modal (from route card) ── */}
       <Dialog open={!!moveOrderState} onOpenChange={(open) => { if (!open) setMoveOrderState(null); }}>
         <DialogContent className="max-w-sm">
@@ -978,6 +1088,8 @@ function PendingOrderRow({
   dispatchMinutes,
   activeRoutes,
   isLast,
+  selected,
+  onToggle,
   onAddToRoute,
   onEmergency,
 }: {
@@ -985,6 +1097,8 @@ function PendingOrderRow({
   dispatchMinutes: number;
   activeRoutes: DeliveryRoute[];
   isLast: boolean;
+  selected: boolean;
+  onToggle: () => void;
   onAddToRoute: () => void;
   onEmergency: () => void;
 }) {
@@ -1000,7 +1114,19 @@ function PendingOrderRow({
   const UrgencyIcon = URGENCY_ICON[urgency];
 
   return (
-    <div className={`flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors ${!isLast ? "border-b border-border" : ""}`}>
+    <div className={`flex items-center gap-3 px-4 py-3 transition-colors ${selected ? "bg-blue-50 dark:bg-blue-900/20" : "hover:bg-muted/30"} ${!isLast ? "border-b border-border" : ""}`}>
+      {/* Checkbox */}
+      <button
+        onClick={onToggle}
+        className={`shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${selected ? "bg-primary border-primary" : "border-[#CBD5E1] hover:border-primary"}`}
+        title={selected ? "Desmarcar" : "Selecionar"}
+      >
+        {selected && (
+          <svg viewBox="0 0 10 8" className="w-2.5 h-2 fill-white" xmlns="http://www.w3.org/2000/svg">
+            <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
+      </button>
       {/* Urgency dot */}
       <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${timeStatus ? URGENCY_DOT[urgency] : "bg-gray-300"}`} />
 
@@ -1401,20 +1527,35 @@ function RouteCard({
                 <span className="font-bold text-blue-700">{totalFridges} un.</span>
               </div>
             )}
-            {sortedOrders.some((o) => o.paymentTiming === "on_delivery") && (
+            {sortedOrders.filter((o) => o.paymentTiming === "on_delivery").length > 0 && (
               <>
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1 text-amber-700 font-medium">
-                    <Banknote className="w-3 h-3" /> A cobrar
-                  </span>
-                  <span className="font-bold text-amber-700">R$ {route.totalToReceive.toFixed(2)}</span>
-                </div>
-                {route.totalChangeNeeded > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-orange-600 font-medium">Troco necessário</span>
-                    <span className="font-bold text-orange-600">R$ {route.totalChangeNeeded.toFixed(2)}</span>
+                <div className="border-t border-[#E2E8F0] pt-1.5">
+                  <p className="flex items-center gap-1 text-amber-700 font-semibold mb-1">
+                    <Banknote className="w-3 h-3" /> Cobranças na entrega
+                  </p>
+                  {sortedOrders
+                    .filter((o) => o.paymentTiming === "on_delivery")
+                    .map((o) => {
+                      const chg = o.needsChange === "true" && o.changeFor
+                        ? Math.max(0, o.changeFor - o.totalAmount)
+                        : null;
+                      return (
+                        <div key={o.orderId} className="flex items-center justify-between py-0.5">
+                          <span className="font-bold text-amber-800">#{o.orderId}</span>
+                          <div className="text-right">
+                            <span className="font-bold text-amber-700">R$ {o.totalAmount.toFixed(2)}</span>
+                            {chg !== null && chg > 0 && (
+                              <span className="text-orange-500 ml-1.5">· Troco R$ {chg.toFixed(2)}</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  <div className="border-t border-amber-200 mt-1 pt-1 flex items-center justify-between">
+                    <span className="text-amber-700">Total</span>
+                    <span className="font-bold text-amber-700">R$ {route.totalToReceive.toFixed(2)}</span>
                   </div>
-                )}
+                </div>
               </>
             )}
           </div>
