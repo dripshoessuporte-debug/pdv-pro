@@ -561,17 +561,30 @@ function RouteCard({
 
   const onDeliveryOrders = sortedOrders.filter((o) => o.paymentTiming === "on_delivery");
 
+  // Unique CEP prefixes (first 5 digits) for display
+  const cepPrefixes = [
+    ...new Set(
+      sortedOrders
+        .map((o) => (o.deliveryCep ?? "").replace(/\D/g, "").slice(0, 5))
+        .filter(Boolean)
+    ),
+  ].slice(0, 4);
+
   return (
     <Card
-      className="overflow-hidden border-2 transition-shadow hover:shadow-lg"
-      style={{ borderColor: route.color + "80" }}
+      className="overflow-hidden border border-border shadow-sm hover:shadow-md transition-shadow"
+      style={{ borderLeft: `4px solid ${route.color}` }}
       data-testid={`card-route-${route.id}`}
     >
-      <div className="h-2 w-full" style={{ backgroundColor: route.color }} />
       <CardHeader className="pb-3 pt-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
+              {/* Colored dot indicator */}
+              <span
+                className="w-3 h-3 rounded-full shrink-0 mt-0.5"
+                style={{ backgroundColor: route.color }}
+              />
               <h3 className="font-bold text-lg leading-tight truncate">{route.name}</h3>
               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[route.status]}`}>
                 {STATUS_LABELS[route.status]}
@@ -586,6 +599,16 @@ function RouteCard({
                 </span>
               )}
             </div>
+            {cepPrefixes.length > 0 && (
+              <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                <Hash className="w-3 h-3 text-muted-foreground shrink-0" />
+                {cepPrefixes.map((pfx) => (
+                  <span key={pfx} className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                    {pfx}xxx
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <div className="text-right shrink-0 space-y-0.5">
             <div className="flex items-center gap-1 justify-end text-sm font-semibold">

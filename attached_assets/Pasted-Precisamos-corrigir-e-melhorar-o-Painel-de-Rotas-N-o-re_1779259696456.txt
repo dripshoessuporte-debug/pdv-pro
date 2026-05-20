@@ -1,0 +1,226 @@
+Precisamos corrigir e melhorar o Painel de Rotas.
+
+Não refaça o projeto do zero.
+Preserve tudo que já foi implementado:
+- página Rotas
+- página Configurações
+- pagamento na entrega
+- troco para motoboy
+- QR Code do Google Maps
+- alertas de tempo
+- pedidos delivery em preparing/ready
+- limite de pedidos por rota vindo das Configurações
+
+Problemas atuais:
+1. A geração de rotas está criando praticamente uma rota para cada pedido.
+2. Não está agrupando corretamente por CEP.
+3. A origem da loja cadastrada em Configurações precisa ser usada como base da rota.
+4. A interface visual das rotas está colorida demais. Quero os cards com uma cor padrão e apenas um marcador interno colorido para diferenciar cada rota.
+
+Corrija especificamente:
+
+1. Agrupamento real de pedidos em rotas
+
+A função de gerar rotas precisa agrupar múltiplos pedidos compatíveis na mesma rota, respeitando o limite máximo configurado em Configurações.
+
+Exemplo:
+Se maxOrdersPerRoute = 4 e existem 4 pedidos delivery elegíveis no mesmo bairro ou CEP próximo, deve gerar 1 rota com 4 pedidos, não 4 rotas separadas.
+
+A lógica correta deve ser:
+
+- buscar pedidos delivery elegíveis:
+  - type = delivery
+  - deliveryStatus = preparing ou ready
+  - pedido não cancelado
+  - pedido não entregue
+  - pedido ainda não vinculado a rota em andamento/concluída
+
+- ordenar e agrupar por proximidade:
+  1. CEP mais próximo
+  2. mesmo bairro
+  3. bairros próximos
+  4. endereço em ordem alfabética como critério final
+
+2. Usar o CEP da loja como origem
+
+A página Configurações já tem dados da loja.
+
+Use os campos salvos em storeSettings:
+- storeCep
+- storeAddress
+- storeNeighborhood
+- storeCity
+
+A geração de rotas deve considerar a loja como ponto inicial.
+
+Para o MVP, sem API paga de distância, use uma aproximação por CEP:
+
+- normalizar CEP removendo traços e espaços
+- comparar os primeiros dígitos do CEP
+- CEPs com prefixos mais parecidos devem ficar na mesma rota
+- calcular uma pontuação simples de proximidade entre CEP da loja e CEP dos pedidos
+- ordenar as rotas começando pelos pedidos mais próximos da loja
+- dentro da rota, ordenar as paradas por proximidade aproximada de CEP
+
+Exemplo de função esperada:
+- normalizeCep(cep)
+- cepSimilarityScore(storeCep, orderCep)
+- orderCepDistanceApprox(a, b)
+- groupOrdersByCepAndNeighborhood(orders, settings)
+
+Não precisa usar API externa agora.
+Não precisa calcular distância real de rua.
+Mas precisa agrupar melhor do que está agrupando hoje.
+
+3. Agrupamento por CEP
+
+Se os pedidos tiverem CEPs como:
+
+Pedido A: 81720-000
+Pedido B: 81720-100
+Pedido C: 81725-000
+Pedido D: 81650-000
+
+Os pedidos A, B e C devem ter maior chance de ficar juntos do que A com um CEP muito distante.
+
+Regra simples:
+- mesmo CEP completo: prioridade máxima
+- mesmos 5 primeiros dígitos: muito próximo
+- mesmos 4 primeiros dígitos: próximo
+- mesmo bairro: próximo
+- bairro vizinho: aceitável
+- caso contrário, só agrupar se ainda não houver rota melhor
+
+4. Evitar uma rota por pedido
+
+Revise o algoritmo atual para garantir que ele não finalize uma rota antes de tentar completar com pedidos compatíveis.
+
+Pseudológica esperada:
+
+- criar lista de pedidos elegíveis
+- enquanto existirem pedidos sem rota:
+  - pegar pedido base mais próximo da loja ou mais antigo
+  - criar rota temporária com esse pedido
+  - procurar outros pedidos compatíveis:
+    - mesmo CEP/prefixo
+    - mesmo bairro
+    - bairro próximo
+  - adicionar até maxOrdersPerRoute
+  - só então salvar a rota
+
+Não criar rota imediatamente para cada pedido sem tentar completar.
+
+5. Respeitar limite configurado
+
+O limite máximo de pedidos por rota deve vir de Configurações:
+
+maxOrdersPerRoute
+
+Se não existir configuração, usar 4.
+
+Nenhuma rota pode passar desse limite.
+
+6. Melhorar interface visual das rotas
+
+Hoje os cards estão com cores muito diferentes.
+Quero padronizar visualmente.
+
+Alterar a UI da página Rotas:
+
+- todos os cards devem ter a mesma base visual:
+  - fundo branco ou neutro
+  - borda suave
+  - sombra leve
+  - layout limpo
+  - aparência moderna
+
+- a cor da rota deve aparecer apenas como:
+  - uma barrinha lateral colorida
+  - ou um marcador/ponto colorido dentro do card
+  - ou um badge pequeno de cor
+
+Não quero o card inteiro com uma cor diferente.
+
+Cada rota continua tendo uma cor própria, mas de forma mais elegante e discreta.
+
+Exemplo:
+Card branco padrão
+Barra lateral azul = Rota 1
+Barra lateral verde = Rota 2
+Barra lateral laranja = Rota 3
+
+7. Melhorar leitura operacional
+
+Cada card deve mostrar de forma clara:
+
+- Rota 1 — Bairro principal
+- marcador colorido da rota
+- status: disponível / em rota / concluída
+- quantidade de pedidos
+- bairros incluídos
+- CEPs principais
+- tempo restante ou atraso
+- total a receber na entrega
+- troco total necessário
+- botão Assumir Rota
+- botão QR Code
+- botão Concluir Rota
+
+Dentro do card, cada pedido deve mostrar:
+- número do pedido
+- cliente
+- bairro
+- CEP
+- endereço resumido
+- status de entrega
+- pagamento na entrega ou já pago
+- troco, se houver
+
+8. Melhorar geração do link do Maps
+
+A origem do Maps deve vir das Configurações da loja, não de constante fixa.
+
+Montar origem assim:
+storeAddress + storeNeighborhood + storeCity + storeCep
+
+As paradas devem seguir a ordem calculada por CEP/bairro.
+
+9. Testes obrigatórios
+
+Crie ou use pedidos delivery elegíveis para testar:
+
+Cenário A:
+- 4 pedidos no mesmo bairro com CEPs parecidos
+Resultado esperado:
+- 1 rota com 4 pedidos
+
+Cenário B:
+- 5 pedidos no mesmo bairro
+Resultado esperado:
+- 1 rota com 4 pedidos
+- 1 rota com 1 pedido
+
+Cenário C:
+- pedidos em bairros diferentes, mas CEPs próximos
+Resultado esperado:
+- agrupar os mais próximos primeiro
+
+Cenário D:
+- loja com CEP cadastrado em Configurações
+Resultado esperado:
+- rotas ordenadas considerando a origem da loja
+
+Cenário E:
+- verificar UI
+Resultado esperado:
+- cards com visual padrão
+- apenas marcador/barra/badge colorido por rota
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Qual era a causa de estar criando uma rota por pedido.
+2. Como o novo algoritmo agrupa por CEP e bairro.
+3. Como o CEP da loja influencia a rota.
+4. Arquivos alterados.
+5. Como testar passo a passo.
+6. Limitações que ainda existem sem usar API real de geolocalização.

@@ -150,75 +150,130 @@ interface EligibleOrder {
   deliveryFee: string | null;
 }
 
-/**
- * Sort by neighborhood + CEP + address for optimal route grouping.
- * Same neighborhood, then closest CEP prefix, then address.
- */
-function sortByCepAndAddress(orders: EligibleOrder[]): EligibleOrder[] {
-  return [...orders].sort((a, b) => {
-    const cepA = (a.deliveryCep ?? "").replace(/\D/g, "");
-    const cepB = (b.deliveryCep ?? "").replace(/\D/g, "");
-    if (cepA && cepB) {
-      const cepCmp = cepA.localeCompare(cepB);
-      if (cepCmp !== 0) return cepCmp;
-    }
-    return (a.deliveryAddress ?? "").localeCompare(b.deliveryAddress ?? "");
-  });
+// ── CEP helpers ────────────────────────────────────────────────────────────────
+
+/** Remove non-digits from CEP */
+function normalizeCep(cep: string): string {
+  return (cep ?? "").replace(/\D/g, "");
 }
 
+/**
+ * Returns how many leading digits match between two CEPs (0–8).
+ * Longer match = more geographically proximate.
+ */
+function cepPrefixMatchLength(a: string, b: string): number {
+  const na = normalizeCep(a);
+  const nb = normalizeCep(b);
+  if (!na || !nb) return 0;
+  let i = 0;
+  while (i < Math.min(na.length, nb.length) && na[i] === nb[i]) i++;
+  return i;
+}
+
+/** How close is an order CEP to the store CEP (0–8, higher = closer) */
+function proximityToStore(storeCep: string, orderCep: string): number {
+  return cepPrefixMatchLength(normalizeCep(storeCep), normalizeCep(orderCep));
+}
+
+/**
+ * Compatibility score between two orders (higher = should be in same route).
+ * CEP prefix match is the primary criterion; neighborhood name is secondary.
+ * Neighborhood comparison is case-insensitive to handle "cajuru" vs "CAJURU".
+ */
+function orderPairScore(a: EligibleOrder, b: EligibleOrder): number {
+  // CEP prefix similarity: each matching digit is worth 10 points
+  const cepScore = cepPrefixMatchLength(a.deliveryCep ?? "", b.deliveryCep ?? "") * 10;
+
+  const na = (a.deliveryNeighborhood ?? "").trim().toLowerCase();
+  const nb = (b.deliveryNeighborhood ?? "").trim().toLowerCase();
+  let neighborhoodScore = 0;
+  if (na && nb) {
+    if (na === nb) {
+      neighborhoodScore = 20; // same neighborhood (case-insensitive)
+    } else {
+      // Check adjacency from both sides (case-insensitive keys)
+      const aNeighbors = getNeighbors(a.deliveryNeighborhood ?? "").map((n) => n.toLowerCase());
+      const bNeighbors = getNeighbors(b.deliveryNeighborhood ?? "").map((n) => n.toLowerCase());
+      if (aNeighbors.includes(nb) || bNeighbors.includes(na)) {
+        neighborhoodScore = 8;
+      }
+    }
+  }
+
+  return cepScore + neighborhoodScore;
+}
+
+/**
+ * Greedy proximity-based grouping algorithm.
+ *
+ * 1. Sort all orders by proximity to the store CEP (closest first).
+ * 2. For each unassigned order (seed), fill a batch with the most compatible
+ *    remaining orders (by CEP-prefix similarity + neighborhood).
+ * 3. A route is only committed once it can't accept more orders (≥ maxPerRoute).
+ *
+ * This guarantees that orders in the same neighborhood/CEP are always grouped
+ * before creating a new route, regardless of neighborhood string casing.
+ */
 function generateRoutePlan(
   orders: EligibleOrder[],
-  maxPerRoute: number
+  maxPerRoute: number,
+  storeCep: string
 ): Array<{ mainNeighborhood: string; orders: EligibleOrder[] }> {
   const assigned = new Set<number>();
   const routes: Array<{ mainNeighborhood: string; orders: EligibleOrder[] }> = [];
 
-  // Group by neighborhood
-  const byNeighborhood = new Map<string, EligibleOrder[]>();
-  for (const order of orders) {
-    const n = order.deliveryNeighborhood ?? "Outros";
-    if (!byNeighborhood.has(n)) byNeighborhood.set(n, []);
-    byNeighborhood.get(n)!.push(order);
-  }
+  // Pre-sort by proximity to store so we seed routes with the nearest orders first
+  const byProximity = [...orders].sort((a, b) => {
+    const sA = proximityToStore(storeCep, a.deliveryCep ?? "");
+    const sB = proximityToStore(storeCep, b.deliveryCep ?? "");
+    if (sB !== sA) return sB - sA;
+    return normalizeCep(a.deliveryCep ?? "").localeCompare(normalizeCep(b.deliveryCep ?? ""));
+  });
 
-  // Sort neighborhoods by order count descending
-  const neighborhoods = [...byNeighborhood.keys()].sort(
-    (a, b) => byNeighborhood.get(b)!.length - byNeighborhood.get(a)!.length
-  );
+  for (const seed of byProximity) {
+    if (assigned.has(seed.id)) continue;
 
-  for (const neighborhood of neighborhoods) {
-    const allInNeighborhood = sortByCepAndAddress(
-      byNeighborhood.get(neighborhood)!.filter((o) => !assigned.has(o.id))
-    );
-    if (allInNeighborhood.length === 0) continue;
+    assigned.add(seed.id);
+    const batch: EligibleOrder[] = [seed];
 
-    // Chunk into batches of maxPerRoute
-    let remaining = [...allInNeighborhood];
-    let isFirst = true;
+    // Score every remaining unassigned order by compatibility with this seed
+    const candidates = byProximity
+      .filter((o) => !assigned.has(o.id))
+      .map((o) => ({ order: o, score: orderPairScore(seed, o) }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        // Tiebreak: CEP numeric order
+        return normalizeCep(a.order.deliveryCep ?? "").localeCompare(
+          normalizeCep(b.order.deliveryCep ?? "")
+        );
+      });
 
-    while (remaining.length > 0) {
-      let batch = remaining.slice(0, maxPerRoute);
-      remaining = remaining.slice(maxPerRoute);
-      batch.forEach((o) => assigned.add(o.id));
-
-      // Fill batch from adjacent neighborhoods if this is first batch and there's room
-      if (isFirst && batch.length < maxPerRoute) {
-        const neighbors = getNeighbors(neighborhood);
-        for (const neighbor of neighbors) {
-          if (batch.length >= maxPerRoute) break;
-          const neighborOrders = sortByCepAndAddress(
-            (byNeighborhood.get(neighbor) ?? []).filter((o) => !assigned.has(o.id))
-          );
-          if (neighborOrders.length === 0) continue;
-          const toAdd = neighborOrders.slice(0, maxPerRoute - batch.length);
-          toAdd.forEach((o) => assigned.add(o.id));
-          batch = [...batch, ...toAdd];
-        }
-      }
-      isFirst = false;
-
-      routes.push({ mainNeighborhood: neighborhood, orders: batch });
+    // Fill batch greedily up to maxPerRoute
+    for (const { order } of candidates) {
+      if (batch.length >= maxPerRoute) break;
+      batch.push(order);
+      assigned.add(order.id);
     }
+
+    // Determine main neighborhood (most frequent, preserving original casing)
+    const neighborhoodCounts = new Map<string, number>();
+    for (const o of batch) {
+      const n = (o.deliveryNeighborhood ?? "Outros").trim();
+      neighborhoodCounts.set(n, (neighborhoodCounts.get(n) ?? 0) + 1);
+    }
+    const mainNeighborhood = [...neighborhoodCounts.entries()].sort(
+      (a, b) => b[1] - a[1]
+    )[0][0];
+
+    // Sort stops: closest to store first, then by CEP
+    const sortedBatch = [...batch].sort((a, b) => {
+      const sA = proximityToStore(storeCep, a.deliveryCep ?? "");
+      const sB = proximityToStore(storeCep, b.deliveryCep ?? "");
+      if (sB !== sA) return sB - sA;
+      return normalizeCep(a.deliveryCep ?? "").localeCompare(normalizeCep(b.deliveryCep ?? ""));
+    });
+
+    routes.push({ mainNeighborhood, orders: sortedBatch });
   }
 
   return routes;
@@ -294,7 +349,7 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     return;
   }
 
-  const plan = generateRoutePlan(eligibleOrders as EligibleOrder[], maxPerRoute);
+  const plan = generateRoutePlan(eligibleOrders as EligibleOrder[], maxPerRoute, settings.storeCep ?? "");
 
   const existingToday = await db
     .select({ id: deliveryRoutesTable.id })
@@ -308,18 +363,12 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
   const createdRoutes: number[] = [];
 
   for (const { mainNeighborhood, orders } of plan) {
-    const includedNeighborhoods = [...new Set(orders.map((o) => o.deliveryNeighborhood ?? "Outros"))];
+    const includedNeighborhoods = [...new Set(orders.map((o) => (o.deliveryNeighborhood ?? "Outros").trim()))];
     const color = ROUTE_COLORS[colorIndex % ROUTE_COLORS.length];
     const name = `Rota ${routeNumber} — ${mainNeighborhood}`;
 
-    // Sort stops: main neighborhood first (by CEP), then adjacent (by CEP)
-    const mainOrders = sortByCepAndAddress(
-      orders.filter((o) => (o.deliveryNeighborhood ?? "Outros") === mainNeighborhood)
-    );
-    const otherOrders = sortByCepAndAddress(
-      orders.filter((o) => (o.deliveryNeighborhood ?? "Outros") !== mainNeighborhood)
-    );
-    const sortedOrders = [...mainOrders, ...otherOrders];
+    // Orders are already sorted by proximity from generateRoutePlan
+    const sortedOrders = orders;
 
     // Dispatch deadline = now + dispatchMinutes
     const dispatchDeadline = new Date(Date.now() + dispatchMinutes * 60_000);
