@@ -1,0 +1,65 @@
+import { Router, type IRouter } from "express";
+import { eq } from "drizzle-orm";
+import { db, storeSettingsTable } from "@workspace/db";
+
+const router: IRouter = Router();
+
+async function getOrCreateSettings() {
+  const [existing] = await db.select().from(storeSettingsTable).limit(1);
+  if (existing) return existing;
+  const [created] = await db.insert(storeSettingsTable).values({}).returning();
+  return created;
+}
+
+router.get("/settings", async (_req, res): Promise<void> => {
+  const settings = await getOrCreateSettings();
+  res.json(settings);
+});
+
+router.put("/settings", async (req, res): Promise<void> => {
+  const {
+    storeName,
+    storePhone,
+    storeCep,
+    storeAddress,
+    storeNeighborhood,
+    storeCity,
+    deliveryDispatchTimeMinutes,
+    maxOrdersPerRoute,
+  } = req.body ?? {};
+
+  const settings = await getOrCreateSettings();
+
+  const updates: Record<string, unknown> = {};
+  if (storeName !== undefined) updates.storeName = String(storeName);
+  if (storePhone !== undefined) updates.storePhone = storePhone ? String(storePhone) : null;
+  if (storeCep !== undefined) updates.storeCep = storeCep ? String(storeCep) : null;
+  if (storeAddress !== undefined) updates.storeAddress = storeAddress ? String(storeAddress) : null;
+  if (storeNeighborhood !== undefined) updates.storeNeighborhood = storeNeighborhood ? String(storeNeighborhood) : null;
+  if (storeCity !== undefined) updates.storeCity = storeCity ? String(storeCity) : null;
+  if (deliveryDispatchTimeMinutes !== undefined) {
+    const v = parseInt(String(deliveryDispatchTimeMinutes), 10);
+    if (!isNaN(v) && v >= 1) updates.deliveryDispatchTimeMinutes = v;
+  }
+  if (maxOrdersPerRoute !== undefined) {
+    const v = parseInt(String(maxOrdersPerRoute), 10);
+    if (!isNaN(v) && v >= 1 && v <= 10) updates.maxOrdersPerRoute = v;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    res.json(settings);
+    return;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [updated] = await db
+    .update(storeSettingsTable)
+    .set(updates as any)
+    .where(eq(storeSettingsTable.id, settings.id))
+    .returning();
+
+  res.json(updated);
+});
+
+export default router;
+export { getOrCreateSettings };

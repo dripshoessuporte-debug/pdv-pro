@@ -11,6 +11,7 @@ export const deliveryRoutesTable = pgTable("delivery_routes", {
   courierName: text("courier_name"),
   storeOrigin: text("store_origin").notNull(),
   mapsUrl: text("maps_url"),
+  dispatchDeadline: timestamp("dispatch_deadline", { withTimezone: true }),
   startedAt: timestamp("started_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

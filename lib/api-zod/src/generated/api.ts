@@ -357,6 +357,11 @@ export const ListOrdersResponseItem = zod.object({
   "deliveryFee": zod.number(),
   "deliveryNotes": zod.string().nullish(),
   "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
+  "paymentTiming": zod.enum(['now', 'on_delivery']).optional(),
+  "deliveryPaymentMethod": zod.string().nullish(),
+  "needsChange": zod.boolean().nullish(),
+  "changeFor": zod.number().nullish(),
+  "deliveryPaymentNotes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "items": zod.array(zod.object({
@@ -388,7 +393,12 @@ export const CreateOrderBody = zod.object({
   "deliveryNeighborhood": zod.string().optional(),
   "deliveryReference": zod.string().optional(),
   "deliveryFee": zod.number().optional(),
-  "deliveryNotes": zod.string().optional()
+  "deliveryNotes": zod.string().optional(),
+  "paymentTiming": zod.enum(['now', 'on_delivery']).optional(),
+  "deliveryPaymentMethod": zod.string().optional(),
+  "needsChange": zod.boolean().optional(),
+  "changeFor": zod.number().optional(),
+  "deliveryPaymentNotes": zod.string().optional()
 })
 
 
@@ -417,6 +427,11 @@ export const GetOrderResponse = zod.object({
   "deliveryFee": zod.number(),
   "deliveryNotes": zod.string().nullish(),
   "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
+  "paymentTiming": zod.enum(['now', 'on_delivery']).optional(),
+  "deliveryPaymentMethod": zod.string().nullish(),
+  "needsChange": zod.boolean().nullish(),
+  "changeFor": zod.number().nullish(),
+  "deliveryPaymentNotes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "items": zod.array(zod.object({
@@ -464,6 +479,11 @@ export const UpdateOrderResponse = zod.object({
   "deliveryFee": zod.number(),
   "deliveryNotes": zod.string().nullish(),
   "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
+  "paymentTiming": zod.enum(['now', 'on_delivery']).optional(),
+  "deliveryPaymentMethod": zod.string().nullish(),
+  "needsChange": zod.boolean().nullish(),
+  "changeFor": zod.number().nullish(),
+  "deliveryPaymentNotes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "items": zod.array(zod.object({
@@ -530,6 +550,11 @@ export const SendOrderToKitchenResponse = zod.object({
   "deliveryFee": zod.number(),
   "deliveryNotes": zod.string().nullish(),
   "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
+  "paymentTiming": zod.enum(['now', 'on_delivery']).optional(),
+  "deliveryPaymentMethod": zod.string().nullish(),
+  "needsChange": zod.boolean().nullish(),
+  "changeFor": zod.number().nullish(),
+  "deliveryPaymentNotes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "items": zod.array(zod.object({
@@ -570,6 +595,11 @@ export const CancelOrderResponse = zod.object({
   "deliveryFee": zod.number(),
   "deliveryNotes": zod.string().nullish(),
   "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
+  "paymentTiming": zod.enum(['now', 'on_delivery']).optional(),
+  "deliveryPaymentMethod": zod.string().nullish(),
+  "needsChange": zod.boolean().nullish(),
+  "changeFor": zod.number().nullish(),
+  "deliveryPaymentNotes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "items": zod.array(zod.object({
@@ -614,6 +644,11 @@ export const UpdateDeliveryStatusResponse = zod.object({
   "deliveryFee": zod.number(),
   "deliveryNotes": zod.string().nullish(),
   "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
+  "paymentTiming": zod.enum(['now', 'on_delivery']).optional(),
+  "deliveryPaymentMethod": zod.string().nullish(),
+  "needsChange": zod.boolean().nullish(),
+  "changeFor": zod.number().nullish(),
+  "deliveryPaymentNotes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "items": zod.array(zod.object({
@@ -670,6 +705,11 @@ export const GetReceiptResponse = zod.object({
   "deliveryFee": zod.number(),
   "deliveryNotes": zod.string().nullish(),
   "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
+  "paymentTiming": zod.enum(['now', 'on_delivery']).optional(),
+  "deliveryPaymentMethod": zod.string().nullish(),
+  "needsChange": zod.boolean().nullish(),
+  "changeFor": zod.number().nullish(),
+  "deliveryPaymentNotes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "items": zod.array(zod.object({
@@ -792,6 +832,11 @@ export const GetRecentOrdersResponseItem = zod.object({
   "deliveryFee": zod.number(),
   "deliveryNotes": zod.string().nullish(),
   "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('preparing'),zod.literal('ready'),zod.literal('out_for_delivery'),zod.literal('delivered'),zod.literal(null)]).nullish(),
+  "paymentTiming": zod.enum(['now', 'on_delivery']).optional(),
+  "deliveryPaymentMethod": zod.string().nullish(),
+  "needsChange": zod.boolean().nullish(),
+  "changeFor": zod.number().nullish(),
+  "deliveryPaymentNotes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "items": zod.array(zod.object({
@@ -1023,6 +1068,89 @@ export const AddCashMovementBody = zod.object({
   "paymentMethod": zod.string().optional(),
   "reason": zod.string(),
   "orderId": zod.number().optional()
+})
+
+
+/**
+ * @summary Get store settings
+ */
+export const GetStoreSettingsResponse = zod.object({
+  "id": zod.number(),
+  "storeName": zod.string(),
+  "storePhone": zod.string().nullish(),
+  "storeCep": zod.string().nullish(),
+  "storeAddress": zod.string().nullish(),
+  "storeNeighborhood": zod.string().nullish(),
+  "storeCity": zod.string().nullish(),
+  "deliveryDispatchTimeMinutes": zod.number(),
+  "maxOrdersPerRoute": zod.number()
+})
+
+
+/**
+ * @summary Update store settings
+ */
+export const UpdateStoreSettingsBody = zod.object({
+  "storeName": zod.string().optional(),
+  "storePhone": zod.string().optional(),
+  "storeCep": zod.string().optional(),
+  "storeAddress": zod.string().optional(),
+  "storeNeighborhood": zod.string().optional(),
+  "storeCity": zod.string().optional(),
+  "deliveryDispatchTimeMinutes": zod.number().optional(),
+  "maxOrdersPerRoute": zod.number().optional()
+})
+
+export const UpdateStoreSettingsResponse = zod.object({
+  "id": zod.number(),
+  "storeName": zod.string(),
+  "storePhone": zod.string().nullish(),
+  "storeCep": zod.string().nullish(),
+  "storeAddress": zod.string().nullish(),
+  "storeNeighborhood": zod.string().nullish(),
+  "storeCity": zod.string().nullish(),
+  "deliveryDispatchTimeMinutes": zod.number(),
+  "maxOrdersPerRoute": zod.number()
+})
+
+
+/**
+ * @summary Adjust route dispatch deadline
+ */
+export const AdjustRouteTimeParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AdjustRouteTimeBody = zod.object({
+  "minutesDelta": zod.number()
+})
+
+export const AdjustRouteTimeResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "mainNeighborhood": zod.string(),
+  "includedNeighborhoods": zod.array(zod.string()),
+  "status": zod.enum(['available', 'in_progress', 'completed']),
+  "color": zod.string(),
+  "courierName": zod.string().nullish(),
+  "storeOrigin": zod.string(),
+  "mapsUrl": zod.string().nullish(),
+  "totalDeliveryFee": zod.number(),
+  "startedAt": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "orders": zod.array(zod.object({
+  "id": zod.number(),
+  "routeId": zod.number(),
+  "orderId": zod.number(),
+  "stopOrder": zod.number(),
+  "customerName": zod.string().nullish(),
+  "customerPhone": zod.string().nullish(),
+  "deliveryAddress": zod.string().nullish(),
+  "deliveryNeighborhood": zod.string().nullish(),
+  "deliveryFee": zod.number().optional(),
+  "deliveryStatus": zod.string().nullish()
+}))
 })
 
 

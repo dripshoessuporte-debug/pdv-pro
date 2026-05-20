@@ -39,6 +39,8 @@ import {
   Truck,
   Package,
   MapPin,
+  Banknote,
+  Smartphone,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -477,6 +479,41 @@ export default function OrderDetail() {
                       <div className="sm:col-span-2">
                         <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Obs. de entrega</p>
                         <p className="italic text-sm">💬 {order.deliveryNotes}</p>
+                      </div>
+                    )}
+
+                    {/* Payment timing info */}
+                    {order.paymentTiming && (
+                      <div className="sm:col-span-2">
+                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">Pagamento</p>
+                        {order.paymentTiming === "now" ? (
+                          <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400 font-medium">
+                            <CreditCard className="w-4 h-4" />
+                            Pago no momento do pedido
+                          </div>
+                        ) : (
+                          <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 space-y-1.5 text-sm">
+                            <div className="flex items-center gap-2 font-semibold text-amber-800 dark:text-amber-300">
+                              <Banknote className="w-4 h-4" />
+                              Pagar na entrega —{" "}
+                              {order.deliveryPaymentMethod === "dinheiro" && <><Banknote className="w-3.5 h-3.5" /> Dinheiro</>}
+                              {order.deliveryPaymentMethod === "pix" && <><Smartphone className="w-3.5 h-3.5" /> Pix</>}
+                              {order.deliveryPaymentMethod === "cartao" && <><CreditCard className="w-3.5 h-3.5" /> Cartão</>}
+                            </div>
+                            {order.needsChange && (
+                              <p className="text-amber-700 dark:text-amber-400">
+                                Troco para: <strong>R$ {parseFloat(String(order.changeFor ?? 0)).toFixed(2)}</strong>
+                                {" · "}Levar troco de:{" "}
+                                <strong>
+                                  R$ {Math.max(0, parseFloat(String(order.changeFor ?? 0)) - order.totalAmount).toFixed(2)}
+                                </strong>
+                              </p>
+                            )}
+                            {order.deliveryPaymentNotes && (
+                              <p className="text-xs text-muted-foreground italic">{order.deliveryPaymentNotes}</p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

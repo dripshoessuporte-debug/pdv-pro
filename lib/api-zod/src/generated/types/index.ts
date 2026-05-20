@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './adjustRouteTimeInput';
 export * from './assignRouteInput';
 export * from './cashMovement';
 export * from './cashMovementInput';
@@ -43,9 +44,11 @@ export * from './listProductsParams';
 export * from './order';
 export * from './orderDeliveryStatus';
 export * from './orderInput';
+export * from './orderInputPaymentTiming';
 export * from './orderInputType';
 export * from './orderItem';
 export * from './orderItemInput';
+export * from './orderPaymentTiming';
 export * from './orderStatus';
 export * from './orderType';
 export * from './orderUpdate';
@@ -59,6 +62,8 @@ export * from './product';
 export * from './productInput';
 export * from './productUpdate';
 export * from './receipt';
+export * from './storeSettings';
+export * from './storeSettingsInput';
 export * from './table';
 export * from './tableInput';
 export * from './tableInputStatus';

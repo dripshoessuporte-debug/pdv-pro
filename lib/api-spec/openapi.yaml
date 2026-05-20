@@ -836,6 +836,61 @@ paths:
               schema:
                 $ref: "#/components/schemas/CashMovement"
 
+  /settings:
+    get:
+      operationId: getStoreSettings
+      tags: [settings]
+      summary: Get store settings
+      responses:
+        "200":
+          description: Store settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreSettings"
+    put:
+      operationId: updateStoreSettings
+      tags: [settings]
+      summary: Update store settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StoreSettingsInput"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreSettings"
+
+  /delivery/routes/{id}/adjust-time:
+    post:
+      operationId: adjustRouteTime
+      tags: [delivery]
+      summary: Adjust route dispatch deadline
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdjustRouteTimeInput"
+      responses:
+        "200":
+          description: Updated route
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryRoute"
+
 components:
   schemas:
     HealthStatus:
@@ -1071,6 +1126,17 @@ components:
         deliveryStatus:
           type: ["string", "null"]
           enum: [pending, preparing, ready, out_for_delivery, delivered, null]
+        paymentTiming:
+          type: string
+          enum: [now, on_delivery]
+        deliveryPaymentMethod:
+          type: ["string", "null"]
+        needsChange:
+          type: ["boolean", "null"]
+        changeFor:
+          type: ["number", "null"]
+        deliveryPaymentNotes:
+          type: ["string", "null"]
         createdAt:
           type: string
         updatedAt:
@@ -1108,6 +1174,17 @@ components:
         deliveryFee:
           type: number
         deliveryNotes:
+          type: string
+        paymentTiming:
+          type: string
+          enum: [now, on_delivery]
+        deliveryPaymentMethod:
+          type: string
+        needsChange:
+          type: boolean
+        changeFor:
+          type: number
+        deliveryPaymentNotes:
           type: string
 
     OrderUpdate:
@@ -1482,3 +1559,53 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DeliveryRoute"
+
+    StoreSettings:
+      type: object
+      required: [id, storeName, deliveryDispatchTimeMinutes, maxOrdersPerRoute]
+      properties:
+        id:
+          type: integer
+        storeName:
+          type: string
+        storePhone:
+          type: ["string", "null"]
+        storeCep:
+          type: ["string", "null"]
+        storeAddress:
+          type: ["string", "null"]
+        storeNeighborhood:
+          type: ["string", "null"]
+        storeCity:
+          type: ["string", "null"]
+        deliveryDispatchTimeMinutes:
+          type: integer
+        maxOrdersPerRoute:
+          type: integer
+
+    StoreSettingsInput:
+      type: object
+      properties:
+        storeName:
+          type: string
+        storePhone:
+          type: string
+        storeCep:
+          type: string
+        storeAddress:
+          type: string
+        storeNeighborhood:
+          type: string
+        storeCity:
+          type: string
+        deliveryDispatchTimeMinutes:
+          type: integer
+        maxOrdersPerRoute:
+          type: integer
+
+    AdjustRouteTimeInput:
+      type: object
+      required: [minutesDelta]
+      properties:
+        minutesDelta:
+          type: integer

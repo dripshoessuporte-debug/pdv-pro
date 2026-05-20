@@ -7,6 +7,7 @@
  */
 import type { OrderDeliveryStatus } from './orderDeliveryStatus';
 import type { OrderItem } from './orderItem';
+import type { OrderPaymentTiming } from './orderPaymentTiming';
 import type { OrderStatus } from './orderStatus';
 import type { OrderType } from './orderType';
 
@@ -40,6 +41,15 @@ export interface Order {
   deliveryNotes?: string | null;
   /** @nullable */
   deliveryStatus?: OrderDeliveryStatus;
+  paymentTiming?: OrderPaymentTiming;
+  /** @nullable */
+  deliveryPaymentMethod?: string | null;
+  /** @nullable */
+  needsChange?: boolean | null;
+  /** @nullable */
+  changeFor?: number | null;
+  /** @nullable */
+  deliveryPaymentNotes?: string | null;
   createdAt: string;
   updatedAt?: string;
   items: OrderItem[];

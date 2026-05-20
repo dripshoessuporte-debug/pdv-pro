@@ -67,6 +67,7 @@ router.get("/dashboard/recent-orders", async (_req, res): Promise<void> => {
       type: ordersTable.type,
       notes: ordersTable.notes,
       totalAmount: ordersTable.totalAmount,
+      deliveryFee: ordersTable.deliveryFee,
       createdAt: ordersTable.createdAt,
       updatedAt: ordersTable.updatedAt,
     })
@@ -95,6 +96,7 @@ router.get("/dashboard/recent-orders", async (_req, res): Promise<void> => {
     return {
       ...order,
       totalAmount: parseFloat(String(order.totalAmount)),
+      deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
       items: items.map((item) => ({

@@ -177,7 +177,7 @@ router.post("/orders", async (req, res): Promise<void> => {
     return;
   }
 
-  const { deliveryFee, ...restData } = parsed.data;
+  const { deliveryFee, needsChange, changeFor, ...restData } = parsed.data;
   const fee = deliveryFee ?? 0;
 
   const [order] = await db.insert(ordersTable).values({
@@ -185,6 +185,8 @@ router.post("/orders", async (req, res): Promise<void> => {
     deliveryFee: String(fee),
     totalAmount: String(fee), // items added after via addOrderItem; recalcOrderTotal updates this
     ...(parsed.data.type === "delivery" ? { deliveryStatus: "pending" } : {}),
+    ...(needsChange !== undefined ? { needsChange: String(needsChange) } : {}),
+    ...(changeFor !== undefined ? { changeFor: String(changeFor) } : {}),
   }).returning();
 
   if (parsed.data.tableId) {

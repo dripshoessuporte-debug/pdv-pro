@@ -5,6 +5,7 @@
  * Restaurant POS API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { OrderInputPaymentTiming } from './orderInputPaymentTiming';
 import type { OrderInputType } from './orderInputType';
 
 export interface OrderInput {
@@ -20,4 +21,9 @@ export interface OrderInput {
   deliveryReference?: string;
   deliveryFee?: number;
   deliveryNotes?: string;
+  paymentTiming?: OrderInputPaymentTiming;
+  deliveryPaymentMethod?: string;
+  needsChange?: boolean;
+  changeFor?: number;
+  deliveryPaymentNotes?: string;
 }

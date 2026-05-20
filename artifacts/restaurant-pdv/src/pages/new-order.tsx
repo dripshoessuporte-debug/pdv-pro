@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Minus, ShoppingCart, Search, MessageSquare, Truck } from "lucide-react";
+import { Plus, Minus, ShoppingCart, Search, MessageSquare, Truck, Banknote, Smartphone, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type OrderType = "counter" | "table" | "takeaway" | "delivery";
@@ -66,6 +66,12 @@ export default function NewOrder() {
   const [deliveryReference, setDeliveryReference] = useState("");
   const [deliveryFee, setDeliveryFee] = useState("");
   const [deliveryNotes, setDeliveryNotes] = useState("");
+  // Payment on delivery
+  const [paymentTiming, setPaymentTiming] = useState<"now" | "on_delivery">("now");
+  const [deliveryPaymentMethod, setDeliveryPaymentMethod] = useState<"dinheiro" | "pix" | "cartao">("dinheiro");
+  const [needsChange, setNeedsChange] = useState(false);
+  const [changeFor, setChangeFor] = useState("");
+  const [deliveryPaymentNotes, setDeliveryPaymentNotes] = useState("");
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -170,6 +176,15 @@ export default function NewOrder() {
         if (deliveryReference.trim()) orderData.deliveryReference = deliveryReference.trim();
         if (deliveryNotes.trim()) orderData.deliveryNotes = deliveryNotes.trim();
         orderData.deliveryFee = parsedFee;
+        orderData.paymentTiming = paymentTiming;
+        if (paymentTiming === "on_delivery") {
+          orderData.deliveryPaymentMethod = deliveryPaymentMethod;
+          orderData.needsChange = needsChange;
+          if (needsChange && changeFor.trim()) {
+            orderData.changeFor = parseFloat(changeFor.replace(",", "."));
+          }
+          if (deliveryPaymentNotes.trim()) orderData.deliveryPaymentNotes = deliveryPaymentNotes.trim();
+        }
       } else if (orderType === "takeaway") {
         // Takeaway: name and phone optional
         if (customerName.trim()) orderData.customerName = customerName.trim();
@@ -370,6 +385,117 @@ export default function NewOrder() {
                         rows={2}
                         data-testid="input-delivery-notes"
                       />
+                    </div>
+
+                    {/* Pagamento */}
+                    <div className="border rounded-lg p-4 bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800 space-y-3">
+                      <p className="font-semibold text-sm text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                        <Banknote className="w-4 h-4" /> Pagamento
+                      </p>
+                      {/* Quando pagar */}
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { value: "now", label: "💳 Pagou agora" },
+                          { value: "on_delivery", label: "💰 Pagar na entrega" },
+                        ].map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setPaymentTiming(opt.value as "now" | "on_delivery")}
+                            className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                              paymentTiming === opt.value
+                                ? "bg-amber-600 text-white border-amber-600"
+                                : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 hover:border-amber-400"
+                            }`}
+                            data-testid={`button-payment-timing-${opt.value}`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Forma de pagamento (apenas se pagar na entrega) */}
+                      {paymentTiming === "on_delivery" && (
+                        <div className="space-y-3">
+                          <div>
+                            <Label>Forma de pagamento</Label>
+                            <div className="grid grid-cols-3 gap-2 mt-1">
+                              {[
+                                { value: "dinheiro", label: "Dinheiro", Icon: Banknote },
+                                { value: "pix", label: "Pix", Icon: Smartphone },
+                                { value: "cartao", label: "Cartão", Icon: CreditCard },
+                              ].map(({ value, label, Icon }) => (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  onClick={() => setDeliveryPaymentMethod(value as "dinheiro" | "pix" | "cartao")}
+                                  className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg border text-xs font-medium transition-colors ${
+                                    deliveryPaymentMethod === value
+                                      ? "bg-amber-600 text-white border-amber-600"
+                                      : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 hover:border-amber-400"
+                                  }`}
+                                  data-testid={`button-payment-method-${value}`}
+                                >
+                                  <Icon className="w-4 h-4" />
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Troco (apenas dinheiro) */}
+                          {deliveryPaymentMethod === "dinheiro" && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-3">
+                                <Label>Precisa de troco?</Label>
+                                <div className="flex gap-2">
+                                  {[
+                                    { value: true, label: "Sim" },
+                                    { value: false, label: "Não" },
+                                  ].map((opt) => (
+                                    <button
+                                      key={String(opt.value)}
+                                      type="button"
+                                      onClick={() => setNeedsChange(opt.value)}
+                                      className={`px-3 py-1 rounded border text-xs font-medium transition-colors ${
+                                        needsChange === opt.value
+                                          ? "bg-amber-600 text-white border-amber-600"
+                                          : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700"
+                                      }`}
+                                      data-testid={`button-needs-change-${opt.value}`}
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              {needsChange && (
+                                <div>
+                                  <Label>Troco para quanto?</Label>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="Ex: 50,00"
+                                    value={changeFor}
+                                    onChange={(e) => setChangeFor(e.target.value)}
+                                    data-testid="input-change-for"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <div>
+                            <Label>Obs. de pagamento (opcional)</Label>
+                            <Input
+                              placeholder="Ex: tem troco de 10, paga em débito..."
+                              value={deliveryPaymentNotes}
+                              onChange={(e) => setDeliveryPaymentNotes(e.target.value)}
+                              data-testid="input-delivery-payment-notes"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

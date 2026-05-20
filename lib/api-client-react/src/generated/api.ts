@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AdjustRouteTimeInput,
   CashMovement,
   CashMovementInput,
   CashRegisterClose,
@@ -33,6 +34,7 @@ import type {
   CustomerInput,
   CustomerUpdate,
   DashboardSummary,
+  DeliveryRoute,
   DeliveryStatusUpdate,
   HealthStatus,
   KitchenTicket,
@@ -50,6 +52,8 @@ import type {
   ProductInput,
   ProductUpdate,
   Receipt,
+  StoreSettings,
+  StoreSettingsInput,
   Table,
   TableInput,
   TableUpdate
@@ -3179,5 +3183,225 @@ export const useAddCashMovement = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getAddCashMovementMutationOptions(options));
+    }
+
+export const getGetStoreSettingsUrl = () => {
+
+
+
+
+  return `/api/settings`
+}
+
+/**
+ * @summary Get store settings
+ */
+export const getStoreSettings = async ( options?: RequestInit): Promise<StoreSettings> => {
+
+  return customFetch<StoreSettings>(getGetStoreSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStoreSettingsQueryKey = () => {
+    return [
+    `/api/settings`
+    ] as const;
+    }
+
+
+export const getGetStoreSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getStoreSettings>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStoreSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStoreSettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStoreSettings>>> = ({ signal }) => getStoreSettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStoreSettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStoreSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getStoreSettings>>>
+export type GetStoreSettingsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get store settings
+ */
+
+export function useGetStoreSettings<TData = Awaited<ReturnType<typeof getStoreSettings>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStoreSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStoreSettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateStoreSettingsUrl = () => {
+
+
+
+
+  return `/api/settings`
+}
+
+/**
+ * @summary Update store settings
+ */
+export const updateStoreSettings = async (storeSettingsInput: StoreSettingsInput, options?: RequestInit): Promise<StoreSettings> => {
+
+  return customFetch<StoreSettings>(getUpdateStoreSettingsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      storeSettingsInput,)
+  }
+);}
+
+
+
+
+export const getUpdateStoreSettingsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateStoreSettings>>, TError,{data: BodyType<StoreSettingsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateStoreSettings>>, TError,{data: BodyType<StoreSettingsInput>}, TContext> => {
+
+const mutationKey = ['updateStoreSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateStoreSettings>>, {data: BodyType<StoreSettingsInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateStoreSettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateStoreSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateStoreSettings>>>
+    export type UpdateStoreSettingsMutationBody = BodyType<StoreSettingsInput>
+    export type UpdateStoreSettingsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update store settings
+ */
+export const useUpdateStoreSettings = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateStoreSettings>>, TError,{data: BodyType<StoreSettingsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateStoreSettings>>,
+        TError,
+        {data: BodyType<StoreSettingsInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateStoreSettingsMutationOptions(options));
+    }
+
+export const getAdjustRouteTimeUrl = (id: number,) => {
+
+
+
+
+  return `/api/delivery/routes/${id}/adjust-time`
+}
+
+/**
+ * @summary Adjust route dispatch deadline
+ */
+export const adjustRouteTime = async (id: number,
+    adjustRouteTimeInput: AdjustRouteTimeInput, options?: RequestInit): Promise<DeliveryRoute> => {
+
+  return customFetch<DeliveryRoute>(getAdjustRouteTimeUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      adjustRouteTimeInput,)
+  }
+);}
+
+
+
+
+export const getAdjustRouteTimeMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adjustRouteTime>>, TError,{id: number;data: BodyType<AdjustRouteTimeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adjustRouteTime>>, TError,{id: number;data: BodyType<AdjustRouteTimeInput>}, TContext> => {
+
+const mutationKey = ['adjustRouteTime'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adjustRouteTime>>, {id: number;data: BodyType<AdjustRouteTimeInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  adjustRouteTime(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdjustRouteTimeMutationResult = NonNullable<Awaited<ReturnType<typeof adjustRouteTime>>>
+    export type AdjustRouteTimeMutationBody = BodyType<AdjustRouteTimeInput>
+    export type AdjustRouteTimeMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Adjust route dispatch deadline
+ */
+export const useAdjustRouteTime = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adjustRouteTime>>, TError,{id: number;data: BodyType<AdjustRouteTimeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adjustRouteTime>>,
+        TError,
+        {id: number;data: BodyType<AdjustRouteTimeInput>},
+        TContext
+      > => {
+      return useMutation(getAdjustRouteTimeMutationOptions(options));
     }
 

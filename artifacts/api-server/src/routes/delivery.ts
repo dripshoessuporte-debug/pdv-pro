@@ -1,26 +1,12 @@
 import { Router, type IRouter } from "express";
 import { eq, and, inArray, notInArray, sql } from "drizzle-orm";
 import { db, deliveryRoutesTable, deliveryRouteOrdersTable, ordersTable } from "@workspace/db";
+import { getOrCreateSettings } from "./settings";
 
 const router: IRouter = Router();
 
-// ─── Configuration ────────────────────────────────────────────────────────────
+// ─── Neighborhood proximity map ───────────────────────────────────────────────
 
-/**
- * Store origin used as the departure point for all delivery route maps.
- * Change this to match the real store address before going to production.
- */
-const STORE_ORIGIN = {
-  name: "PDV Pro",
-  cep: "80010-010",
-  address: "Rua XV de Novembro, 500, Centro, Curitiba, PR",
-};
-
-/**
- * Neighborhood proximity map.
- * Key = neighborhood name, Value = list of adjacent neighborhoods.
- * Edit freely to match the delivery area.
- */
 const NEIGHBORHOOD_PROXIMITY: Record<string, string[]> = {
   "Boqueirão":      ["Hauer", "Xaxim", "Alto Boqueirão"],
   "Xaxim":          ["Boqueirão", "Pinheirinho", "Sítio Cercado"],
@@ -48,7 +34,9 @@ const ROUTE_COLORS = [
   "#a855f7", "#ec4899", "#14b8a6", "#eab308",
 ];
 
-const MAX_PER_ROUTE = 4;
+// ─── Eligible delivery statuses for routing ───────────────────────────────────
+
+const ELIGIBLE_DELIVERY_STATUSES = ["preparing", "ready"];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -56,11 +44,17 @@ function getNeighbors(neighborhood: string): string[] {
   return NEIGHBORHOOD_PROXIMITY[neighborhood] ?? [];
 }
 
-function buildMapsUrl(orders: Array<{ deliveryAddress: string | null; deliveryNeighborhood: string | null }>): string {
-  const origin = encodeURIComponent(STORE_ORIGIN.address);
-  const addresses = orders.map(
-    (o) => `${o.deliveryAddress ?? ""}, ${o.deliveryNeighborhood ?? ""}, Curitiba, PR`
-  );
+function buildMapsUrl(
+  storeAddress: string,
+  orders: Array<{ deliveryAddress: string | null; deliveryNeighborhood: string | null; deliveryCep: string | null; storeCity: string | null }>
+): string {
+  const origin = encodeURIComponent(storeAddress);
+  const addresses = orders.map((o) => {
+    const parts = [o.deliveryAddress, o.deliveryNeighborhood, o.storeCity ?? "Curitiba, PR"]
+      .filter(Boolean)
+      .join(", ");
+    return parts;
+  });
 
   if (addresses.length === 0) {
     return `https://www.google.com/maps/dir/?api=1&origin=${origin}&travelmode=driving`;
@@ -91,8 +85,16 @@ async function getRouteWithOrders(routeId: number) {
       customerPhone: ordersTable.customerPhone,
       deliveryAddress: ordersTable.deliveryAddress,
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+      deliveryCep: ordersTable.deliveryCep,
       deliveryFee: ordersTable.deliveryFee,
       deliveryStatus: ordersTable.deliveryStatus,
+      totalAmount: ordersTable.totalAmount,
+      paymentTiming: ordersTable.paymentTiming,
+      deliveryPaymentMethod: ordersTable.deliveryPaymentMethod,
+      needsChange: ordersTable.needsChange,
+      changeFor: ordersTable.changeFor,
+      deliveryPaymentNotes: ordersTable.deliveryPaymentNotes,
+      orderCreatedAt: ordersTable.createdAt,
     })
     .from(deliveryRouteOrdersTable)
     .leftJoin(ordersTable, eq(deliveryRouteOrdersTable.orderId, ordersTable.id))
@@ -104,16 +106,36 @@ async function getRouteWithOrders(routeId: number) {
     0
   );
 
+  // Total to receive on delivery (payment_timing = on_delivery)
+  const totalToReceive = routeOrders
+    .filter((o) => o.paymentTiming === "on_delivery")
+    .reduce((sum, o) => sum + parseFloat(String(o.totalAmount ?? "0")), 0);
+
+  // Total change needed (sum of (changeFor - totalAmount) where changeFor > totalAmount)
+  const totalChangeNeeded = routeOrders
+    .filter((o) => o.paymentTiming === "on_delivery" && o.needsChange === "true" && o.changeFor)
+    .reduce((sum, o) => {
+      const changeFor = parseFloat(String(o.changeFor ?? "0"));
+      const total = parseFloat(String(o.totalAmount ?? "0"));
+      return sum + Math.max(0, changeFor - total);
+    }, 0);
+
   return {
     ...route,
     includedNeighborhoods: JSON.parse(route.includedNeighborhoods) as string[],
     totalDeliveryFee,
+    totalToReceive,
+    totalChangeNeeded,
+    dispatchDeadline: route.dispatchDeadline?.toISOString() ?? null,
     startedAt: route.startedAt?.toISOString() ?? null,
     completedAt: route.completedAt?.toISOString() ?? null,
     createdAt: route.createdAt.toISOString(),
     orders: routeOrders.map((o) => ({
       ...o,
       deliveryFee: parseFloat(String(o.deliveryFee ?? "0")),
+      totalAmount: parseFloat(String(o.totalAmount ?? "0")),
+      changeFor: o.changeFor ? parseFloat(String(o.changeFor)) : null,
+      orderCreatedAt: o.orderCreatedAt?.toISOString() ?? null,
     })),
   };
 }
@@ -124,20 +146,34 @@ interface EligibleOrder {
   id: number;
   deliveryAddress: string | null;
   deliveryNeighborhood: string | null;
+  deliveryCep: string | null;
   deliveryFee: string | null;
 }
 
-function sortByAddress(orders: EligibleOrder[]): EligibleOrder[] {
-  return [...orders].sort((a, b) =>
-    (a.deliveryAddress ?? "").localeCompare(b.deliveryAddress ?? "")
-  );
+/**
+ * Sort by neighborhood + CEP + address for optimal route grouping.
+ * Same neighborhood, then closest CEP prefix, then address.
+ */
+function sortByCepAndAddress(orders: EligibleOrder[]): EligibleOrder[] {
+  return [...orders].sort((a, b) => {
+    const cepA = (a.deliveryCep ?? "").replace(/\D/g, "");
+    const cepB = (b.deliveryCep ?? "").replace(/\D/g, "");
+    if (cepA && cepB) {
+      const cepCmp = cepA.localeCompare(cepB);
+      if (cepCmp !== 0) return cepCmp;
+    }
+    return (a.deliveryAddress ?? "").localeCompare(b.deliveryAddress ?? "");
+  });
 }
 
-function generateRoutePlan(orders: EligibleOrder[]): Array<{ mainNeighborhood: string; orders: EligibleOrder[] }> {
+function generateRoutePlan(
+  orders: EligibleOrder[],
+  maxPerRoute: number
+): Array<{ mainNeighborhood: string; orders: EligibleOrder[] }> {
   const assigned = new Set<number>();
   const routes: Array<{ mainNeighborhood: string; orders: EligibleOrder[] }> = [];
 
-  // Group orders by neighborhood
+  // Group by neighborhood
   const byNeighborhood = new Map<string, EligibleOrder[]>();
   for (const order of orders) {
     const n = order.deliveryNeighborhood ?? "Outros";
@@ -145,48 +181,50 @@ function generateRoutePlan(orders: EligibleOrder[]): Array<{ mainNeighborhood: s
     byNeighborhood.get(n)!.push(order);
   }
 
-  // Sort neighborhoods by order count descending (process larger groups first)
+  // Sort neighborhoods by order count descending
   const neighborhoods = [...byNeighborhood.keys()].sort(
     (a, b) => byNeighborhood.get(b)!.length - byNeighborhood.get(a)!.length
   );
 
   for (const neighborhood of neighborhoods) {
-    const available = byNeighborhood.get(neighborhood)!.filter((o) => !assigned.has(o.id));
-    if (available.length === 0) continue;
+    const allInNeighborhood = sortByCepAndAddress(
+      byNeighborhood.get(neighborhood)!.filter((o) => !assigned.has(o.id))
+    );
+    if (allInNeighborhood.length === 0) continue;
 
-    // Process in batches of MAX_PER_ROUTE
-    let batch = sortByAddress(available).slice(0, MAX_PER_ROUTE);
-    batch.forEach((o) => assigned.add(o.id));
+    // Chunk into batches of maxPerRoute
+    let remaining = [...allInNeighborhood];
+    let isFirst = true;
 
-    // If room remains, fill with adjacent neighborhood orders
-    if (batch.length < MAX_PER_ROUTE) {
-      const neighbors = getNeighbors(neighborhood);
-      for (const neighbor of neighbors) {
-        if (batch.length >= MAX_PER_ROUTE) break;
-        const neighborOrders = (byNeighborhood.get(neighbor) ?? [])
-          .filter((o) => !assigned.has(o.id));
-        if (neighborOrders.length === 0) continue;
-        const toAdd = sortByAddress(neighborOrders).slice(0, MAX_PER_ROUTE - batch.length);
-        toAdd.forEach((o) => assigned.add(o.id));
-        batch = [...batch, ...toAdd];
+    while (remaining.length > 0) {
+      let batch = remaining.slice(0, maxPerRoute);
+      remaining = remaining.slice(maxPerRoute);
+      batch.forEach((o) => assigned.add(o.id));
+
+      // Fill batch from adjacent neighborhoods if this is first batch and there's room
+      if (isFirst && batch.length < maxPerRoute) {
+        const neighbors = getNeighbors(neighborhood);
+        for (const neighbor of neighbors) {
+          if (batch.length >= maxPerRoute) break;
+          const neighborOrders = sortByCepAndAddress(
+            (byNeighborhood.get(neighbor) ?? []).filter((o) => !assigned.has(o.id))
+          );
+          if (neighborOrders.length === 0) continue;
+          const toAdd = neighborOrders.slice(0, maxPerRoute - batch.length);
+          toAdd.forEach((o) => assigned.add(o.id));
+          batch = [...batch, ...toAdd];
+        }
       }
-    }
+      isFirst = false;
 
-    routes.push({ mainNeighborhood: neighborhood, orders: batch });
-
-    // If there are more orders from the same neighborhood (> MAX_PER_ROUTE), create another route
-    const remaining = available.filter((o) => !assigned.has(o.id));
-    if (remaining.length > 0) {
-      const nextBatch = sortByAddress(remaining).slice(0, MAX_PER_ROUTE);
-      nextBatch.forEach((o) => assigned.add(o.id));
-      routes.push({ mainNeighborhood: neighborhood, orders: nextBatch });
+      routes.push({ mainNeighborhood: neighborhood, orders: batch });
     }
   }
 
   return routes;
 }
 
-// ─── Endpoints ────────────────────────────────────────────────────────────────
+// ─── GET /delivery/routes ─────────────────────────────────────────────────────
 
 router.get("/delivery/routes", async (_req, res): Promise<void> => {
   const routes = await db
@@ -198,42 +236,54 @@ router.get("/delivery/routes", async (_req, res): Promise<void> => {
   res.json(full.filter(Boolean));
 });
 
+// ─── POST /delivery/routes/generate ──────────────────────────────────────────
+
 router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
-  // Find orders already in active routes (not completed)
+  const settings = await getOrCreateSettings();
+  const maxPerRoute = settings.maxOrdersPerRoute;
+
+  // Build store origin string from settings
+  const storeOriginParts = [
+    settings.storeAddress,
+    settings.storeNeighborhood,
+    settings.storeCity ?? "Curitiba, PR",
+  ].filter(Boolean);
+  const storeOrigin = storeOriginParts.length > 0
+    ? storeOriginParts.join(", ")
+    : "Curitiba, PR";
+
+  // Find orders already in active routes
   const activeRoutes = await db
     .select({ id: deliveryRoutesTable.id })
     .from(deliveryRoutesTable)
     .where(notInArray(deliveryRoutesTable.status, ["completed"]));
 
-  const activeRouteIds = activeRoutes.map((r) => r.id);
-
   let alreadyInRouteOrderIds: number[] = [];
-  if (activeRouteIds.length > 0) {
-    const existingRouteOrders = await db
+  if (activeRoutes.length > 0) {
+    const existing = await db
       .select({ orderId: deliveryRouteOrdersTable.orderId })
       .from(deliveryRouteOrdersTable)
-      .where(inArray(deliveryRouteOrdersTable.routeId, activeRouteIds));
-    alreadyInRouteOrderIds = existingRouteOrders.map((ro) => ro.orderId);
+      .where(inArray(deliveryRouteOrdersTable.routeId, activeRoutes.map((r) => r.id)));
+    alreadyInRouteOrderIds = existing.map((ro) => ro.orderId);
   }
 
-  // Eligible orders: delivery type, deliveryStatus=ready, not already in active route, not cancelled
-  let query = db
+  // Eligible orders: delivery, preparing OR ready, not cancelled, not already in route
+  let eligibleOrders = await db
     .select({
       id: ordersTable.id,
       deliveryAddress: ordersTable.deliveryAddress,
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+      deliveryCep: ordersTable.deliveryCep,
       deliveryFee: ordersTable.deliveryFee,
     })
     .from(ordersTable)
     .where(
       and(
         eq(ordersTable.type, "delivery"),
-        eq(ordersTable.deliveryStatus, "ready"),
+        inArray(ordersTable.deliveryStatus, ELIGIBLE_DELIVERY_STATUSES),
         notInArray(ordersTable.status, ["cancelled"])
       )
     );
-
-  let eligibleOrders = await query;
 
   if (alreadyInRouteOrderIds.length > 0) {
     eligibleOrders = eligibleOrders.filter((o) => !alreadyInRouteOrderIds.includes(o.id));
@@ -244,45 +294,55 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     return;
   }
 
-  const plan = generateRoutePlan(eligibleOrders as EligibleOrder[]);
+  const plan = generateRoutePlan(eligibleOrders as EligibleOrder[], maxPerRoute);
 
-  // Count existing routes today to name them sequentially
-  const existingCount = await db
+  const existingToday = await db
     .select({ id: deliveryRoutesTable.id })
     .from(deliveryRoutesTable)
     .where(sql`DATE(${deliveryRoutesTable.createdAt}) = CURRENT_DATE`);
 
-  let colorIndex = existingCount.length % ROUTE_COLORS.length;
-  let routeNumber = existingCount.length + 1;
+  let colorIndex = existingToday.length % ROUTE_COLORS.length;
+  let routeNumber = existingToday.length + 1;
 
-  const createdRoutes = [];
+  const dispatchMinutes = settings.deliveryDispatchTimeMinutes;
+  const createdRoutes: number[] = [];
 
   for (const { mainNeighborhood, orders } of plan) {
     const includedNeighborhoods = [...new Set(orders.map((o) => o.deliveryNeighborhood ?? "Outros"))];
     const color = ROUTE_COLORS[colorIndex % ROUTE_COLORS.length];
     const name = `Rota ${routeNumber} — ${mainNeighborhood}`;
 
-    // Calculate stop orders: main neighborhood first, then others, each group sorted by address
-    const mainOrders = sortByAddress(orders.filter((o) => (o.deliveryNeighborhood ?? "Outros") === mainNeighborhood));
-    const otherOrders = sortByAddress(orders.filter((o) => (o.deliveryNeighborhood ?? "Outros") !== mainNeighborhood));
+    // Sort stops: main neighborhood first (by CEP), then adjacent (by CEP)
+    const mainOrders = sortByCepAndAddress(
+      orders.filter((o) => (o.deliveryNeighborhood ?? "Outros") === mainNeighborhood)
+    );
+    const otherOrders = sortByCepAndAddress(
+      orders.filter((o) => (o.deliveryNeighborhood ?? "Outros") !== mainNeighborhood)
+    );
     const sortedOrders = [...mainOrders, ...otherOrders];
 
-    const mapsUrl = buildMapsUrl(sortedOrders);
+    // Dispatch deadline = now + dispatchMinutes
+    const dispatchDeadline = new Date(Date.now() + dispatchMinutes * 60_000);
 
-    const [route] = await db
-      .insert(deliveryRoutesTable)
-      .values({
-        name,
-        mainNeighborhood,
-        includedNeighborhoods: JSON.stringify(includedNeighborhoods),
-        status: "available",
-        color,
-        storeOrigin: STORE_ORIGIN.address,
-        mapsUrl,
-      })
-      .returning();
+    const mapsUrl = buildMapsUrl(
+      storeOrigin,
+      sortedOrders.map((o) => ({
+        ...o,
+        storeCity: settings.storeCity,
+      }))
+    );
 
-    // Insert route orders with stop order
+    const [route] = await db.insert(deliveryRoutesTable).values({
+      name,
+      mainNeighborhood,
+      includedNeighborhoods: JSON.stringify(includedNeighborhoods),
+      status: "available",
+      color,
+      storeOrigin,
+      mapsUrl,
+      dispatchDeadline,
+    }).returning();
+
     for (let i = 0; i < sortedOrders.length; i++) {
       await db.insert(deliveryRouteOrdersTable).values({
         routeId: route.id,
@@ -300,6 +360,8 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
   res.json({ created: full.length, routes: full.filter(Boolean) });
 });
 
+// ─── POST /delivery/routes/:id/assign ────────────────────────────────────────
+
 router.post("/delivery/routes/:id/assign", async (req, res): Promise<void> => {
   const routeId = parseInt(req.params.id ?? "", 10);
   if (isNaN(routeId)) { res.status(400).json({ error: "Invalid route id" }); return; }
@@ -309,32 +371,29 @@ router.post("/delivery/routes/:id/assign", async (req, res): Promise<void> => {
 
   const [route] = await db.select().from(deliveryRoutesTable).where(eq(deliveryRoutesTable.id, routeId));
   if (!route) { res.status(404).json({ error: "Route not found" }); return; }
-
   if (route.status !== "available") {
-    res.status(400).json({ error: `Cannot assign route in status '${route.status}'` });
-    return;
+    res.status(400).json({ error: `Cannot assign route in status '${route.status}'` }); return;
   }
 
   await db.update(deliveryRoutesTable)
     .set({ status: "in_progress", courierName, startedAt: new Date() })
     .where(eq(deliveryRoutesTable.id, routeId));
 
-  // Mark all orders in this route as out_for_delivery
   const routeOrders = await db
     .select({ orderId: deliveryRouteOrdersTable.orderId })
     .from(deliveryRouteOrdersTable)
     .where(eq(deliveryRouteOrdersTable.routeId, routeId));
 
   if (routeOrders.length > 0) {
-    await db
-      .update(ordersTable)
+    await db.update(ordersTable)
       .set({ deliveryStatus: "out_for_delivery" })
       .where(inArray(ordersTable.id, routeOrders.map((ro) => ro.orderId)));
   }
 
-  const full = await getRouteWithOrders(routeId);
-  res.json(full);
+  res.json(await getRouteWithOrders(routeId));
 });
+
+// ─── POST /delivery/routes/:id/complete ──────────────────────────────────────
 
 router.post("/delivery/routes/:id/complete", async (req, res): Promise<void> => {
   const routeId = parseInt(req.params.id ?? "", 10);
@@ -342,31 +401,48 @@ router.post("/delivery/routes/:id/complete", async (req, res): Promise<void> => 
 
   const [route] = await db.select().from(deliveryRoutesTable).where(eq(deliveryRoutesTable.id, routeId));
   if (!route) { res.status(404).json({ error: "Route not found" }); return; }
-
   if (route.status !== "in_progress") {
-    res.status(400).json({ error: `Cannot complete route in status '${route.status}'` });
-    return;
+    res.status(400).json({ error: `Cannot complete route in status '${route.status}'` }); return;
   }
 
   await db.update(deliveryRoutesTable)
     .set({ status: "completed", completedAt: new Date() })
     .where(eq(deliveryRoutesTable.id, routeId));
 
-  // Mark all orders in this route as delivered
   const routeOrders = await db
     .select({ orderId: deliveryRouteOrdersTable.orderId })
     .from(deliveryRouteOrdersTable)
     .where(eq(deliveryRouteOrdersTable.routeId, routeId));
 
   if (routeOrders.length > 0) {
-    await db
-      .update(ordersTable)
+    await db.update(ordersTable)
       .set({ deliveryStatus: "delivered" })
       .where(inArray(ordersTable.id, routeOrders.map((ro) => ro.orderId)));
   }
 
-  const full = await getRouteWithOrders(routeId);
-  res.json(full);
+  res.json(await getRouteWithOrders(routeId));
+});
+
+// ─── POST /delivery/routes/:id/adjust-time ────────────────────────────────────
+
+router.post("/delivery/routes/:id/adjust-time", async (req, res): Promise<void> => {
+  const routeId = parseInt(req.params.id ?? "", 10);
+  if (isNaN(routeId)) { res.status(400).json({ error: "Invalid route id" }); return; }
+
+  const minutesDelta = parseInt(String(req.body?.minutesDelta ?? ""), 10);
+  if (isNaN(minutesDelta)) { res.status(400).json({ error: "minutesDelta must be a number" }); return; }
+
+  const [route] = await db.select().from(deliveryRoutesTable).where(eq(deliveryRoutesTable.id, routeId));
+  if (!route) { res.status(404).json({ error: "Route not found" }); return; }
+
+  const currentDeadline = route.dispatchDeadline ?? new Date();
+  const newDeadline = new Date(currentDeadline.getTime() + minutesDelta * 60_000);
+
+  await db.update(deliveryRoutesTable)
+    .set({ dispatchDeadline: newDeadline })
+    .where(eq(deliveryRoutesTable.id, routeId));
+
+  res.json(await getRouteWithOrders(routeId));
 });
 
 export default router;

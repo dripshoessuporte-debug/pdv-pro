@@ -11,6 +11,7 @@ import {
   AlertCircle,
   BookOpen,
   Truck,
+  Settings,
 } from "lucide-react";
 import {
   useHealthCheck,
@@ -27,6 +28,7 @@ const navItems = [
   { href: "/menu", label: "Cardápio", icon: BookOpen },
   { href: "/customers", label: "Clientes", icon: Users },
   { href: "/routes", label: "Rotas", icon: Truck },
+  { href: "/settings", label: "Configurações", icon: Settings },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {

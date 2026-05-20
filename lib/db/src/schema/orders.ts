@@ -23,6 +23,12 @@ export const ordersTable = pgTable("orders", {
   deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 }).notNull().default("0"),
   deliveryNotes: text("delivery_notes"),
   deliveryStatus: text("delivery_status"), // null for non-delivery orders
+  // Payment on delivery fields
+  paymentTiming: text("payment_timing").notNull().default("now"), // now | on_delivery
+  deliveryPaymentMethod: text("delivery_payment_method"), // dinheiro | pix | cartao
+  needsChange: text("needs_change"), // "true" | "false" (stored as text for simplicity)
+  changeFor: numeric("change_for", { precision: 10, scale: 2 }),
+  deliveryPaymentNotes: text("delivery_payment_notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

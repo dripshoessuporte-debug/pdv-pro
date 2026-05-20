@@ -178,6 +178,14 @@ export const OrderDeliveryStatus = {
   delivered: 'delivered',
 } as const;
 
+export type OrderPaymentTiming = typeof OrderPaymentTiming[keyof typeof OrderPaymentTiming];
+
+
+export const OrderPaymentTiming = {
+  now: 'now',
+  on_delivery: 'on_delivery',
+} as const;
+
 export interface OrderItem {
   id: number;
   orderId: number;
@@ -220,6 +228,15 @@ export interface Order {
   deliveryNotes?: string | null;
   /** @nullable */
   deliveryStatus?: OrderDeliveryStatus;
+  paymentTiming?: OrderPaymentTiming;
+  /** @nullable */
+  deliveryPaymentMethod?: string | null;
+  /** @nullable */
+  needsChange?: boolean | null;
+  /** @nullable */
+  changeFor?: number | null;
+  /** @nullable */
+  deliveryPaymentNotes?: string | null;
   createdAt: string;
   updatedAt?: string;
   items: OrderItem[];
@@ -235,6 +252,14 @@ export const OrderInputType = {
   delivery: 'delivery',
 } as const;
 
+export type OrderInputPaymentTiming = typeof OrderInputPaymentTiming[keyof typeof OrderInputPaymentTiming];
+
+
+export const OrderInputPaymentTiming = {
+  now: 'now',
+  on_delivery: 'on_delivery',
+} as const;
+
 export interface OrderInput {
   tableId?: number;
   customerId?: number;
@@ -248,6 +273,11 @@ export interface OrderInput {
   deliveryReference?: string;
   deliveryFee?: number;
   deliveryNotes?: string;
+  paymentTiming?: OrderInputPaymentTiming;
+  deliveryPaymentMethod?: string;
+  needsChange?: boolean;
+  changeFor?: number;
+  deliveryPaymentNotes?: string;
 }
 
 export type OrderUpdateStatus = typeof OrderUpdateStatus[keyof typeof OrderUpdateStatus];
@@ -550,6 +580,38 @@ export type ListDeliveryRoutesResponse = DeliveryRoute[];
 export interface GenerateRoutesResponse {
   created: number;
   routes?: DeliveryRoute[];
+}
+
+export interface StoreSettings {
+  id: number;
+  storeName: string;
+  /** @nullable */
+  storePhone?: string | null;
+  /** @nullable */
+  storeCep?: string | null;
+  /** @nullable */
+  storeAddress?: string | null;
+  /** @nullable */
+  storeNeighborhood?: string | null;
+  /** @nullable */
+  storeCity?: string | null;
+  deliveryDispatchTimeMinutes: number;
+  maxOrdersPerRoute: number;
+}
+
+export interface StoreSettingsInput {
+  storeName?: string;
+  storePhone?: string;
+  storeCep?: string;
+  storeAddress?: string;
+  storeNeighborhood?: string;
+  storeCity?: string;
+  deliveryDispatchTimeMinutes?: number;
+  maxOrdersPerRoute?: number;
+}
+
+export interface AdjustRouteTimeInput {
+  minutesDelta: number;
 }
 
 export type ListCustomersParams = {

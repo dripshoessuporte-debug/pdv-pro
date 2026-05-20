@@ -1,0 +1,261 @@
+Agora ajuste o módulo de Delivery e Rotas para o fluxo operacional real do MVP.
+
+Não refaça o projeto do zero.
+Preserve o design atual.
+Preserve a página Rotas já criada.
+Preserve as funcionalidades existentes:
+- pedidos
+- cozinha
+- pagamento
+- caixa
+- cardápio
+- delivery
+- QR Code do Maps
+- rotas com no máximo 4 pedidos
+
+Objetivo:
+Corrigir o fluxo para que o delivery funcione melhor na operação real do restaurante, com planejamento de rota antes do pedido ficar pronto, pagamento na entrega, configurações da loja e alertas de tempo.
+
+Implemente os ajustes abaixo:
+
+1. Pedidos elegíveis para rotas antes de ficarem prontos
+
+Hoje as rotas só usam pedidos com deliveryStatus = ready.
+Quero alterar isso.
+
+A partir de agora, pedidos delivery devem aparecer na área de rotas assim que forem enviados para a cozinha, ou seja, quando estiverem em preparação.
+
+Pedidos elegíveis para planejamento de rota:
+- deliveryStatus = preparing
+- deliveryStatus = ready
+
+Pedidos que NÃO devem entrar em nova rota:
+- pending, se ainda nem foi enviado para cozinha
+- out_for_delivery
+- delivered
+- cancelled
+
+A página Rotas deve diferenciar visualmente:
+- Em preparação
+- Pronto para sair
+- Saiu para entrega
+- Entregue
+
+2. Pagamento na entrega
+
+Adicionar ao pedido delivery a opção de pagamento na entrega.
+
+No Novo Pedido, quando o tipo for delivery, adicionar campos:
+
+- paymentTiming:
+  - now = pagar agora/no caixa
+  - on_delivery = pagar na entrega
+
+Se paymentTiming = on_delivery, exibir:
+- método previsto:
+  - dinheiro
+  - pix
+  - cartão
+- precisa de troco?
+  - sim/não
+- troco para quanto?
+- observação de pagamento
+
+Salvar no banco:
+- paymentTiming
+- deliveryPaymentMethod
+- needsChange
+- changeFor
+- deliveryPaymentNotes
+
+Na tela Pedidos, Detalhe do Pedido e Rotas, mostrar claramente:
+- pagamento na entrega
+- método
+- valor total
+- se precisa de troco
+- troco para quanto
+- valor de troco que o motoboy precisa levar
+
+Exemplo:
+Total: R$ 67,00
+Troco para: R$ 100,00
+Levar troco: R$ 33,00
+
+3. Não quebrar pagamento normal
+
+Se paymentTiming = now, o fluxo de pagamento atual continua igual:
+- pagamento no sistema
+- caixa registra o pagamento
+- pedido pode ser fechado
+
+Se paymentTiming = on_delivery, o pedido ainda pode ser enviado para cozinha e rota sem estar pago.
+Mas precisa ficar visualmente sinalizado como:
+- Pagamento na entrega pendente
+
+Não altere a transação atômica do pagamento já implementada, exceto se for necessário para compatibilizar o novo campo.
+
+4. Configurações da loja
+
+Criar uma nova página no menu lateral chamada:
+Configurações
+
+Essa página deve permitir cadastrar e salvar:
+
+- nome da loja
+- telefone da loja
+- CEP da loja
+- endereço da loja
+- bairro da loja
+- cidade
+- tempo padrão para saída da entrega, em minutos
+- limite máximo de pedidos por rota
+
+Valores padrão iniciais:
+- tempo padrão para saída: 20 minutos
+- limite máximo por rota: 4
+
+Essas configurações devem ser persistidas no banco.
+
+Se ainda não houver tabela de configurações, criar uma tabela simples, por exemplo:
+store_settings
+
+Campos sugeridos:
+- id
+- storeName
+- storePhone
+- storeCep
+- storeAddress
+- storeNeighborhood
+- storeCity
+- deliveryDispatchTimeMinutes
+- maxOrdersPerRoute
+- createdAt
+- updatedAt
+
+5. Usar configurações nas rotas
+
+A origem da rota no Google Maps não deve mais ser uma constante fixa no código.
+
+A origem deve vir das Configurações da loja:
+- CEP da loja
+- endereço da loja
+- bairro/cidade
+
+O limite máximo de pedidos por rota também deve vir das configurações:
+- default = 4
+
+O tempo de alerta de saída também deve vir das configurações:
+- default = 20 minutos
+
+6. Agrupamento por CEP e bairro
+
+Melhorar a lógica de agrupamento.
+
+A rota deve considerar:
+1. bairro
+2. CEP
+3. bairros próximos
+
+Regra para MVP:
+- primeiro agrupar por bairro igual
+- dentro do mesmo bairro, ordenar por CEP
+- se precisar completar a rota, usar bairros próximos
+- quando bairros forem diferentes, priorizar CEPs mais parecidos quando possível
+- nunca ultrapassar o limite máximo configurado de pedidos por rota
+
+7. Alertas de tempo
+
+Na página Rotas, adicionar alertas visuais de tempo para cada pedido/rota.
+
+Usar como referência:
+- horário em que o pedido foi criado ou enviado para cozinha
+- tempo padrão configurado para saída da entrega
+
+Regra inicial:
+- verde: ainda dentro do prazo
+- amarelo: faltando 5 minutos ou menos para o limite
+- vermelho: passou do limite
+
+Mostrar algo como:
+- "Sai em até 20 min"
+- "Faltam 4 min"
+- "Atrasado há 7 min"
+
+Adicionar botões simples para ajustar o prazo de um pedido/rota:
+- +5 min
+- -5 min
+
+Salvar esse ajuste se possível.
+Se for complexo salvar por pedido agora, aplicar na rota ou manter apenas em estado visual, mas priorize persistir.
+
+8. Página Rotas
+
+Atualizar a interface para mostrar:
+
+Nos cards:
+- status da rota
+- tempo restante/atraso
+- quantidade de pedidos
+- bairros
+- CEPs principais
+- taxa total de entrega
+- total a receber na entrega
+- total de troco necessário
+- motoboy responsável
+- botão Assumir Rota
+- botão QR Code
+- botão Concluir Rota
+
+Nos pedidos dentro da rota:
+- cliente
+- telefone
+- endereço
+- bairro
+- CEP
+- total
+- pagamento: agora ou na entrega
+- método na entrega
+- troco necessário
+
+9. Fluxo do motoboy
+
+Quando o motoboy assume a rota:
+- rota muda para in_progress
+- pedidos mudam para out_for_delivery
+- mostrar claramente os valores que ele pode precisar receber
+- mostrar troco necessário
+- QR Code continua funcionando com ordem das paradas
+
+Quando conclui:
+- rota muda para completed
+- pedidos mudam para delivered
+
+10. Testes obrigatórios
+
+Teste:
+
+- criar pedido delivery com pagamento na entrega em dinheiro e troco para R$ 100
+- enviar pedido para cozinha
+- confirmar que ele já aparece na área de rotas mesmo antes de ficar pronto
+- criar vários pedidos no mesmo bairro e CEPs parecidos
+- gerar rotas
+- confirmar agrupamento por bairro/CEP
+- confirmar que a origem do Maps usa os dados das Configurações
+- alterar tempo padrão de saída para 20 minutos nas Configurações
+- confirmar alertas verde/amarelo/vermelho
+- assumir rota e confirmar que pedidos mudam para out_for_delivery
+- abrir QR Code e confirmar link válido do Google Maps
+- concluir rota e confirmar delivered
+- confirmar que pedidos com pagamento na entrega exibem total, método e troco necessário
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Tabelas/modelos criados ou alterados.
+3. Endpoints criados ou alterados.
+4. Como funciona o novo fluxo de rotas.
+5. Como funciona pagamento na entrega.
+6. Como funcionam os alertas de tempo.
+7. Como a configuração da loja alimenta as rotas.
+8. Como testar passo a passo.
+9. Limitações que ainda existem.

@@ -9,6 +9,7 @@ import kitchenRouter from "./kitchen";
 import dashboardRouter from "./dashboard";
 import cashRouter from "./cash";
 import deliveryRouter from "./delivery";
+import settingsRouter from "./settings";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(kitchenRouter);
 router.use(dashboardRouter);
 router.use(cashRouter);
 router.use(deliveryRouter);
+router.use(settingsRouter);
 
 export default router;
