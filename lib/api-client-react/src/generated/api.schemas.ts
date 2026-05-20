@@ -115,6 +115,7 @@ export interface Product {
   description?: string | null;
   price: number;
   available: boolean;
+  active: boolean;
   categoryId: number;
   /** @nullable */
   categoryName?: string | null;
@@ -127,6 +128,7 @@ export interface ProductInput {
   /** @minimum 0 */
   price: number;
   available?: boolean;
+  active?: boolean;
   categoryId: number;
 }
 
@@ -137,6 +139,7 @@ export interface ProductUpdate {
   /** @minimum 0 */
   price?: number;
   available?: boolean;
+  active?: boolean;
   categoryId?: number;
 }
 
@@ -442,6 +445,14 @@ search?: string;
 export type ListProductsParams = {
 categoryId?: number;
 search?: string;
+/**
+ * If true, return only available and active products
+ */
+availableOnly?: boolean;
+/**
+ * If true, include inactive (soft-deleted) products
+ */
+includeInactive?: boolean;
 };
 
 export type ListOrdersParams = {

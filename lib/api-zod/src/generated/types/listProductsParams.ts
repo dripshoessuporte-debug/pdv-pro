@@ -9,4 +9,12 @@
 export type ListProductsParams = {
 categoryId?: number;
 search?: string;
+/**
+ * If true, return only available and active products
+ */
+availableOnly?: boolean;
+/**
+ * If true, include inactive (soft-deleted) products
+ */
+includeInactive?: boolean;
 };

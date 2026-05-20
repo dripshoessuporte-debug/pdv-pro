@@ -312,6 +312,16 @@ paths:
           in: query
           schema:
             type: string
+        - name: availableOnly
+          in: query
+          description: If true, return only available and active products
+          schema:
+            type: boolean
+        - name: includeInactive
+          in: query
+          description: If true, include inactive (soft-deleted) products
+          schema:
+            type: boolean
       responses:
         "200":
           description: List of products
@@ -936,7 +946,7 @@ components:
     # Menu Products
     Product:
       type: object
-      required: [id, name, price, available, categoryId]
+      required: [id, name, price, available, active, categoryId]
       properties:
         id:
           type: integer
@@ -947,6 +957,8 @@ components:
         price:
           type: number
         available:
+          type: boolean
+        active:
           type: boolean
         categoryId:
           type: integer
@@ -967,6 +979,8 @@ components:
           minimum: 0
         available:
           type: boolean
+        active:
+          type: boolean
         categoryId:
           type: integer
 
@@ -982,6 +996,8 @@ components:
           type: number
           minimum: 0
         available:
+          type: boolean
+        active:
           type: boolean
         categoryId:
           type: integer

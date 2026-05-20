@@ -15,6 +15,7 @@ export const productsTable = pgTable("products", {
   description: text("description"),
   price: numeric("price", { precision: 10, scale: 2 }).notNull(),
   available: boolean("available").notNull().default(true),
+  active: boolean("active").notNull().default(true),
   categoryId: integer("category_id").notNull().references(() => categoriesTable.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

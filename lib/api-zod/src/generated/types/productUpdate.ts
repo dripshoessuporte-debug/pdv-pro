@@ -13,5 +13,6 @@ export interface ProductUpdate {
   /** @minimum 0 */
   price?: number;
   available?: boolean;
+  active?: boolean;
   categoryId?: number;
 }

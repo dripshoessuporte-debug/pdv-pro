@@ -13,6 +13,7 @@ export interface Product {
   description?: string | null;
   price: number;
   available: boolean;
+  active: boolean;
   categoryId: number;
   /** @nullable */
   categoryName?: string | null;

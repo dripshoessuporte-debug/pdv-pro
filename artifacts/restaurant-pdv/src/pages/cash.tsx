@@ -248,7 +248,7 @@ function OpenRegisterView({
   register,
   onSuccess,
 }: {
-  register: NonNullable<ReturnType<typeof useGetCurrentCashRegister>["data"]>;
+  register: CashRegisterDetail;
   onSuccess: () => void;
 }) {
   const { toast } = useToast();

@@ -235,7 +235,9 @@ export const DeleteCategoryParams = zod.object({
  */
 export const ListProductsQueryParams = zod.object({
   "categoryId": zod.coerce.number().optional(),
-  "search": zod.coerce.string().optional()
+  "search": zod.coerce.string().optional(),
+  "availableOnly": zod.coerce.boolean().optional().describe('If true, return only available and active products'),
+  "includeInactive": zod.coerce.boolean().optional().describe('If true, include inactive (soft-deleted) products')
 })
 
 export const ListProductsResponseItem = zod.object({
@@ -244,6 +246,7 @@ export const ListProductsResponseItem = zod.object({
   "description": zod.string().nullish(),
   "price": zod.number(),
   "available": zod.boolean(),
+  "active": zod.boolean(),
   "categoryId": zod.number(),
   "categoryName": zod.string().nullish()
 })
@@ -263,6 +266,7 @@ export const CreateProductBody = zod.object({
   "description": zod.string().optional(),
   "price": zod.number().min(createProductBodyPriceMin),
   "available": zod.boolean().optional(),
+  "active": zod.boolean().optional(),
   "categoryId": zod.number()
 })
 
@@ -280,6 +284,7 @@ export const GetProductResponse = zod.object({
   "description": zod.string().nullish(),
   "price": zod.number(),
   "available": zod.boolean(),
+  "active": zod.boolean(),
   "categoryId": zod.number(),
   "categoryName": zod.string().nullish()
 })
@@ -302,6 +307,7 @@ export const UpdateProductBody = zod.object({
   "description": zod.string().optional(),
   "price": zod.number().min(updateProductBodyPriceMin).optional(),
   "available": zod.boolean().optional(),
+  "active": zod.boolean().optional(),
   "categoryId": zod.number().optional()
 })
 
@@ -311,6 +317,7 @@ export const UpdateProductResponse = zod.object({
   "description": zod.string().nullish(),
   "price": zod.number(),
   "available": zod.boolean(),
+  "active": zod.boolean(),
   "categoryId": zod.number(),
   "categoryName": zod.string().nullish()
 })

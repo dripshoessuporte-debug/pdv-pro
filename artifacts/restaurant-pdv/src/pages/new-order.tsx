@@ -62,7 +62,7 @@ export default function NewOrder() {
   const { data: customers } = useListCustomers({}, { query: { queryKey: getListCustomersQueryKey({}) } });
   const { data: categories } = useListCategories({ query: { queryKey: getListCategoriesQueryKey() } });
 
-  const productParams: Record<string, unknown> = {};
+  const productParams: Record<string, unknown> = { availableOnly: true };
   if (categoryFilter !== "all") productParams.categoryId = parseInt(categoryFilter);
   if (productSearch) productParams.search = productSearch;
 

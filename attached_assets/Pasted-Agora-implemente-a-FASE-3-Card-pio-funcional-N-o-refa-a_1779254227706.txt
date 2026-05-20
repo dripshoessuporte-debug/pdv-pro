@@ -1,0 +1,109 @@
+Agora implemente a FASE 3 — Cardápio funcional.
+
+Não refaça o projeto do zero.
+Preserve o design atual.
+Preserve todas as funcionalidades já implementadas nas Fases 1 e 2:
+- pedidos
+- cozinha
+- pagamento
+- dashboard
+- caixa
+- movimentações de caixa
+- histórico de caixa
+- proteção contra pagamento duplicado
+- transação atômica em pagamentos
+
+Não altere o fluxo de pagamento, caixa ou cozinha, exceto se for necessário apenas para integrar os produtos reais do cardápio.
+
+Objetivo:
+Transformar a tela Cardápio em um módulo funcional real, com produtos e categorias persistidos no banco.
+
+Implemente:
+
+1. Produtos
+- criar produto
+- editar produto
+- excluir/desativar produto
+- ativar/desativar disponibilidade
+- listar produtos
+- filtrar por categoria
+- buscar por nome
+
+Campos do produto:
+- nome
+- descrição
+- preço
+- categoria
+- disponibilidade: disponível/indisponível
+- status: ativo/inativo, se fizer sentido na estrutura atual
+
+2. Categorias
+- criar categoria
+- editar categoria, se a estrutura permitir
+- listar categorias
+- filtrar produtos por categoria
+- impedir que categoria vazia ou duplicada seja criada
+
+3. Exclusão segura
+Se o produto nunca foi vendido, pode permitir exclusão real.
+Se o produto já apareceu em algum pedido antigo, não apagar definitivamente; apenas marcar como inativo/indisponível para preservar histórico.
+
+4. Integração com Novo Pedido
+A tela Novo Pedido deve buscar os produtos reais do banco.
+Somente produtos disponíveis/ativos devem aparecer para venda.
+O preço deve vir do produto cadastrado.
+Ao adicionar produto ao pedido, salve no item do pedido o nome e o preço no momento da venda, para preservar histórico mesmo se o preço mudar depois.
+
+5. Validações
+- nome obrigatório
+- preço obrigatório
+- preço maior ou igual a zero
+- categoria obrigatória ou categoria padrão
+- descrição opcional
+- impedir produtos duplicados com mesmo nome na mesma categoria, se fizer sentido
+
+6. UX
+- modal ou formulário para criar produto
+- modal ou formulário para editar produto
+- confirmação antes de excluir/desativar
+- loading ao salvar
+- mensagem de sucesso/erro
+- status visual para produto indisponível
+- produto indisponível não deve aparecer no Novo Pedido
+
+7. Backend/API
+Crie ou ajuste os endpoints necessários para:
+- listar produtos
+- criar produto
+- editar produto
+- excluir/desativar produto
+- listar categorias
+- criar categoria
+- editar categoria, se aplicável
+
+8. Banco de dados
+Use a estrutura existente do projeto.
+Se já houver tabelas de products/categories, aproveite.
+Se precisar alterar schema, faça migração corretamente.
+Depois rode codegen se necessário.
+
+9. Testes manuais obrigatórios
+Teste:
+- criar categoria "Lanches"
+- criar produto "X-Burger" com preço 25
+- editar o produto para preço 28
+- criar pedido com esse produto
+- marcar o produto como indisponível
+- confirmar que ele não aparece mais em Novo Pedido
+- confirmar que o pedido antigo continua mostrando o nome e preço corretos
+- tentar excluir produto já vendido e garantir que ele seja apenas desativado/inativado
+- atualizar a página e confirmar que produtos/categorias continuam salvos
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Tabelas/modelos criados ou modificados.
+3. Endpoints criados ou alterados.
+4. Como testar passo a passo.
+5. Limitações que ainda existem.
+6. Se o módulo de Cardápio já está seguro para uso real.
