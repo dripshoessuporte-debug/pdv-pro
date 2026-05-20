@@ -6,6 +6,16 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './cashMovement';
+export * from './cashMovementInput';
+export * from './cashMovementInputType';
+export * from './cashMovementType';
+export * from './cashRegister';
+export * from './cashRegisterClose';
+export * from './cashRegisterDetail';
+export * from './cashRegisterInput';
+export * from './cashRegisterStatus';
+export * from './cashSummary';
 export * from './category';
 export * from './categoryInput';
 export * from './categorySales';

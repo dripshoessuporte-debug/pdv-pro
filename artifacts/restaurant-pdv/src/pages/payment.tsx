@@ -7,6 +7,8 @@ import {
   useCreatePayment,
   useGetReceipt,
   getGetReceiptQueryKey,
+  useGetCurrentCashRegister,
+  getGetCurrentCashRegisterQueryKey,
   getListOrdersQueryKey,
   getListTablesQueryKey,
   getGetDashboardSummaryQueryKey,
@@ -17,7 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, CheckCircle2, CreditCard, Banknote, Wallet, QrCode, Receipt } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CreditCard, Banknote, Wallet, QrCode, Receipt, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const PAYMENT_METHODS = [
@@ -40,6 +42,7 @@ export default function Payment() {
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [amountTendered, setAmountTendered] = useState("");
   const [paid, setPaid] = useState(false);
+  const [cashWarningDismissed, setCashWarningDismissed] = useState(false);
 
   const { data: order, isLoading } = useGetOrder(orderIdNum, {
     query: {
@@ -55,12 +58,20 @@ export default function Payment() {
     },
   });
 
+  const { data: cashRegister, isError: noCashOpen } = useGetCurrentCashRegister({
+    query: {
+      queryKey: getGetCurrentCashRegisterQueryKey(),
+      retry: false,
+    },
+  });
+
   const createPayment = useCreatePayment({
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListTablesQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetCurrentCashRegisterQueryKey() });
         setPaid(true);
         toast({ title: "✅ Pagamento realizado com sucesso!" });
       },
@@ -168,6 +179,12 @@ export default function Payment() {
                       <span>R$ {receipt.payment.change.toFixed(2)}</span>
                     </div>
                   )}
+                  {cashRegister && (
+                    <div className="flex justify-between text-xs text-muted-foreground border-t pt-1">
+                      <span>Operador</span>
+                      <span>{cashRegister.operator}</span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -205,119 +222,161 @@ export default function Payment() {
           </p>
         </div>
 
-        {/* Resumo do Pedido */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Resumo do Pedido</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {order.items.map((item) => (
-              <div key={item.id} className="flex justify-between text-sm">
-                <span className="text-muted-foreground">{item.quantity}x {item.productName}</span>
-                <span>R$ {item.totalPrice.toFixed(2)}</span>
-              </div>
-            ))}
-            <div className="border-t pt-3 mt-2">
-              <div className="flex justify-between font-bold text-2xl">
-                <span>Total</span>
-                <span className="text-primary">R$ {order.totalAmount.toFixed(2)}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Forma de Pagamento */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Forma de Pagamento</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-              {PAYMENT_METHODS.map((m) => (
-                <button
-                  key={m.value}
-                  onClick={() => { setMethod(m.value); setAmountTendered(""); }}
-                  className={`p-3 rounded-xl border-2 flex flex-col items-center gap-1.5 transition-all text-xs font-semibold ${
-                    method === m.value
-                      ? "border-primary bg-primary/10 text-primary shadow-sm"
-                      : "border-border hover:border-primary/40 hover:bg-muted"
-                  }`}
-                  data-testid={`button-method-${m.value}`}
-                >
-                  <m.icon className="w-5 h-5" />
-                  {m.label}
-                </button>
-              ))}
-            </div>
-
-            {method === "cash" && (
-              <div className="space-y-2">
-                <Label htmlFor="tendered">Valor Recebido (R$)</Label>
-                <Input
-                  id="tendered"
-                  type="number"
-                  step="0.01"
-                  min={order.totalAmount}
-                  placeholder={order.totalAmount.toFixed(2)}
-                  value={amountTendered}
-                  onChange={(e) => setAmountTendered(e.target.value)}
-                  data-testid="input-amount-tendered"
-                  className="text-xl h-12"
-                />
-                {/* Atalhos de valor */}
-                <div className="flex gap-2 flex-wrap">
-                  {[Math.ceil(order.totalAmount / 10) * 10, Math.ceil(order.totalAmount / 50) * 50, Math.ceil(order.totalAmount / 100) * 100]
-                    .filter((v, i, arr) => arr.indexOf(v) === i && v >= order.totalAmount)
-                    .slice(0, 4)
-                    .map((val) => (
-                      <Button
-                        key={val}
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setAmountTendered(String(val))}
-                        data-testid={`quick-amount-${val}`}
-                      >
-                        R$ {val.toFixed(0)}
-                      </Button>
-                    ))}
-                  <Button size="sm" variant="outline" onClick={() => setAmountTendered(order.totalAmount.toFixed(2))}>
-                    Exato
-                  </Button>
+        {/* Aviso: sem caixa aberto */}
+        {noCashOpen && !cashWarningDismissed && (
+          <Card className="border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="font-semibold text-amber-800 dark:text-amber-300">Caixa não está aberto</p>
+                  <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5">
+                    Este pagamento não será registrado no controle de caixa. Recomendamos abrir o caixa antes de receber pagamentos.
+                  </p>
+                  <div className="flex gap-2 mt-3">
+                    <Button size="sm" onClick={() => setLocation("/cash")}>
+                      Abrir Caixa
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setCashWarningDismissed(true)}>
+                      Continuar sem caixa
+                    </Button>
+                  </div>
                 </div>
-                {insufficient && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-                    <p className="text-red-700 dark:text-red-400 text-sm font-medium">
-                      ⚠️ Valor insuficiente · Faltam R$ {(order.totalAmount - tendered).toFixed(2)}
-                    </p>
-                  </div>
-                )}
-                {change !== null && change >= 0 && !insufficient && tendered > 0 && (
-                  <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                    <p className="text-green-700 dark:text-green-400 font-bold text-lg">
-                      Troco: R$ {change.toFixed(2)}
-                    </p>
-                  </div>
-                )}
               </div>
-            )}
+            </CardContent>
+          </Card>
+        )}
 
-            <Button
-              className="w-full"
-              size="lg"
-              onClick={handlePay}
-              disabled={
-                createPayment.isPending ||
-                order.items.length === 0 ||
-                (method === "cash" && !!amountTendered && !!insufficient)
-              }
-              data-testid="button-confirm-payment"
-            >
-              {createPayment.isPending
-                ? "Processando..."
-                : `Confirmar Pagamento · R$ ${order.totalAmount.toFixed(2)}`}
-            </Button>
-          </CardContent>
-        </Card>
+        {/* Aviso resolvido: mostrar quem abriu */}
+        {!noCashOpen && cashRegister && (
+          <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-3 py-2 rounded-lg">
+            <CheckCircle2 className="w-4 h-4" />
+            Caixa aberto · Operador: <strong>{cashRegister.operator}</strong>
+          </div>
+        )}
+
+        {/* Só mostra o formulário se não tiver aviso bloqueante */}
+        {(!noCashOpen || cashWarningDismissed) && (
+          <>
+            {/* Resumo do Pedido */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Resumo do Pedido</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {order.items.map((item) => (
+                  <div key={item.id} className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">{item.quantity}x {item.productName}</span>
+                    <span>R$ {item.totalPrice.toFixed(2)}</span>
+                  </div>
+                ))}
+                <div className="border-t pt-3 mt-2">
+                  <div className="flex justify-between font-bold text-2xl">
+                    <span>Total</span>
+                    <span className="text-primary">R$ {order.totalAmount.toFixed(2)}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Forma de Pagamento */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Forma de Pagamento</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                  {PAYMENT_METHODS.map((m) => (
+                    <button
+                      key={m.value}
+                      onClick={() => { setMethod(m.value); setAmountTendered(""); }}
+                      className={`p-3 rounded-xl border-2 flex flex-col items-center gap-1.5 transition-all text-xs font-semibold ${
+                        method === m.value
+                          ? "border-primary bg-primary/10 text-primary shadow-sm"
+                          : "border-border hover:border-primary/40 hover:bg-muted"
+                      }`}
+                      data-testid={`button-method-${m.value}`}
+                    >
+                      <m.icon className="w-5 h-5" />
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+
+                {method === "cash" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="tendered">Valor Recebido (R$)</Label>
+                    <Input
+                      id="tendered"
+                      type="number"
+                      step="0.01"
+                      min={order.totalAmount}
+                      placeholder={order.totalAmount.toFixed(2)}
+                      value={amountTendered}
+                      onChange={(e) => setAmountTendered(e.target.value)}
+                      data-testid="input-amount-tendered"
+                      className="text-xl h-12"
+                    />
+                    {/* Atalhos de valor */}
+                    <div className="flex gap-2 flex-wrap">
+                      {[
+                        Math.ceil(order.totalAmount / 10) * 10,
+                        Math.ceil(order.totalAmount / 50) * 50,
+                        Math.ceil(order.totalAmount / 100) * 100,
+                      ]
+                        .filter((v, i, arr) => arr.indexOf(v) === i && v >= order.totalAmount)
+                        .slice(0, 3)
+                        .map((val) => (
+                          <Button
+                            key={val}
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setAmountTendered(String(val))}
+                            data-testid={`quick-amount-${val}`}
+                          >
+                            R$ {val.toFixed(0)}
+                          </Button>
+                        ))}
+                      <Button size="sm" variant="outline" onClick={() => setAmountTendered(order.totalAmount.toFixed(2))}>
+                        Exato
+                      </Button>
+                    </div>
+                    {insufficient && (
+                      <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                        <p className="text-red-700 dark:text-red-400 text-sm font-medium">
+                          ⚠️ Valor insuficiente · Faltam R$ {(order.totalAmount - tendered).toFixed(2)}
+                        </p>
+                      </div>
+                    )}
+                    {change !== null && change >= 0 && !insufficient && tendered > 0 && (
+                      <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                        <p className="text-green-700 dark:text-green-400 font-bold text-lg">
+                          Troco: R$ {change.toFixed(2)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <Button
+                  className="w-full"
+                  size="lg"
+                  onClick={handlePay}
+                  disabled={
+                    createPayment.isPending ||
+                    order.items.length === 0 ||
+                    (method === "cash" && !!amountTendered && !!insufficient)
+                  }
+                  data-testid="button-confirm-payment"
+                >
+                  {createPayment.isPending
+                    ? "Processando..."
+                    : `Confirmar Pagamento · R$ ${order.totalAmount.toFixed(2)}`}
+                </Button>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
     </Layout>
   );

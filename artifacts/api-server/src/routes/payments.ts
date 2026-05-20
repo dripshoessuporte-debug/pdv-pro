@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
-import { db, paymentsTable, ordersTable, tablesTable, orderItemsTable, productsTable, customersTable } from "@workspace/db";
+import { eq, sql } from "drizzle-orm";
+import { db, paymentsTable, ordersTable, tablesTable, orderItemsTable, productsTable, customersTable, cashRegistersTable, cashMovementsTable } from "@workspace/db";
 import {
   CreatePaymentBody,
   GetReceiptParams,
@@ -42,6 +42,25 @@ router.post("/payments", async (req, res): Promise<void> => {
     await db.update(tablesTable)
       .set({ status: "available", currentOrderId: null })
       .where(eq(tablesTable.id, order.tableId));
+  }
+
+  // Auto-register in open cash register if one exists
+  const [openRegister] = await db
+    .select()
+    .from(cashRegistersTable)
+    .where(eq(cashRegistersTable.status, "open"))
+    .orderBy(sql`${cashRegistersTable.openedAt} DESC`)
+    .limit(1);
+
+  if (openRegister) {
+    await db.insert(cashMovementsTable).values({
+      cashRegisterId: openRegister.id,
+      type: "payment",
+      amount: String(parsed.data.amount),
+      paymentMethod: parsed.data.method,
+      reason: `Pagamento Pedido #${parsed.data.orderId}`,
+      orderId: parsed.data.orderId,
+    });
   }
 
   res.status(201).json({

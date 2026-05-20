@@ -336,6 +336,105 @@ export interface CategorySales {
   itemCount: number;
 }
 
+export type CashRegisterStatus = typeof CashRegisterStatus[keyof typeof CashRegisterStatus];
+
+
+export const CashRegisterStatus = {
+  open: 'open',
+  closed: 'closed',
+} as const;
+
+export interface CashRegister {
+  id: number;
+  operator: string;
+  openingAmount: number;
+  status: CashRegisterStatus;
+  /** @nullable */
+  notes?: string | null;
+  openedAt: string;
+  /** @nullable */
+  closedAt?: string | null;
+  /** @nullable */
+  closingAmount?: number | null;
+  /** @nullable */
+  closingNotes?: string | null;
+}
+
+export interface CashRegisterInput {
+  /** @minLength 1 */
+  operator: string;
+  /** @minimum 0 */
+  openingAmount: number;
+  notes?: string;
+}
+
+export interface CashRegisterClose {
+  /** @minimum 0 */
+  closingAmount: number;
+  closingNotes?: string;
+}
+
+export type CashMovementType = typeof CashMovementType[keyof typeof CashMovementType];
+
+
+export const CashMovementType = {
+  payment: 'payment',
+  withdrawal: 'withdrawal',
+  supply: 'supply',
+  manual_in: 'manual_in',
+} as const;
+
+export interface CashMovement {
+  id: number;
+  cashRegisterId: number;
+  type: CashMovementType;
+  amount: number;
+  /** @nullable */
+  paymentMethod?: string | null;
+  reason: string;
+  /** @nullable */
+  orderId?: number | null;
+  createdAt: string;
+}
+
+export type CashMovementInputType = typeof CashMovementInputType[keyof typeof CashMovementInputType];
+
+
+export const CashMovementInputType = {
+  payment: 'payment',
+  withdrawal: 'withdrawal',
+  supply: 'supply',
+  manual_in: 'manual_in',
+} as const;
+
+export interface CashMovementInput {
+  cashRegisterId: number;
+  type: CashMovementInputType;
+  /** @minimum 0 */
+  amount: number;
+  paymentMethod?: string;
+  reason: string;
+  orderId?: number;
+}
+
+export interface CashSummary {
+  totalCash: number;
+  totalPix: number;
+  totalCredit: number;
+  totalDebit: number;
+  totalVoucher: number;
+  totalSales: number;
+  totalWithdrawals: number;
+  totalSupplies: number;
+  totalManualIn: number;
+  expectedCash: number;
+}
+
+export type CashRegisterDetail = CashRegister & {
+  movements?: CashMovement[];
+  summary?: CashSummary;
+};
+
 export type ListCustomersParams = {
 search?: string;
 };

@@ -705,3 +705,209 @@ export const GetSalesByCategoryResponseItem = zod.object({
 export const GetSalesByCategoryResponse = zod.array(GetSalesByCategoryResponseItem)
 
 
+/**
+ * @summary Get currently open cash register
+ */
+export const GetCurrentCashRegisterResponse = zod.object({
+  "id": zod.number(),
+  "operator": zod.string(),
+  "openingAmount": zod.number(),
+  "status": zod.enum(['open', 'closed']),
+  "notes": zod.string().nullish(),
+  "openedAt": zod.string(),
+  "closedAt": zod.string().nullish(),
+  "closingAmount": zod.number().nullish(),
+  "closingNotes": zod.string().nullish()
+}).and(zod.object({
+  "movements": zod.array(zod.object({
+  "id": zod.number(),
+  "cashRegisterId": zod.number(),
+  "type": zod.enum(['payment', 'withdrawal', 'supply', 'manual_in']),
+  "amount": zod.number(),
+  "paymentMethod": zod.string().nullish(),
+  "reason": zod.string(),
+  "orderId": zod.number().nullish(),
+  "createdAt": zod.string()
+})).optional(),
+  "summary": zod.object({
+  "totalCash": zod.number(),
+  "totalPix": zod.number(),
+  "totalCredit": zod.number(),
+  "totalDebit": zod.number(),
+  "totalVoucher": zod.number(),
+  "totalSales": zod.number(),
+  "totalWithdrawals": zod.number(),
+  "totalSupplies": zod.number(),
+  "totalManualIn": zod.number(),
+  "expectedCash": zod.number()
+}).optional()
+}))
+
+
+/**
+ * @summary Open a cash register
+ */
+
+export const openCashRegisterBodyOpeningAmountMin = 0;
+
+
+
+export const OpenCashRegisterBody = zod.object({
+  "operator": zod.string().min(1),
+  "openingAmount": zod.number().min(openCashRegisterBodyOpeningAmountMin),
+  "notes": zod.string().optional()
+})
+
+
+/**
+ * @summary List all cash registers
+ */
+export const ListCashRegistersResponseItem = zod.object({
+  "id": zod.number(),
+  "operator": zod.string(),
+  "openingAmount": zod.number(),
+  "status": zod.enum(['open', 'closed']),
+  "notes": zod.string().nullish(),
+  "openedAt": zod.string(),
+  "closedAt": zod.string().nullish(),
+  "closingAmount": zod.number().nullish(),
+  "closingNotes": zod.string().nullish()
+}).and(zod.object({
+  "movements": zod.array(zod.object({
+  "id": zod.number(),
+  "cashRegisterId": zod.number(),
+  "type": zod.enum(['payment', 'withdrawal', 'supply', 'manual_in']),
+  "amount": zod.number(),
+  "paymentMethod": zod.string().nullish(),
+  "reason": zod.string(),
+  "orderId": zod.number().nullish(),
+  "createdAt": zod.string()
+})).optional(),
+  "summary": zod.object({
+  "totalCash": zod.number(),
+  "totalPix": zod.number(),
+  "totalCredit": zod.number(),
+  "totalDebit": zod.number(),
+  "totalVoucher": zod.number(),
+  "totalSales": zod.number(),
+  "totalWithdrawals": zod.number(),
+  "totalSupplies": zod.number(),
+  "totalManualIn": zod.number(),
+  "expectedCash": zod.number()
+}).optional()
+}))
+export const ListCashRegistersResponse = zod.array(ListCashRegistersResponseItem)
+
+
+/**
+ * @summary Get a cash register with movements
+ */
+export const GetCashRegisterParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetCashRegisterResponse = zod.object({
+  "id": zod.number(),
+  "operator": zod.string(),
+  "openingAmount": zod.number(),
+  "status": zod.enum(['open', 'closed']),
+  "notes": zod.string().nullish(),
+  "openedAt": zod.string(),
+  "closedAt": zod.string().nullish(),
+  "closingAmount": zod.number().nullish(),
+  "closingNotes": zod.string().nullish()
+}).and(zod.object({
+  "movements": zod.array(zod.object({
+  "id": zod.number(),
+  "cashRegisterId": zod.number(),
+  "type": zod.enum(['payment', 'withdrawal', 'supply', 'manual_in']),
+  "amount": zod.number(),
+  "paymentMethod": zod.string().nullish(),
+  "reason": zod.string(),
+  "orderId": zod.number().nullish(),
+  "createdAt": zod.string()
+})).optional(),
+  "summary": zod.object({
+  "totalCash": zod.number(),
+  "totalPix": zod.number(),
+  "totalCredit": zod.number(),
+  "totalDebit": zod.number(),
+  "totalVoucher": zod.number(),
+  "totalSales": zod.number(),
+  "totalWithdrawals": zod.number(),
+  "totalSupplies": zod.number(),
+  "totalManualIn": zod.number(),
+  "expectedCash": zod.number()
+}).optional()
+}))
+
+
+/**
+ * @summary Close a cash register
+ */
+export const CloseCashRegisterParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const closeCashRegisterBodyClosingAmountMin = 0;
+
+
+
+export const CloseCashRegisterBody = zod.object({
+  "closingAmount": zod.number().min(closeCashRegisterBodyClosingAmountMin),
+  "closingNotes": zod.string().optional()
+})
+
+export const CloseCashRegisterResponse = zod.object({
+  "id": zod.number(),
+  "operator": zod.string(),
+  "openingAmount": zod.number(),
+  "status": zod.enum(['open', 'closed']),
+  "notes": zod.string().nullish(),
+  "openedAt": zod.string(),
+  "closedAt": zod.string().nullish(),
+  "closingAmount": zod.number().nullish(),
+  "closingNotes": zod.string().nullish()
+}).and(zod.object({
+  "movements": zod.array(zod.object({
+  "id": zod.number(),
+  "cashRegisterId": zod.number(),
+  "type": zod.enum(['payment', 'withdrawal', 'supply', 'manual_in']),
+  "amount": zod.number(),
+  "paymentMethod": zod.string().nullish(),
+  "reason": zod.string(),
+  "orderId": zod.number().nullish(),
+  "createdAt": zod.string()
+})).optional(),
+  "summary": zod.object({
+  "totalCash": zod.number(),
+  "totalPix": zod.number(),
+  "totalCredit": zod.number(),
+  "totalDebit": zod.number(),
+  "totalVoucher": zod.number(),
+  "totalSales": zod.number(),
+  "totalWithdrawals": zod.number(),
+  "totalSupplies": zod.number(),
+  "totalManualIn": zod.number(),
+  "expectedCash": zod.number()
+}).optional()
+}))
+
+
+/**
+ * @summary Add a cash movement
+ */
+export const addCashMovementBodyAmountMin = 0;
+
+
+
+export const AddCashMovementBody = zod.object({
+  "cashRegisterId": zod.number(),
+  "type": zod.enum(['payment', 'withdrawal', 'supply', 'manual_in']),
+  "amount": zod.number().min(addCashMovementBodyAmountMin),
+  "paymentMethod": zod.string().optional(),
+  "reason": zod.string(),
+  "orderId": zod.number().optional()
+})
+
+

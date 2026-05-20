@@ -12,6 +12,7 @@ import Kitchen from "@/pages/kitchen";
 import Menu from "@/pages/menu";
 import Customers from "@/pages/customers";
 import Payment from "@/pages/payment";
+import Cash from "@/pages/cash";
 
 const queryClient = new QueryClient();
 
@@ -27,6 +28,7 @@ function Router() {
       <Route path="/menu" component={Menu} />
       <Route path="/customers" component={Customers} />
       <Route path="/payments/:orderId" component={Payment} />
+      <Route path="/cash" component={Cash} />
       <Route component={NotFound} />
     </Switch>
   );

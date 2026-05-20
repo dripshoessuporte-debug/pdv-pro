@@ -20,6 +20,11 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  CashMovement,
+  CashMovementInput,
+  CashRegisterClose,
+  CashRegisterDetail,
+  CashRegisterInput,
   Category,
   CategoryInput,
   CategorySales,
@@ -2657,4 +2662,449 @@ export function useGetSalesByCategory<TData = Awaited<ReturnType<typeof getSales
 
 
 
+
+export const getGetCurrentCashRegisterUrl = () => {
+
+
+
+
+  return `/api/cash/current`
+}
+
+/**
+ * @summary Get currently open cash register
+ */
+export const getCurrentCashRegister = async ( options?: RequestInit): Promise<CashRegisterDetail> => {
+
+  return customFetch<CashRegisterDetail>(getGetCurrentCashRegisterUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCurrentCashRegisterQueryKey = () => {
+    return [
+    `/api/cash/current`
+    ] as const;
+    }
+
+
+export const getGetCurrentCashRegisterQueryOptions = <TData = Awaited<ReturnType<typeof getCurrentCashRegister>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentCashRegister>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCurrentCashRegisterQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCurrentCashRegister>>> = ({ signal }) => getCurrentCashRegister({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCurrentCashRegister>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCurrentCashRegisterQueryResult = NonNullable<Awaited<ReturnType<typeof getCurrentCashRegister>>>
+export type GetCurrentCashRegisterQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get currently open cash register
+ */
+
+export function useGetCurrentCashRegister<TData = Awaited<ReturnType<typeof getCurrentCashRegister>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentCashRegister>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCurrentCashRegisterQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getOpenCashRegisterUrl = () => {
+
+
+
+
+  return `/api/cash/open`
+}
+
+/**
+ * @summary Open a cash register
+ */
+export const openCashRegister = async (cashRegisterInput: CashRegisterInput, options?: RequestInit): Promise<CashRegisterDetail> => {
+
+  return customFetch<CashRegisterDetail>(getOpenCashRegisterUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      cashRegisterInput,)
+  }
+);}
+
+
+
+
+export const getOpenCashRegisterMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof openCashRegister>>, TError,{data: BodyType<CashRegisterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof openCashRegister>>, TError,{data: BodyType<CashRegisterInput>}, TContext> => {
+
+const mutationKey = ['openCashRegister'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof openCashRegister>>, {data: BodyType<CashRegisterInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  openCashRegister(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type OpenCashRegisterMutationResult = NonNullable<Awaited<ReturnType<typeof openCashRegister>>>
+    export type OpenCashRegisterMutationBody = BodyType<CashRegisterInput>
+    export type OpenCashRegisterMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Open a cash register
+ */
+export const useOpenCashRegister = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof openCashRegister>>, TError,{data: BodyType<CashRegisterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof openCashRegister>>,
+        TError,
+        {data: BodyType<CashRegisterInput>},
+        TContext
+      > => {
+      return useMutation(getOpenCashRegisterMutationOptions(options));
+    }
+
+export const getListCashRegistersUrl = () => {
+
+
+
+
+  return `/api/cash/history`
+}
+
+/**
+ * @summary List all cash registers
+ */
+export const listCashRegisters = async ( options?: RequestInit): Promise<CashRegisterDetail[]> => {
+
+  return customFetch<CashRegisterDetail[]>(getListCashRegistersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCashRegistersQueryKey = () => {
+    return [
+    `/api/cash/history`
+    ] as const;
+    }
+
+
+export const getListCashRegistersQueryOptions = <TData = Awaited<ReturnType<typeof listCashRegisters>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCashRegisters>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCashRegistersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCashRegisters>>> = ({ signal }) => listCashRegisters({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCashRegisters>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCashRegistersQueryResult = NonNullable<Awaited<ReturnType<typeof listCashRegisters>>>
+export type ListCashRegistersQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all cash registers
+ */
+
+export function useListCashRegisters<TData = Awaited<ReturnType<typeof listCashRegisters>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCashRegisters>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCashRegistersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetCashRegisterUrl = (id: number,) => {
+
+
+
+
+  return `/api/cash/${id}`
+}
+
+/**
+ * @summary Get a cash register with movements
+ */
+export const getCashRegister = async (id: number, options?: RequestInit): Promise<CashRegisterDetail> => {
+
+  return customFetch<CashRegisterDetail>(getGetCashRegisterUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCashRegisterQueryKey = (id: number,) => {
+    return [
+    `/api/cash/${id}`
+    ] as const;
+    }
+
+
+export const getGetCashRegisterQueryOptions = <TData = Awaited<ReturnType<typeof getCashRegister>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCashRegister>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCashRegisterQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCashRegister>>> = ({ signal }) => getCashRegister(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCashRegister>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCashRegisterQueryResult = NonNullable<Awaited<ReturnType<typeof getCashRegister>>>
+export type GetCashRegisterQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a cash register with movements
+ */
+
+export function useGetCashRegister<TData = Awaited<ReturnType<typeof getCashRegister>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCashRegister>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCashRegisterQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCloseCashRegisterUrl = (id: number,) => {
+
+
+
+
+  return `/api/cash/${id}/close`
+}
+
+/**
+ * @summary Close a cash register
+ */
+export const closeCashRegister = async (id: number,
+    cashRegisterClose: CashRegisterClose, options?: RequestInit): Promise<CashRegisterDetail> => {
+
+  return customFetch<CashRegisterDetail>(getCloseCashRegisterUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      cashRegisterClose,)
+  }
+);}
+
+
+
+
+export const getCloseCashRegisterMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof closeCashRegister>>, TError,{id: number;data: BodyType<CashRegisterClose>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof closeCashRegister>>, TError,{id: number;data: BodyType<CashRegisterClose>}, TContext> => {
+
+const mutationKey = ['closeCashRegister'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof closeCashRegister>>, {id: number;data: BodyType<CashRegisterClose>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  closeCashRegister(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CloseCashRegisterMutationResult = NonNullable<Awaited<ReturnType<typeof closeCashRegister>>>
+    export type CloseCashRegisterMutationBody = BodyType<CashRegisterClose>
+    export type CloseCashRegisterMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Close a cash register
+ */
+export const useCloseCashRegister = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof closeCashRegister>>, TError,{id: number;data: BodyType<CashRegisterClose>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof closeCashRegister>>,
+        TError,
+        {id: number;data: BodyType<CashRegisterClose>},
+        TContext
+      > => {
+      return useMutation(getCloseCashRegisterMutationOptions(options));
+    }
+
+export const getAddCashMovementUrl = () => {
+
+
+
+
+  return `/api/cash/movements`
+}
+
+/**
+ * @summary Add a cash movement
+ */
+export const addCashMovement = async (cashMovementInput: CashMovementInput, options?: RequestInit): Promise<CashMovement> => {
+
+  return customFetch<CashMovement>(getAddCashMovementUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      cashMovementInput,)
+  }
+);}
+
+
+
+
+export const getAddCashMovementMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addCashMovement>>, TError,{data: BodyType<CashMovementInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addCashMovement>>, TError,{data: BodyType<CashMovementInput>}, TContext> => {
+
+const mutationKey = ['addCashMovement'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addCashMovement>>, {data: BodyType<CashMovementInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  addCashMovement(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddCashMovementMutationResult = NonNullable<Awaited<ReturnType<typeof addCashMovement>>>
+    export type AddCashMovementMutationBody = BodyType<CashMovementInput>
+    export type AddCashMovementMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add a cash movement
+ */
+export const useAddCashMovement = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addCashMovement>>, TError,{data: BodyType<CashMovementInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addCashMovement>>,
+        TError,
+        {data: BodyType<CashMovementInput>},
+        TContext
+      > => {
+      return useMutation(getAddCashMovementMutationOptions(options));
+    }
 

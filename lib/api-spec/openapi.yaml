@@ -24,6 +24,8 @@ tags:
     description: Kitchen queue
   - name: dashboard
     description: Dashboard and analytics
+  - name: cash
+    description: Cash register management
 paths:
   /healthz:
     get:
@@ -682,6 +684,121 @@ paths:
                 items:
                   $ref: "#/components/schemas/CategorySales"
 
+  # Cash Register
+  /cash/current:
+    get:
+      operationId: getCurrentCashRegister
+      tags: [cash]
+      summary: Get currently open cash register
+      responses:
+        "200":
+          description: Open cash register
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashRegisterDetail"
+        "404":
+          description: No open cash register
+
+  /cash/open:
+    post:
+      operationId: openCashRegister
+      tags: [cash]
+      summary: Open a cash register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CashRegisterInput"
+      responses:
+        "201":
+          description: Cash register opened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashRegisterDetail"
+
+  /cash/history:
+    get:
+      operationId: listCashRegisters
+      tags: [cash]
+      summary: List all cash registers
+      responses:
+        "200":
+          description: List of cash registers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CashRegisterDetail"
+
+  /cash/{id}:
+    get:
+      operationId: getCashRegister
+      tags: [cash]
+      summary: Get a cash register with movements
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Cash register found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashRegisterDetail"
+        "404":
+          description: Not found
+
+  /cash/{id}/close:
+    post:
+      operationId: closeCashRegister
+      tags: [cash]
+      summary: Close a cash register
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CashRegisterClose"
+      responses:
+        "200":
+          description: Cash register closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashRegisterDetail"
+
+  /cash/movements:
+    post:
+      operationId: addCashMovement
+      tags: [cash]
+      summary: Add a cash movement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CashMovementInput"
+      responses:
+        "201":
+          description: Movement added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashMovement"
+
 components:
   schemas:
     HealthStatus:
@@ -1069,3 +1186,129 @@ components:
           type: number
         itemCount:
           type: integer
+
+    # Cash Register
+    CashRegister:
+      type: object
+      required: [id, operator, openingAmount, status, openedAt]
+      properties:
+        id:
+          type: integer
+        operator:
+          type: string
+        openingAmount:
+          type: number
+        status:
+          type: string
+          enum: [open, closed]
+        notes:
+          type: ["string", "null"]
+        openedAt:
+          type: string
+        closedAt:
+          type: ["string", "null"]
+        closingAmount:
+          type: ["number", "null"]
+        closingNotes:
+          type: ["string", "null"]
+
+    CashRegisterInput:
+      type: object
+      required: [operator, openingAmount]
+      properties:
+        operator:
+          type: string
+          minLength: 1
+        openingAmount:
+          type: number
+          minimum: 0
+        notes:
+          type: string
+
+    CashRegisterClose:
+      type: object
+      required: [closingAmount]
+      properties:
+        closingAmount:
+          type: number
+          minimum: 0
+        closingNotes:
+          type: string
+
+    CashMovement:
+      type: object
+      required: [id, cashRegisterId, type, amount, reason, createdAt]
+      properties:
+        id:
+          type: integer
+        cashRegisterId:
+          type: integer
+        type:
+          type: string
+          enum: [payment, withdrawal, supply, manual_in]
+        amount:
+          type: number
+        paymentMethod:
+          type: ["string", "null"]
+        reason:
+          type: string
+        orderId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+
+    CashMovementInput:
+      type: object
+      required: [cashRegisterId, type, amount, reason]
+      properties:
+        cashRegisterId:
+          type: integer
+        type:
+          type: string
+          enum: [payment, withdrawal, supply, manual_in]
+        amount:
+          type: number
+          minimum: 0
+        paymentMethod:
+          type: string
+        reason:
+          type: string
+        orderId:
+          type: integer
+
+    CashSummary:
+      type: object
+      required: [totalCash, totalPix, totalCredit, totalDebit, totalVoucher, totalSales, totalWithdrawals, totalSupplies, totalManualIn, expectedCash]
+      properties:
+        totalCash:
+          type: number
+        totalPix:
+          type: number
+        totalCredit:
+          type: number
+        totalDebit:
+          type: number
+        totalVoucher:
+          type: number
+        totalSales:
+          type: number
+        totalWithdrawals:
+          type: number
+        totalSupplies:
+          type: number
+        totalManualIn:
+          type: number
+        expectedCash:
+          type: number
+
+    CashRegisterDetail:
+      allOf:
+        - $ref: "#/components/schemas/CashRegister"
+        - type: object
+          properties:
+            movements:
+              type: array
+              items:
+                $ref: "#/components/schemas/CashMovement"
+            summary:
+              $ref: "#/components/schemas/CashSummary"

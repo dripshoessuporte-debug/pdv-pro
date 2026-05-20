@@ -1,0 +1,35 @@
+import { pgTable, serial, text, numeric, timestamp, integer } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+import { ordersTable } from "./orders";
+
+export const cashRegistersTable = pgTable("cash_registers", {
+  id: serial("id").primaryKey(),
+  operator: text("operator").notNull(),
+  openingAmount: numeric("opening_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  status: text("status").notNull().default("open"),
+  notes: text("notes"),
+  openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  closingAmount: numeric("closing_amount", { precision: 10, scale: 2 }),
+  closingNotes: text("closing_notes"),
+});
+
+export const cashMovementsTable = pgTable("cash_movements", {
+  id: serial("id").primaryKey(),
+  cashRegisterId: integer("cash_register_id").notNull().references(() => cashRegistersTable.id),
+  type: text("type").notNull(),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  paymentMethod: text("payment_method"),
+  reason: text("reason").notNull(),
+  orderId: integer("order_id").references(() => ordersTable.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertCashRegisterSchema = createInsertSchema(cashRegistersTable).omit({ id: true, openedAt: true });
+export type InsertCashRegister = z.infer<typeof insertCashRegisterSchema>;
+export type CashRegister = typeof cashRegistersTable.$inferSelect;
+
+export const insertCashMovementSchema = createInsertSchema(cashMovementsTable).omit({ id: true, createdAt: true });
+export type InsertCashMovement = z.infer<typeof insertCashMovementSchema>;
+export type CashMovement = typeof cashMovementsTable.$inferSelect;
