@@ -1074,14 +1074,7 @@ function RouteCard({
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold text-sm leading-snug">{route.name}</h3>
-              {!isAvailable && (
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${STATUS_COLORS[route.status]}`}>
-                  {STATUS_LABELS[route.status]}
-                </span>
-              )}
-            </div>
+            <h3 className="font-semibold text-sm leading-snug">{route.name}</h3>
             <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
               <MapPin className="w-3 h-3 shrink-0" />
               <span className="font-medium">{route.mainNeighborhood}</span>
@@ -1089,17 +1082,6 @@ function RouteCard({
                 <span className="opacity-60 truncate">· {otherNeighborhoods.join(", ")}</span>
               )}
             </div>
-            {route.courierName && (
-              <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
-                <User className="w-3 h-3 shrink-0" />
-                <span>{route.courierName}</span>
-                {route.startedAt && (
-                  <span className="opacity-60">
-                    · saiu {new Date(route.startedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Time pill */}
