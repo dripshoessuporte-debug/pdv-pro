@@ -117,11 +117,11 @@ const DELIVERY_STATUS_LABELS: Record<DeliveryOrderStatus, string> = {
 };
 
 const DELIVERY_STATUS_COLORS: Record<DeliveryOrderStatus, string> = {
-  pending: "bg-gray-100 text-gray-600",
-  preparing: "bg-amber-100 text-amber-700",
-  ready: "bg-emerald-100 text-emerald-700",
-  out_for_delivery: "bg-blue-100 text-blue-700",
-  delivered: "bg-purple-100 text-purple-700",
+  pending:          "bg-slate-100 text-slate-700",
+  preparing:        "bg-amber-300 text-amber-950 font-semibold",
+  ready:            "bg-emerald-100 text-emerald-800",
+  out_for_delivery: "bg-blue-100 text-blue-800",
+  delivered:        "bg-purple-100 text-purple-800",
 };
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -216,6 +216,7 @@ export default function Routes() {
   const [addPendingState, setAddPendingState] = useState<AddPendingState | null>(null);
   const [addingToRoute, setAddingToRoute] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [maxOrdersPerRoute, setMaxOrdersPerRoute] = useState(4);
 
   const fetchRoutes = useCallback(async () => {
     try {
@@ -237,8 +238,9 @@ export default function Routes() {
 
   const fetchSettings = useCallback(async () => {
     try {
-      const s = await apiFetch<{ deliveryDispatchTimeMinutes: number }>("/settings");
+      const s = await apiFetch<{ deliveryDispatchTimeMinutes: number; maxOrdersPerRoute: number }>("/settings");
       setDispatchMinutes(s.deliveryDispatchTimeMinutes);
+      setMaxOrdersPerRoute(s.maxOrdersPerRoute ?? 4);
     } catch {
       // silently ignore
     }
@@ -414,6 +416,8 @@ export default function Routes() {
   };
 
   const activeRoutes = routes.filter((r) => r.status !== "completed");
+  const availableRoutes = routes.filter((r) => r.status === "available");
+  const inProgressRoutes = routes.filter((r) => r.status === "in_progress");
   const completedRoutes = routes.filter((r) => r.status === "completed");
 
   return (
@@ -546,21 +550,51 @@ export default function Routes() {
           </section>
         )}
 
-        {/* ── Active routes ── */}
-        {activeRoutes.length > 0 && (
+        {/* ── Available routes ── */}
+        {availableRoutes.length > 0 && (
           <section>
-            <h2 className="text-base font-semibold mb-2">
-              Rotas Ativas
-              <span className="text-sm font-normal text-muted-foreground ml-2">
-                ({activeRoutes.length})
-              </span>
-            </h2>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+              <h2 className="text-base font-semibold">Rotas Disponíveis</h2>
+              <span className="text-sm text-muted-foreground">({availableRoutes.length})</span>
+              <span className="text-xs text-muted-foreground hidden sm:block">— prontas para assumir</span>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {activeRoutes.map((route) => (
+              {availableRoutes.map((route) => (
                 <RouteCard
                   key={route.id}
                   route={route}
                   allActiveRoutes={activeRoutes}
+                  maxOrders={maxOrdersPerRoute}
+                  onAssign={() => { setAssignRoute(route); setCourierName(""); }}
+                  onComplete={() => handleComplete(route)}
+                  onQrCode={() => setQrRoute(route)}
+                  onMoveOrder={(orderId, customerName) =>
+                    setMoveOrderState({ orderId, routeId: route.id, customerName })
+                  }
+                  completing={completing === route.id}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ── In-progress routes ── */}
+        {inProgressRoutes.length > 0 && (
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <h2 className="text-base font-semibold">Rotas em Andamento</h2>
+              <span className="text-sm text-muted-foreground">({inProgressRoutes.length})</span>
+              <span className="text-xs text-muted-foreground hidden sm:block">— já assumidas por motoboy</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {inProgressRoutes.map((route) => (
+                <RouteCard
+                  key={route.id}
+                  route={route}
+                  allActiveRoutes={activeRoutes}
+                  maxOrders={maxOrdersPerRoute}
                   onAssign={() => { setAssignRoute(route); setCourierName(""); }}
                   onComplete={() => handleComplete(route)}
                   onQrCode={() => setQrRoute(route)}
@@ -594,6 +628,7 @@ export default function Routes() {
                     key={route.id}
                     route={route}
                     allActiveRoutes={[]}
+                    maxOrders={maxOrdersPerRoute}
                     onAssign={() => {}}
                     onComplete={() => {}}
                     onQrCode={() => setQrRoute(route)}
@@ -1020,6 +1055,7 @@ const ROUTE_VALUE_LEGEND = [
 function RouteCard({
   route,
   allActiveRoutes,
+  maxOrders,
   onAssign,
   onComplete,
   onQrCode,
@@ -1028,6 +1064,7 @@ function RouteCard({
 }: {
   route: DeliveryRoute;
   allActiveRoutes: DeliveryRoute[];
+  maxOrders: number;
   onAssign: () => void;
   onComplete: () => void;
   onQrCode: () => void;
@@ -1051,11 +1088,7 @@ function RouteCard({
 
   const vc = getRouteValueColor(route.totalDeliveryFee);
 
-  const progressRatio = isCompleted ? 1 : isInProgress ? 1 : (totalCount > 0 ? deliveredCount / totalCount : 0);
-  const ringR = 20;
-  const ringCirc = 2 * Math.PI * ringR;
-  const ringOffset = ringCirc * (1 - progressRatio);
-  const ringColor = isCompleted ? "#22C55E" : vc.color;
+  const occupancyPct = Math.min(100, Math.round((totalCount / Math.max(1, maxOrders)) * 100));
 
   const otherNeighborhoods = route.includedNeighborhoods.filter((n) => n !== route.mainNeighborhood);
 
@@ -1074,38 +1107,25 @@ function RouteCard({
 
         {/* ── Header ── */}
         <div className="flex items-start gap-3">
-          {/* Circular progress ring around stop count */}
-          <div className="relative w-12 h-12 shrink-0">
-            <svg
-              className="absolute inset-0 w-full h-full -rotate-90"
-              viewBox="0 0 48 48"
-            >
-              {/* Track */}
-              <circle
-                cx="24" cy="24" r={ringR}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                className="text-secondary"
-              />
-              {/* Progress */}
-              <circle
-                cx="24" cy="24" r={ringR}
-                fill="none"
-                stroke={ringColor}
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeDasharray={ringCirc}
-                strokeDashoffset={ringOffset}
-                style={{ transition: "stroke-dashoffset 0.6s ease" }}
-              />
-            </svg>
-            {/* Number */}
-            <div
-              className="absolute inset-0 flex items-center justify-center font-black text-sm"
-              style={{ color: vc.color }}
-            >
+          {/* Occupancy pill */}
+          <div
+            className="flex flex-col items-center justify-center shrink-0 rounded-xl px-2.5 py-2 min-w-[58px]"
+            style={{ backgroundColor: `${vc.color}12`, border: `1px solid ${vc.color}40` }}
+          >
+            <span className="text-xl font-black leading-none" style={{ color: vc.color }}>
               {totalCount}
+            </span>
+            <span className="text-[10px] font-semibold text-[#0F172A] leading-tight mt-0.5">
+              entrega{totalCount !== 1 ? "s" : ""}
+            </span>
+            <div className="w-full mt-1.5">
+              <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden w-full">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${occupancyPct}%`, backgroundColor: vc.color }}
+                />
+              </div>
+              <span className="text-[10px] text-[#64748B] block text-center mt-0.5">{occupancyPct}%</span>
             </div>
           </div>
 
@@ -1118,6 +1138,12 @@ function RouteCard({
                 <span className="opacity-70 truncate">· {otherNeighborhoods.join(", ")}</span>
               )}
             </div>
+            {isInProgress && route.courierName && (
+              <div className="flex items-center gap-1 mt-0.5 text-xs text-[#475569]">
+                <User className="w-3 h-3 shrink-0" />
+                <span className="font-medium">{route.courierName}</span>
+              </div>
+            )}
           </div>
 
           {/* Time pill */}
@@ -1139,8 +1165,8 @@ function RouteCard({
           )}
         </div>
 
-        {/* ── Orders list — dark rows ── */}
-        <div className="rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700">
+        {/* ── Orders list ── */}
+        <div className="rounded-xl overflow-hidden border border-[#E2E8F0] divide-y divide-[#E2E8F0]">
           {sortedOrders.map((order) => {
             const ds = order.deliveryStatus as DeliveryOrderStatus | null;
             const isReady = ds === "ready";
@@ -1217,7 +1243,7 @@ function RouteCard({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-6 w-6 p-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg"
+                      className="h-6 w-6 p-0 text-[#94A3B8] hover:text-[#0F172A] hover:bg-slate-100 opacity-0 group-hover:opacity-100 transition-all rounded-lg"
                       onClick={() => onMoveOrder(order.orderId, order.customerName)}
                       title="Mover pedido"
                     >
@@ -1234,8 +1260,8 @@ function RouteCard({
         {isAvailable && (
           <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl
             ${allOrdersReady
-              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
-              : "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-amber-50 text-amber-800"
             }`}
           >
             {allOrdersReady ? (
@@ -1254,8 +1280,8 @@ function RouteCard({
 
         {/* ── Cobrança summary ── */}
         {sortedOrders.some((o) => o.paymentTiming === "on_delivery") && !isCompleted && (
-          <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs space-y-0.5">
-            <p className="font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1">
+          <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs space-y-0.5">
+            <p className="font-semibold text-amber-800 flex items-center gap-1">
               <Banknote className="w-3.5 h-3.5" />
               Resumo de cobrança
             </p>

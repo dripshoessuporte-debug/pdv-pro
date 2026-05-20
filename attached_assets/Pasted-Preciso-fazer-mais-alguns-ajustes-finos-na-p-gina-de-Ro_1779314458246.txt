@@ -1,0 +1,212 @@
+Preciso fazer mais alguns ajustes finos na página de Rotas, mantendo o visual clean atual, mas melhorando a usabilidade e a leitura.
+
+Não refaça o projeto do zero.
+Não altere funcionalidades já prontas fora do necessário.
+Preserve:
+- pedidos
+- cozinha
+- caixa
+- pagamento
+- cardápio
+- delivery
+- rotas
+- configurações
+- QR Code
+- pagamento na entrega
+- alertas de tempo
+- agrupamento por CEP/bairro
+- organização dos pedidos por data
+
+OBJETIVO:
+Melhorar a leitura e a organização dos cards de "Rotas Ativas", e separar visualmente as rotas prontas das rotas em andamento.
+
+==================================================
+PARTE 1 — MELHORAR O INDICADOR DE QUANTIDADE DE ENTREGAS
+==================================================
+
+Hoje, dentro do card da rota, existe um número colorido indicando a quantidade de entregas/pedidos da rota.
+Quero melhorar isso.
+
+Ajustes:
+1. Não deixar só um número solto.
+2. Mostrar algo mais claro, por exemplo:
+   - "2 entregas"
+   - ou "2 pedidos"
+   - ou "2 / 2 entregas"
+3. O texto/miolo desse indicador deve ficar em preto ou em cor muito escura para ficar bem visível.
+4. A cor da borda ou do círculo pode continuar seguindo a cor da rota, mas o conteúdo interno precisa ter contraste melhor.
+5. Se a rota estiver completa, mostrar também uma noção de ocupação, por exemplo:
+   - "2 entregas • 100%"
+   - ou "3 entregas • 100%"
+6. Se ainda não estiver completa, mostrar:
+   - "2 entregas • 50%"
+   - ou a porcentagem correspondente com base no limite da rota
+
+Usar como base o maxOrdersPerRoute configurado no sistema.
+Exemplo:
+- limite da rota = 4
+- rota com 2 pedidos = 50%
+- rota com 4 pedidos = 100%
+
+Esse indicador deve ficar bonito, compacto e fácil de ler.
+
+==================================================
+PARTE 2 — MELHORAR A LEITURA DOS CAMPOS DENTRO DOS CARDS
+==================================================
+
+Hoje os blocos internos dos pedidos dentro da rota ainda estão pouco visíveis.
+Quero melhorar muito o contraste e a legibilidade.
+
+Ajustes:
+1. Nome da rua/endereço:
+   - deixar mais visível
+   - usar cor mais escura
+   - aumentar um pouco o contraste
+2. Nome do cliente:
+   - manter em destaque
+   - mais forte visualmente
+3. Badge/status "Preparando":
+   - trocar para uma combinação mais visível
+   - pode ser:
+     - fundo amarelo com texto preto
+     - ou fundo preto com texto amarelo
+   - escolher a versão que fique mais bonita e legível
+4. Os outros badges de status também devem ter contraste real, sem ficar apagados.
+5. O bloco "0/2 pedidos prontos na cozinha" também precisa ficar mais legível.
+6. O bloco "Valor da rota" precisa ter melhor leitura e hierarquia visual.
+7. O conteúdo interno dos cards precisa parecer mais claro e organizado, sem ficar lavado.
+
+==================================================
+PARTE 3 — AJUSTAR O CARD DA ROTA SEM PERDER O ESTILO ATUAL
+==================================================
+
+Manter o tema clean atual, mas melhorar a apresentação dos cards:
+
+1. Manter fundo branco no card.
+2. Manter borda colorida da rota.
+3. Manter glow leve e discreto.
+4. Não exagerar no glow.
+5. O glow deve só dar um destaque sutil.
+6. O card deve continuar com leitura limpa e profissional.
+
+==================================================
+PARTE 4 — ROTAS PRONTAS X ROTAS EM ANDAMENTO
+==================================================
+
+Hoje existe o botão/área de "Rotas Prontas".
+Quero adicionar uma organização melhor.
+
+No topo da página Rotas, próximo de:
+- Atualizar
+- Rotas Prontas
+
+criar também um botão/filtro/aba:
+
+- Rotas em andamento
+
+Objetivo:
+Separar visualmente:
+1. Rotas prontas para serem assumidas
+2. Rotas que já foram assumidas e estão em andamento
+
+Comportamento desejado:
+- Quando eu clicar em "Assumir Rota", a rota deve sair da lista de "Rotas Prontas"
+- e passar automaticamente para a área/lista de "Rotas em andamento"
+
+Ou seja:
+- Rotas prontas = disponíveis para assumir
+- Rotas em andamento = já assumidas por motoboy
+
+Pode ser implementado como:
+- duas abas
+- ou dois botões de filtro
+- ou dois blocos separados na tela
+
+Escolha a opção que ficar mais limpa e mais fácil de operar.
+
+==================================================
+PARTE 5 — COMPORTAMENTO AO ASSUMIR ROTA
+==================================================
+
+Quando o usuário clicar em "Assumir Rota":
+
+1. Manter o fluxo atual de assumir a rota.
+2. Salvar normalmente o motoboy e o status da rota.
+3. Alterar a rota para status "em andamento".
+4. Remover a rota da visualização "Rotas Prontas".
+5. Mostrar essa rota em "Rotas em andamento".
+6. Mostrar visualmente que a rota está em andamento.
+7. Exibir claramente quem assumiu a rota, se já existir esse dado.
+
+Se fizer sentido, no card em andamento mostrar também:
+- motoboy responsável
+- quantidade de entregas
+- progresso/ocupação
+- status em andamento
+
+==================================================
+PARTE 6 — PROGRESSO DA ROTA
+==================================================
+
+Quero uma noção visual do preenchimento da rota.
+
+Exemplo:
+- rota com 2 pedidos de um limite de 2 = 100%
+- rota com 3 pedidos de um limite de 4 = 75%
+- rota com 1 pedido de um limite de 4 = 25%
+
+Isso pode aparecer:
+- ao lado do contador de entregas
+- ou como texto pequeno
+- ou como micro barra de progresso discreta
+
+A solução precisa ser clean e legível.
+
+==================================================
+PARTE 7 — MANTER AS CORES DAS ROTAS
+==================================================
+
+Manter a escala atual das cores das rotas:
+
+- azul = até R$ 15
+- verde = R$ 15–30
+- rosa = R$ 30–45
+- roxo = R$ 45–60
+- amarelo = acima de R$ 60
+
+Mas sem exagero visual.
+Essas cores continuam:
+- na borda da rota
+- no glow leve
+- e no indicador da rota
+
+==================================================
+PARTE 8 — TESTES OBRIGATÓRIOS
+==================================================
+
+Teste:
+
+1. Verificar se o indicador de quantidade da rota não mostra mais só um número solto.
+2. Verificar se agora aparece algo como:
+   - "2 entregas"
+   - ou "2/2 entregas"
+   - com porcentagem de ocupação
+3. Verificar se o texto desse indicador está bem visível (preto ou cor escura).
+4. Verificar se os nomes das ruas estão mais legíveis.
+5. Verificar se o badge "Preparando" ficou bem visível.
+6. Verificar se o bloco "pedidos prontos na cozinha" está melhor de ler.
+7. Verificar se ao clicar em "Assumir Rota":
+   - a rota sai da lista de prontas
+   - vai para a lista/aba de "Rotas em andamento"
+8. Verificar se existe um botão/aba no topo chamado "Rotas em andamento".
+9. Verificar se a rota assumida aparece corretamente nessa área.
+10. Rodar typecheck sem erros.
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Como ficou o novo indicador de quantidade/ocupação da rota.
+3. Como ficou a melhoria de contraste dentro dos cards.
+4. Como ficou a separação entre Rotas Prontas e Rotas em Andamento.
+5. Como testar passo a passo.
+6. Limitações restantes.
