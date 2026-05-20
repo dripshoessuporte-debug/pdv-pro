@@ -1117,11 +1117,11 @@ function RouteCard({
             return (
               <div
                 key={order.id}
-                className="flex items-center gap-2.5 px-3 py-2.5 bg-zinc-900 hover:bg-zinc-800 transition-colors text-xs group"
+                className="flex items-center gap-2.5 px-3 py-2.5 bg-zinc-700/60 hover:bg-zinc-600/70 transition-colors text-xs group"
                 data-testid={`route-order-${order.orderId}`}
               >
                 {/* Stop number */}
-                <div className="w-5 h-5 rounded-full flex items-center justify-center bg-zinc-700 text-zinc-200 text-xs font-bold shrink-0">
+                <div className="w-5 h-5 rounded-full flex items-center justify-center bg-zinc-500 text-zinc-100 text-xs font-bold shrink-0">
                   {order.stopOrder}
                 </div>
 
