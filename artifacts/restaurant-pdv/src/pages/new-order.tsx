@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -28,10 +29,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Minus, ShoppingCart, Search } from "lucide-react";
+import { Plus, Minus, ShoppingCart, Search, MessageSquare } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-type CartItem = { productId: number; name: string; price: number; quantity: number };
+type CartItem = {
+  productId: number;
+  name: string;
+  price: number;
+  quantity: number;
+  notes: string;
+};
 
 export default function NewOrder() {
   const [, setLocation] = useLocation();
@@ -42,6 +49,7 @@ export default function NewOrder() {
   const [orderType, setOrderType] = useState<"table" | "counter" | "takeaway">("counter");
   const [tableId, setTableId] = useState(preselectedTableId ?? "");
   const [customerId, setCustomerId] = useState("");
+  const [orderNotes, setOrderNotes] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [productSearch, setProductSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -72,13 +80,15 @@ export default function NewOrder() {
     }
   }, [preselectedTableId]);
 
-  const addToCart = (product: NonNullable<typeof products>[number]) => {
+  const addToCart = (product: { id: number; name: string; price: number }) => {
     setCart((prev) => {
       const existing = prev.find((i) => i.productId === product.id);
       if (existing) {
-        return prev.map((i) => i.productId === product.id ? { ...i, quantity: i.quantity + 1 } : i);
+        return prev.map((i) =>
+          i.productId === product.id ? { ...i, quantity: i.quantity + 1 } : i
+        );
       }
-      return [...prev, { productId: product.id, name: product.name, price: product.price, quantity: 1 }];
+      return [...prev, { productId: product.id, name: product.name, price: product.price, quantity: 1, notes: "" }];
     });
   };
 
@@ -92,6 +102,10 @@ export default function NewOrder() {
     });
   };
 
+  const updateItemNotes = (productId: number, notes: string) => {
+    setCart((prev) => prev.map((i) => i.productId === productId ? { ...i, notes } : i));
+  };
+
   const cartTotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
 
@@ -100,23 +114,35 @@ export default function NewOrder() {
       toast({ title: "Adicione pelo menos um item ao pedido", variant: "destructive" });
       return;
     }
+    if (orderType === "table" && !tableId) {
+      toast({ title: "Selecione uma mesa", variant: "destructive" });
+      return;
+    }
     setCreating(true);
     try {
       const orderData: Record<string, unknown> = { type: orderType };
       if (tableId) orderData.tableId = parseInt(tableId);
       if (customerId) orderData.customerId = parseInt(customerId);
+      if (orderNotes.trim()) orderData.notes = orderNotes.trim();
 
       const order = await new Promise<{ id: number }>((resolve, reject) => {
-        createOrder.mutate({ data: orderData as Parameters<typeof createOrder.mutate>[0]["data"] }, {
-          onSuccess: (o) => resolve(o),
-          onError: (e) => reject(e),
-        });
+        createOrder.mutate(
+          { data: orderData as Parameters<typeof createOrder.mutate>[0]["data"] },
+          { onSuccess: (o) => resolve(o), onError: (e) => reject(e) }
+        );
       });
 
       for (const item of cart) {
         await new Promise<void>((resolve, reject) => {
           addItem.mutate(
-            { id: order.id, data: { productId: item.productId, quantity: item.quantity } },
+            {
+              id: order.id,
+              data: {
+                productId: item.productId,
+                quantity: item.quantity,
+                ...(item.notes.trim() ? { notes: item.notes.trim() } : {}),
+              },
+            },
             { onSuccess: () => resolve(), onError: (e) => reject(e) }
           );
         });
@@ -124,10 +150,10 @@ export default function NewOrder() {
 
       queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
       queryClient.invalidateQueries({ queryKey: getListTablesQueryKey() });
-      toast({ title: "Pedido criado com sucesso" });
+      toast({ title: "Pedido criado com sucesso!" });
       setLocation(`/orders/${order.id}`);
     } catch {
-      toast({ title: "Erro ao criar pedido", variant: "destructive" });
+      toast({ title: "Erro ao criar pedido. Tente novamente.", variant: "destructive" });
     } finally {
       setCreating(false);
     }
@@ -142,35 +168,40 @@ export default function NewOrder() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: Config + Menu */}
+          {/* Esquerda: Configuração + Cardápio */}
           <div className="lg:col-span-2 space-y-5">
             <Card>
               <CardContent className="p-5 space-y-4">
-                <div className="grid grid-cols-3 gap-3">
-                  {(["counter", "table", "takeaway"] as const).map((t) => (
-                    <Button
-                      key={t}
-                      variant={orderType === t ? "default" : "outline"}
-                      onClick={() => setOrderType(t)}
-                      className="w-full"
-                      data-testid={`button-type-${t}`}
-                    >
-                      {t === "counter" ? "Balcao" : t === "table" ? "Mesa" : "Viagem"}
-                    </Button>
-                  ))}
+                {/* Tipo de pedido */}
+                <div>
+                  <Label className="mb-2 block text-sm font-medium">Tipo de Pedido</Label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {(["counter", "table", "takeaway"] as const).map((t) => (
+                      <Button
+                        key={t}
+                        variant={orderType === t ? "default" : "outline"}
+                        onClick={() => { setOrderType(t); if (t !== "table") setTableId(""); }}
+                        className="w-full"
+                        data-testid={`button-type-${t}`}
+                      >
+                        {t === "counter" ? "🍽 Balcão" : t === "table" ? "🪑 Mesa" : "🛵 Viagem"}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
 
                 {orderType === "table" && (
                   <div>
-                    <Label>Mesa</Label>
-                    <Select value={tableId} onValueChange={setTableId}>
+                    <Label>Mesa *</Label>
+                    <Select value={tableId || "none"} onValueChange={(v) => setTableId(v === "none" ? "" : v)}>
                       <SelectTrigger data-testid="select-table">
-                        <SelectValue placeholder="Selecionar mesa" />
+                        <SelectValue placeholder="Selecionar mesa disponível" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="none">Selecionar mesa</SelectItem>
                         {tables?.filter((t) => t.status === "available").map((t) => (
                           <SelectItem key={t.id} value={String(t.id)}>
-                            Mesa {t.number} ({t.capacity} lugares)
+                            Mesa {t.number} · {t.capacity} lugares
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -185,17 +216,30 @@ export default function NewOrder() {
                       <SelectValue placeholder="Selecionar cliente" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Sem cliente</SelectItem>
+                      <SelectItem value="none">Sem cliente identificado</SelectItem>
                       {customers?.map((c) => (
-                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.name}{c.phone ? ` · ${c.phone}` : ""}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div>
+                  <Label>Observações do Pedido (opcional)</Label>
+                  <Textarea
+                    placeholder="Ex: sem cebola, alergia a amendoim, cliente preferencial..."
+                    value={orderNotes}
+                    onChange={(e) => setOrderNotes(e.target.value)}
+                    rows={2}
+                    data-testid="input-order-notes"
+                  />
+                </div>
               </CardContent>
             </Card>
 
-            {/* Menu */}
+            {/* Cardápio */}
             <div className="space-y-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -236,7 +280,7 @@ export default function NewOrder() {
                     return (
                       <Card
                         key={product.id}
-                        className={`cursor-pointer hover:shadow-md transition-all ${inCart ? "ring-2 ring-primary" : ""}`}
+                        className={`cursor-pointer hover:shadow-md transition-all select-none ${inCart ? "ring-2 ring-primary bg-primary/5" : ""}`}
                         onClick={() => addToCart(product)}
                         data-testid={`card-product-${product.id}`}
                       >
@@ -244,49 +288,72 @@ export default function NewOrder() {
                           <p className="font-medium text-sm line-clamp-2 mb-1">{product.name}</p>
                           <div className="flex items-center justify-between">
                             <span className="text-primary font-bold text-sm">R$ {product.price.toFixed(2)}</span>
-                            {inCart && (
-                              <Badge variant="secondary" className="text-xs">{inCart.quantity}</Badge>
+                            {inCart ? (
+                              <Badge className="text-xs">{inCart.quantity}x</Badge>
+                            ) : (
+                              <Plus className="w-4 h-4 text-muted-foreground" />
                             )}
                           </div>
                         </CardContent>
                       </Card>
                     );
                   })}
+                  {products?.filter((p) => p.available).length === 0 && (
+                    <div className="col-span-3 text-center py-8 text-muted-foreground text-sm">
+                      Nenhum produto encontrado
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Right: Cart */}
+          {/* Direita: Carrinho */}
           <div className="lg:col-span-1">
             <Card className="sticky top-4">
               <CardContent className="p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <ShoppingCart className="w-5 h-5 text-primary" />
-                  <h2 className="font-semibold text-lg">Pedido</h2>
+                  <h2 className="font-semibold text-lg">Resumo do Pedido</h2>
                   {cartCount > 0 && <Badge>{cartCount}</Badge>}
                 </div>
 
                 {cart.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8 text-sm">
-                    Adicione itens ao pedido
-                  </p>
+                  <div className="text-center text-muted-foreground py-8">
+                    <ShoppingCart className="w-10 h-10 mx-auto mb-2 opacity-20" />
+                    <p className="text-sm">Clique nos produtos para adicionar</p>
+                  </div>
                 ) : (
-                  <div className="space-y-3 mb-4">
+                  <div className="space-y-4 mb-4 max-h-96 overflow-y-auto">
                     {cart.map((item) => (
-                      <div key={item.productId} className="flex items-center justify-between gap-2" data-testid={`cart-item-${item.productId}`}>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{item.name}</p>
-                          <p className="text-xs text-muted-foreground">R$ {(item.price * item.quantity).toFixed(2)}</p>
+                      <div key={item.productId} data-testid={`cart-item-${item.productId}`} className="border-b pb-3 last:border-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{item.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {item.quantity}x R$ {item.price.toFixed(2)} = <span className="font-semibold text-foreground">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => removeFromCart(item.productId)}>
+                              <Minus className="w-3 h-3" />
+                            </Button>
+                            <span className="text-sm font-bold w-6 text-center">{item.quantity}</span>
+                            <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => addToCart({ id: item.productId, name: item.name, price: item.price })}>
+                              <Plus className="w-3 h-3" />
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => removeFromCart(item.productId)}>
-                            <Minus className="w-3 h-3" />
-                          </Button>
-                          <span className="text-sm font-medium w-5 text-center">{item.quantity}</span>
-                          <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => addToCart({ id: item.productId, name: item.name, price: item.price } as any)}>
-                            <Plus className="w-3 h-3" />
-                          </Button>
+                        {/* Observação por item */}
+                        <div className="mt-1.5 flex items-center gap-1">
+                          <MessageSquare className="w-3 h-3 text-muted-foreground shrink-0" />
+                          <Input
+                            placeholder="Observação (ex: sem sal)"
+                            value={item.notes}
+                            onChange={(e) => updateItemNotes(item.productId, e.target.value)}
+                            className="h-6 text-xs px-2 py-0"
+                            data-testid={`cart-item-notes-${item.productId}`}
+                          />
                         </div>
                       </div>
                     ))}
@@ -294,21 +361,25 @@ export default function NewOrder() {
                 )}
 
                 {cart.length > 0 && (
-                  <div className="border-t pt-3 mb-4">
-                    <div className="flex justify-between font-bold text-lg">
+                  <div className="border-t pt-3 mb-4 space-y-1">
+                    <div className="flex justify-between text-sm text-muted-foreground">
+                      <span>{cartCount} {cartCount === 1 ? "item" : "itens"}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-xl">
                       <span>Total</span>
-                      <span>R$ {cartTotal.toFixed(2)}</span>
+                      <span className="text-primary">R$ {cartTotal.toFixed(2)}</span>
                     </div>
                   </div>
                 )}
 
                 <Button
                   className="w-full"
+                  size="lg"
                   onClick={handleCreate}
                   disabled={creating || cart.length === 0}
                   data-testid="button-create-order"
                 >
-                  {creating ? "Criando..." : "Confirmar Pedido"}
+                  {creating ? "Criando pedido..." : cart.length === 0 ? "Adicione itens" : `Confirmar Pedido · R$ ${cartTotal.toFixed(2)}`}
                 </Button>
               </CardContent>
             </Card>

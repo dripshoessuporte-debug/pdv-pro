@@ -17,14 +17,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, CheckCircle2, Printer, CreditCard, Banknote, Wallet } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CreditCard, Banknote, Wallet, QrCode, Receipt } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const PAYMENT_METHODS = [
   { value: "cash", label: "Dinheiro", icon: Banknote },
-  { value: "credit_card", label: "Credito", icon: CreditCard },
-  { value: "debit_card", label: "Debito", icon: CreditCard },
-  { value: "pix", label: "PIX", icon: Wallet },
+  { value: "pix", label: "PIX", icon: QrCode },
+  { value: "credit_card", label: "Crédito", icon: CreditCard },
+  { value: "debit_card", label: "Débito", icon: CreditCard },
   { value: "voucher", label: "Voucher", icon: Wallet },
 ] as const;
 
@@ -42,11 +42,17 @@ export default function Payment() {
   const [paid, setPaid] = useState(false);
 
   const { data: order, isLoading } = useGetOrder(orderIdNum, {
-    query: { enabled: !!orderIdNum, queryKey: getGetOrderQueryKey(orderIdNum) },
+    query: {
+      enabled: !!orderIdNum,
+      queryKey: getGetOrderQueryKey(orderIdNum),
+    },
   });
 
   const { data: receipt } = useGetReceipt(orderIdNum, {
-    query: { enabled: paid, queryKey: getGetReceiptQueryKey(orderIdNum) },
+    query: {
+      enabled: paid,
+      queryKey: getGetReceiptQueryKey(orderIdNum),
+    },
   });
 
   const createPayment = useCreatePayment({
@@ -56,7 +62,7 @@ export default function Payment() {
         queryClient.invalidateQueries({ queryKey: getListTablesQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
         setPaid(true);
-        toast({ title: "Pagamento realizado com sucesso" });
+        toast({ title: "✅ Pagamento realizado com sucesso!" });
       },
       onError: () => {
         toast({ title: "Erro ao processar pagamento", variant: "destructive" });
@@ -71,14 +77,18 @@ export default function Payment() {
         orderId: orderIdNum,
         amount: order.totalAmount,
         method,
-        ...(method === "cash" && amountTendered ? { amountTendered: parseFloat(amountTendered) } : {}),
+        ...(method === "cash" && amountTendered
+          ? { amountTendered: parseFloat(amountTendered) }
+          : {}),
       },
     });
   };
 
-  const change = method === "cash" && amountTendered && order
-    ? Math.max(0, parseFloat(amountTendered) - order.totalAmount)
+  const tendered = parseFloat(amountTendered) || 0;
+  const change = method === "cash" && tendered > 0 && order
+    ? Math.max(0, tendered - order.totalAmount)
     : null;
+  const insufficient = method === "cash" && tendered > 0 && order && tendered < order.totalAmount;
 
   if (isLoading) {
     return (
@@ -95,25 +105,26 @@ export default function Payment() {
     return (
       <Layout>
         <div className="text-center py-16">
-          <p className="text-muted-foreground">Pedido nao encontrado</p>
+          <p className="text-muted-foreground">Pedido não encontrado</p>
           <Button asChild className="mt-4"><Link href="/orders">Voltar</Link></Button>
         </div>
       </Layout>
     );
   }
 
+  /* ─── Tela de Sucesso ─── */
   if (paid) {
     return (
       <Layout>
         <div className="max-w-md mx-auto space-y-6">
           <div className="text-center py-8">
-            <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h1 className="text-2xl font-bold">Pagamento Realizado!</h1>
-            <p className="text-muted-foreground mt-1">Pedido #{orderIdNum} finalizado</p>
-            {receipt?.payment && receipt.payment.change !== null && receipt.payment.change > 0 && (
-              <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-xl">
-                <p className="text-green-700 dark:text-green-300 font-semibold text-lg">
-                  Troco: R$ {receipt.payment.change.toFixed(2)}
+            <CheckCircle2 className="w-20 h-20 text-green-500 mx-auto mb-4" />
+            <h1 className="text-2xl font-bold">Pagamento Confirmado!</h1>
+            <p className="text-muted-foreground mt-1">Pedido #{orderIdNum} finalizado com sucesso</p>
+            {change !== null && change > 0 && (
+              <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-200 dark:border-green-800">
+                <p className="text-green-700 dark:text-green-300 font-bold text-2xl">
+                  Troco: R$ {change.toFixed(2)}
                 </p>
               </div>
             )}
@@ -121,44 +132,53 @@ export default function Payment() {
 
           {receipt && (
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Printer className="w-4 h-4" /> Comprovante
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Receipt className="w-4 h-4" /> Comprovante
                 </CardTitle>
               </CardHeader>
-              <CardContent className="font-mono text-sm space-y-2">
+              <CardContent className="font-mono text-sm space-y-1">
                 <div className="text-center border-b pb-3 mb-3">
-                  <p className="font-bold text-base">PDV Pro</p>
-                  <p className="text-muted-foreground text-xs">
+                  <p className="font-bold text-lg">PDV Pro</p>
+                  <p className="text-xs text-muted-foreground">
                     {new Date(receipt.order.createdAt).toLocaleString("pt-BR")}
                   </p>
+                  {receipt.order.tableNumber && (
+                    <p className="text-xs">Mesa {receipt.order.tableNumber}</p>
+                  )}
                 </div>
                 {receipt.items.map((item) => (
                   <div key={item.id} className="flex justify-between" data-testid={`receipt-item-${item.id}`}>
-                    <span>{item.quantity}x {item.productName}</span>
-                    <span>R$ {item.totalPrice.toFixed(2)}</span>
+                    <span className="truncate">{item.quantity}x {item.productName}</span>
+                    <span className="ml-2 shrink-0">R$ {item.totalPrice.toFixed(2)}</span>
                   </div>
                 ))}
-                <div className="border-t pt-2 mt-2">
-                  <div className="flex justify-between font-bold">
+                <div className="border-t pt-2 mt-2 space-y-1">
+                  <div className="flex justify-between font-bold text-base">
                     <span>TOTAL</span>
                     <span>R$ {receipt.order.totalAmount.toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between text-muted-foreground text-xs mt-1">
-                    <span>Pagamento</span>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Forma de pagamento</span>
                     <span>{PAYMENT_METHODS.find((m) => m.value === receipt.payment.method)?.label}</span>
                   </div>
+                  {receipt.payment.change !== null && receipt.payment.change > 0 && (
+                    <div className="flex justify-between text-xs text-green-600 dark:text-green-400 font-semibold">
+                      <span>Troco</span>
+                      <span>R$ {receipt.payment.change.toFixed(2)}</span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
           )}
 
           <div className="flex gap-3">
-            <Button className="flex-1" onClick={() => setLocation("/orders")} data-testid="button-back-orders">
-              Voltar aos Pedidos
+            <Button className="flex-1" onClick={() => setLocation("/orders/new")} data-testid="button-new-order-after-pay">
+              + Novo Pedido
             </Button>
-            <Button variant="outline" onClick={() => setLocation("/")} data-testid="button-back-dashboard">
-              Dashboard
+            <Button variant="outline" onClick={() => setLocation("/orders")} data-testid="button-back-orders">
+              Ver Pedidos
             </Button>
           </div>
         </div>
@@ -166,33 +186,39 @@ export default function Payment() {
     );
   }
 
+  /* ─── Tela de Pagamento ─── */
   return (
     <Layout>
       <div className="max-w-lg mx-auto space-y-6">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={() => setLocation(`/orders/${orderIdNum}`)}>
-            <ArrowLeft className="w-4 h-4 mr-1" /> Voltar
+            <ArrowLeft className="w-4 h-4 mr-1" /> Voltar ao Pedido
           </Button>
         </div>
 
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Pagamento</h1>
-          <p className="text-muted-foreground mt-1">Pedido #{orderIdNum}</p>
+          <p className="text-muted-foreground mt-1">
+            Pedido #{orderIdNum}
+            {order.tableNumber ? ` · Mesa ${order.tableNumber}` : ""}
+            {order.customerName ? ` · ${order.customerName}` : ""}
+          </p>
         </div>
 
+        {/* Resumo do Pedido */}
         <Card>
-          <CardHeader>
-            <CardTitle>Resumo do Pedido</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Resumo do Pedido</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {order.items.map((item) => (
               <div key={item.id} className="flex justify-between text-sm">
-                <span>{item.quantity}x {item.productName}</span>
+                <span className="text-muted-foreground">{item.quantity}x {item.productName}</span>
                 <span>R$ {item.totalPrice.toFixed(2)}</span>
               </div>
             ))}
-            <div className="border-t pt-2 mt-3">
-              <div className="flex justify-between font-bold text-xl">
+            <div className="border-t pt-3 mt-2">
+              <div className="flex justify-between font-bold text-2xl">
                 <span>Total</span>
                 <span className="text-primary">R$ {order.totalAmount.toFixed(2)}</span>
               </div>
@@ -200,20 +226,21 @@ export default function Payment() {
           </CardContent>
         </Card>
 
+        {/* Forma de Pagamento */}
         <Card>
-          <CardHeader>
-            <CardTitle>Forma de Pagamento</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Forma de Pagamento</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
               {PAYMENT_METHODS.map((m) => (
                 <button
                   key={m.value}
-                  onClick={() => setMethod(m.value)}
-                  className={`p-3 rounded-lg border-2 flex flex-col items-center gap-1 transition-all text-sm font-medium ${
+                  onClick={() => { setMethod(m.value); setAmountTendered(""); }}
+                  className={`p-3 rounded-xl border-2 flex flex-col items-center gap-1.5 transition-all text-xs font-semibold ${
                     method === m.value
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border hover:border-primary/50"
+                      ? "border-primary bg-primary/10 text-primary shadow-sm"
+                      : "border-border hover:border-primary/40 hover:bg-muted"
                   }`}
                   data-testid={`button-method-${m.value}`}
                 >
@@ -224,20 +251,49 @@ export default function Payment() {
             </div>
 
             {method === "cash" && (
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="tendered">Valor Recebido (R$)</Label>
                 <Input
                   id="tendered"
                   type="number"
                   step="0.01"
+                  min={order.totalAmount}
                   placeholder={order.totalAmount.toFixed(2)}
                   value={amountTendered}
                   onChange={(e) => setAmountTendered(e.target.value)}
                   data-testid="input-amount-tendered"
+                  className="text-xl h-12"
                 />
-                {change !== null && change > 0 && (
-                  <div className="mt-2 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                    <p className="text-green-700 dark:text-green-300 font-semibold">
+                {/* Atalhos de valor */}
+                <div className="flex gap-2 flex-wrap">
+                  {[Math.ceil(order.totalAmount / 10) * 10, Math.ceil(order.totalAmount / 50) * 50, Math.ceil(order.totalAmount / 100) * 100]
+                    .filter((v, i, arr) => arr.indexOf(v) === i && v >= order.totalAmount)
+                    .slice(0, 4)
+                    .map((val) => (
+                      <Button
+                        key={val}
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setAmountTendered(String(val))}
+                        data-testid={`quick-amount-${val}`}
+                      >
+                        R$ {val.toFixed(0)}
+                      </Button>
+                    ))}
+                  <Button size="sm" variant="outline" onClick={() => setAmountTendered(order.totalAmount.toFixed(2))}>
+                    Exato
+                  </Button>
+                </div>
+                {insufficient && (
+                  <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                    <p className="text-red-700 dark:text-red-400 text-sm font-medium">
+                      ⚠️ Valor insuficiente · Faltam R$ {(order.totalAmount - tendered).toFixed(2)}
+                    </p>
+                  </div>
+                )}
+                {change !== null && change >= 0 && !insufficient && tendered > 0 && (
+                  <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                    <p className="text-green-700 dark:text-green-400 font-bold text-lg">
                       Troco: R$ {change.toFixed(2)}
                     </p>
                   </div>
@@ -249,10 +305,16 @@ export default function Payment() {
               className="w-full"
               size="lg"
               onClick={handlePay}
-              disabled={createPayment.isPending}
+              disabled={
+                createPayment.isPending ||
+                order.items.length === 0 ||
+                (method === "cash" && !!amountTendered && !!insufficient)
+              }
               data-testid="button-confirm-payment"
             >
-              {createPayment.isPending ? "Processando..." : `Confirmar Pagamento · R$ ${order.totalAmount.toFixed(2)}`}
+              {createPayment.isPending
+                ? "Processando..."
+                : `Confirmar Pagamento · R$ ${order.totalAmount.toFixed(2)}`}
             </Button>
           </CardContent>
         </Card>

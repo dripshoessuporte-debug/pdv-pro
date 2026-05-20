@@ -13,10 +13,15 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const [ordersToday] = await db
-    .select({ count: sql<number>`count(*)`, total: sql<string>`coalesce(sum(${ordersTable.totalAmount}), 0)` })
+  const [revenueToday] = await db
+    .select({ total: sql<string>`coalesce(sum(${ordersTable.totalAmount}), 0)` })
     .from(ordersTable)
     .where(and(gte(ordersTable.createdAt, today), eq(ordersTable.status, "closed")));
+
+  const [countToday] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(ordersTable)
+    .where(and(gte(ordersTable.createdAt, today), sql`${ordersTable.status} != 'cancelled'`));
 
   const [openOrders] = await db
     .select({ count: sql<number>`count(*)` })
@@ -39,8 +44,8 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
     .where(eq(kitchenTicketsTable.status, "pending"));
 
   const summary = {
-    totalOrdersToday: Number(ordersToday?.count ?? 0),
-    totalRevenueToday: parseFloat(String(ordersToday?.total ?? 0)),
+    totalOrdersToday: Number(countToday?.count ?? 0),
+    totalRevenueToday: parseFloat(String(revenueToday?.total ?? 0)),
     openOrders: Number(openOrders?.count ?? 0),
     occupiedTables: Number(occupiedTables?.count ?? 0),
     availableTables: Number(availableTables?.count ?? 0),

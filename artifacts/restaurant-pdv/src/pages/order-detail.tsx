@@ -19,7 +19,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -27,7 +27,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { ArrowLeft, Plus, Trash2, SendHorizonal, X, CreditCard, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -35,7 +34,7 @@ const STATUS_LABELS: Record<string, string> = {
   open: "Aberto",
   preparing: "Preparando",
   ready: "Pronto",
-  closed: "Fechado",
+  closed: "Pago",
   cancelled: "Cancelado",
 };
 
@@ -43,9 +42,11 @@ const STATUS_COLORS: Record<string, string> = {
   open: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
   preparing: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
   ready: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  closed: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300",
+  closed: "bg-gray-100 text-gray-700 dark:bg-gray-800/60 dark:text-gray-400",
   cancelled: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
 };
+
+const PAYABLE = ["open", "preparing", "ready"];
 
 export default function OrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -58,10 +59,16 @@ export default function OrderDetail() {
   const [catFilter, setCatFilter] = useState("all");
 
   const { data: order, isLoading } = useGetOrder(orderId, {
-    query: { enabled: !!orderId, queryKey: getGetOrderQueryKey(orderId) },
+    query: {
+      enabled: !!orderId,
+      queryKey: getGetOrderQueryKey(orderId),
+      refetchInterval: 15_000,
+    },
   });
 
-  const { data: categories } = useListCategories({ query: { queryKey: getListCategoriesQueryKey() } });
+  const { data: categories } = useListCategories({
+    query: { queryKey: getListCategoriesQueryKey() },
+  });
 
   const productParams: Record<string, unknown> = {};
   if (catFilter !== "all") productParams.categoryId = parseInt(catFilter);
@@ -94,7 +101,7 @@ export default function OrderDetail() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderId) });
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-        toast({ title: "Pedido enviado para a cozinha" });
+        toast({ title: "Pedido enviado para a cozinha!" });
       },
     },
   });
@@ -102,7 +109,6 @@ export default function OrderDetail() {
   const cancelOrder = useCancelOrder({
     mutation: {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderId) });
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListTablesQueryKey() });
         toast({ title: "Pedido cancelado" });
@@ -126,7 +132,7 @@ export default function OrderDetail() {
     return (
       <Layout>
         <div className="text-center py-16">
-          <p className="text-muted-foreground">Pedido nao encontrado</p>
+          <p className="text-muted-foreground">Pedido não encontrado</p>
           <Button asChild className="mt-4"><Link href="/orders">Voltar</Link></Button>
         </div>
       </Layout>
@@ -134,135 +140,158 @@ export default function OrderDetail() {
   }
 
   const isEditable = order.status === "open";
+  const isPayable = PAYABLE.includes(order.status);
 
   return (
     <Layout>
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
+        {/* Header */}
+        <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={() => setLocation("/orders")} data-testid="button-back">
-            <ArrowLeft className="w-4 h-4 mr-1" /> Voltar
+            <ArrowLeft className="w-4 h-4 mr-1" /> Pedidos
           </Button>
         </div>
 
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
-            <div className="flex items-center gap-3 mb-1">
+            <div className="flex items-center gap-3 mb-1 flex-wrap">
               <h1 className="text-3xl font-bold tracking-tight">Pedido #{order.id}</h1>
-              <span className={`px-3 py-1 rounded-full text-sm font-medium ${STATUS_COLORS[order.status]}`}>
+              <span className={`px-3 py-1 rounded-full text-sm font-semibold ${STATUS_COLORS[order.status]}`}>
                 {STATUS_LABELS[order.status]}
               </span>
             </div>
-            <div className="text-muted-foreground text-sm space-y-0.5">
-              {order.tableNumber && <p>Mesa {order.tableNumber}</p>}
-              {order.customerName && <p>Cliente: {order.customerName}</p>}
-              <p>Criado em: {new Date(order.createdAt).toLocaleString("pt-BR")}</p>
+            <div className="text-sm text-muted-foreground space-y-0.5">
+              {order.tableNumber && <p>🪑 Mesa {order.tableNumber}</p>}
+              {order.customerName && <p>👤 {order.customerName}</p>}
+              {order.notes && <p>💬 {order.notes}</p>}
+              <p>🕐 {new Date(order.createdAt).toLocaleString("pt-BR")}</p>
             </div>
           </div>
 
+          {/* Ações */}
           <div className="flex gap-2 flex-wrap">
-            {isEditable && (
-              <>
-                <Dialog open={addItemOpen} onOpenChange={setAddItemOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" data-testid="button-add-item">
-                      <Plus className="w-4 h-4 mr-2" /> Adicionar Item
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                      <DialogTitle>Adicionar Item</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-3">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Buscar..."
-                          value={search}
-                          onChange={(e) => setSearch(e.target.value)}
-                          className="pl-9"
-                        />
-                      </div>
-                      <div className="flex gap-2 flex-wrap">
-                        <Button size="sm" variant={catFilter === "all" ? "default" : "outline"} onClick={() => setCatFilter("all")}>Todos</Button>
-                        {categories?.map((cat) => (
-                          <Button key={cat.id} size="sm" variant={catFilter === String(cat.id) ? "default" : "outline"} onClick={() => setCatFilter(String(cat.id))}>
-                            {cat.name}
-                          </Button>
-                        ))}
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 max-h-80 overflow-y-auto">
-                        {products?.filter((p) => p.available).map((product) => (
-                          <div
-                            key={product.id}
-                            className="p-3 border rounded-lg cursor-pointer hover:bg-accent transition-colors"
-                            onClick={() => {
-                              addItem.mutate({ id: orderId, data: { productId: product.id, quantity: 1 } });
-                            }}
-                            data-testid={`product-option-${product.id}`}
-                          >
-                            <p className="font-medium text-sm">{product.name}</p>
-                            <p className="text-primary font-bold text-sm">R$ {product.price.toFixed(2)}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-
-                <Button
-                  onClick={() => sendToKitchen.mutate({ id: orderId })}
-                  disabled={sendToKitchen.isPending || order.items.length === 0}
-                  data-testid="button-send-kitchen"
-                >
-                  <SendHorizonal className="w-4 h-4 mr-2" /> Enviar para Cozinha
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => cancelOrder.mutate({ id: orderId })}
-                  disabled={cancelOrder.isPending}
-                  data-testid="button-cancel-order"
-                >
-                  <X className="w-4 h-4 mr-2" /> Cancelar
-                </Button>
-              </>
+            {isEditable && order.items.length > 0 && (
+              <Button
+                onClick={() => sendToKitchen.mutate({ id: orderId })}
+                disabled={sendToKitchen.isPending}
+                variant="outline"
+                data-testid="button-send-kitchen"
+              >
+                <SendHorizonal className="w-4 h-4 mr-2" /> Enviar para Cozinha
+              </Button>
             )}
 
-            {order.status === "ready" && (
-              <Button asChild data-testid="button-pay-order">
-                <Link href={`/payments/${orderId}`}>
-                  <CreditCard className="w-4 h-4 mr-2" /> Processar Pagamento
-                </Link>
+            {isEditable && (
+              <Dialog open={addItemOpen} onOpenChange={setAddItemOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" data-testid="button-add-item">
+                    <Plus className="w-4 h-4 mr-2" /> Adicionar Item
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Adicionar Item ao Pedido #{orderId}</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Buscar produto..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button size="sm" variant={catFilter === "all" ? "default" : "outline"} onClick={() => setCatFilter("all")}>
+                        Todos
+                      </Button>
+                      {categories?.map((cat) => (
+                        <Button key={cat.id} size="sm" variant={catFilter === String(cat.id) ? "default" : "outline"} onClick={() => setCatFilter(String(cat.id))}>
+                          {cat.name}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1">
+                      {products?.filter((p) => p.available).map((product) => (
+                        <div
+                          key={product.id}
+                          className="p-3 border rounded-lg cursor-pointer hover:bg-accent hover:border-primary transition-colors"
+                          onClick={() => {
+                            addItem.mutate({ id: orderId, data: { productId: product.id, quantity: 1 } });
+                          }}
+                          data-testid={`product-option-${product.id}`}
+                        >
+                          <p className="font-medium text-sm">{product.name}</p>
+                          <p className="text-primary font-bold text-sm">R$ {product.price.toFixed(2)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
+
+            {isPayable && (
+              <Button
+                onClick={() => setLocation(`/payments/${orderId}`)}
+                disabled={order.items.length === 0}
+                data-testid="button-pay-order"
+              >
+                <CreditCard className="w-4 h-4 mr-2" /> Processar Pagamento
+              </Button>
+            )}
+
+            {isPayable && (
+              <Button
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                onClick={() => cancelOrder.mutate({ id: orderId })}
+                disabled={cancelOrder.isPending}
+                data-testid="button-cancel-order"
+              >
+                <X className="w-4 h-4 mr-2" /> Cancelar
               </Button>
             )}
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Itens */}
           <div className="lg:col-span-2">
             <Card>
-              <CardHeader>
+              <CardHeader className="pb-3">
                 <CardTitle>Itens do Pedido</CardTitle>
               </CardHeader>
               <CardContent>
                 {order.items.length === 0 ? (
                   <div className="text-center py-10 text-muted-foreground">
-                    <p>Nenhum item adicionado</p>
-                    {isEditable && <p className="text-sm mt-1">Clique em "Adicionar Item" para incluir produtos</p>}
+                    <p className="font-medium">Nenhum item adicionado</p>
+                    {isEditable && (
+                      <p className="text-sm mt-1">Use o botão "Adicionar Item" acima</p>
+                    )}
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {order.items.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50" data-testid={`item-${item.id}`}>
-                        <div className="flex-1">
-                          <p className="font-medium">{item.productName}</p>
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between p-3 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors"
+                        data-testid={`item-${item.id}`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-primary">{item.quantity}x</span>
+                            <p className="font-medium truncate">{item.productName}</p>
+                          </div>
                           <p className="text-sm text-muted-foreground">
-                            {item.quantity}x R$ {item.unitPrice.toFixed(2)}
+                            R$ {item.unitPrice.toFixed(2)} cada
                           </p>
-                          {item.notes && <p className="text-xs text-muted-foreground italic">{item.notes}</p>}
+                          {item.notes && (
+                            <p className="text-xs text-muted-foreground italic mt-0.5">💬 {item.notes}</p>
+                          )}
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 shrink-0">
                           <span className="font-bold">R$ {item.totalPrice.toFixed(2)}</span>
                           {isEditable && (
                             <Button
@@ -285,29 +314,42 @@ export default function OrderDetail() {
             </Card>
           </div>
 
-          <div>
+          {/* Resumo */}
+          <div className="space-y-4">
             <Card>
-              <CardHeader>
+              <CardHeader className="pb-3">
                 <CardTitle>Resumo</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span>R$ {order.totalAmount.toFixed(2)}</span>
-                </div>
-                <div className="border-t pt-3">
-                  <div className="flex justify-between font-bold text-lg">
-                    <span>Total</span>
-                    <span>R$ {order.totalAmount.toFixed(2)}</span>
+              <CardContent className="space-y-2">
+                {order.items.map((item) => (
+                  <div key={item.id} className="flex justify-between text-sm">
+                    <span className="text-muted-foreground truncate">{item.quantity}x {item.productName}</span>
+                    <span className="shrink-0 ml-2">R$ {item.totalPrice.toFixed(2)}</span>
                   </div>
-                </div>
-                {order.notes && (
-                  <div className="pt-2 border-t">
-                    <p className="text-sm text-muted-foreground">Observacoes: {order.notes}</p>
-                  </div>
+                ))}
+                {order.items.length === 0 && (
+                  <p className="text-sm text-muted-foreground">Sem itens</p>
                 )}
+                <div className="border-t pt-3 mt-2">
+                  <div className="flex justify-between font-bold text-xl">
+                    <span>Total</span>
+                    <span className="text-primary">R$ {order.totalAmount.toFixed(2)}</span>
+                  </div>
+                </div>
               </CardContent>
             </Card>
+
+            {isPayable && order.items.length > 0 && (
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={() => setLocation(`/payments/${orderId}`)}
+                data-testid="button-pay-order-sidebar"
+              >
+                <CreditCard className="w-4 h-4 mr-2" />
+                Pagar · R$ {order.totalAmount.toFixed(2)}
+              </Button>
+            )}
           </div>
         </div>
       </div>
