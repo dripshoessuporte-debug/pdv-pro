@@ -1396,3 +1396,89 @@ components:
                 $ref: "#/components/schemas/CashMovement"
             summary:
               $ref: "#/components/schemas/CashSummary"
+
+    DeliveryRouteOrder:
+      type: object
+      required: [id, routeId, orderId, stopOrder]
+      properties:
+        id:
+          type: integer
+        routeId:
+          type: integer
+        orderId:
+          type: integer
+        stopOrder:
+          type: integer
+        customerName:
+          type: ["string", "null"]
+        customerPhone:
+          type: ["string", "null"]
+        deliveryAddress:
+          type: ["string", "null"]
+        deliveryNeighborhood:
+          type: ["string", "null"]
+        deliveryFee:
+          type: number
+        deliveryStatus:
+          type: ["string", "null"]
+
+    DeliveryRoute:
+      type: object
+      required: [id, name, mainNeighborhood, includedNeighborhoods, status, color, storeOrigin, createdAt, orders, totalDeliveryFee]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        mainNeighborhood:
+          type: string
+        includedNeighborhoods:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [available, in_progress, completed]
+        color:
+          type: string
+        courierName:
+          type: ["string", "null"]
+        storeOrigin:
+          type: string
+        mapsUrl:
+          type: ["string", "null"]
+        totalDeliveryFee:
+          type: number
+        startedAt:
+          type: ["string", "null"]
+        completedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryRouteOrder"
+
+    AssignRouteInput:
+      type: object
+      required: [courierName]
+      properties:
+        courierName:
+          type: string
+
+    ListDeliveryRoutesResponse:
+      type: array
+      items:
+        $ref: "#/components/schemas/DeliveryRoute"
+
+    GenerateRoutesResponse:
+      type: object
+      required: [created]
+      properties:
+        created:
+          type: integer
+        routes:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryRoute"

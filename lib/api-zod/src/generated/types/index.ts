@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './assignRouteInput';
 export * from './cashMovement';
 export * from './cashMovementInput';
 export * from './cashMovementInputType';
@@ -24,13 +25,18 @@ export * from './customer';
 export * from './customerInput';
 export * from './customerUpdate';
 export * from './dashboardSummary';
+export * from './deliveryRoute';
+export * from './deliveryRouteOrder';
+export * from './deliveryRouteStatus';
 export * from './deliveryStatusUpdate';
 export * from './deliveryStatusUpdateDeliveryStatus';
+export * from './generateRoutesResponse';
 export * from './healthStatus';
 export * from './kitchenTicket';
 export * from './kitchenTicketOrderType';
 export * from './kitchenTicketStatus';
 export * from './listCustomersParams';
+export * from './listDeliveryRoutesResponse';
 export * from './listOrdersParams';
 export * from './listOrdersStatus';
 export * from './listProductsParams';

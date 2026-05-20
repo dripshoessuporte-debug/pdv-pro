@@ -1,0 +1,243 @@
+Agora implemente a FASE 4B — Painel de Rotas para Motoboys.
+
+Não refaça o projeto do zero.
+Preserve o design atual.
+Preserve todas as funcionalidades já existentes:
+- pedidos
+- filtros da tela Pedidos
+- cozinha
+- pagamento
+- caixa
+- histórico de caixa
+- cardápio funcional
+- delivery da Fase 4A
+- taxa de entrega no total
+- transação atômica no pagamento
+
+Objetivo:
+Criar uma página visual, interativa e operacional para motoboys visualizarem rotas disponíveis, assumirem uma rota e abrirem um QR Code com a sequência de entregas no Google Maps.
+
+Crie uma nova página no menu lateral chamada:
+Rotas
+
+Essa página será usada por motoboys no celular e também pela equipe interna no balcão.
+
+FUNCIONALIDADES:
+
+1. Pedidos elegíveis para rota
+
+Apenas pedidos do tipo delivery podem entrar em rotas.
+
+Só podem entrar em rota pedidos com deliveryStatus:
+- ready
+
+Pedidos com deliveryStatus:
+- pending
+- preparing
+- out_for_delivery
+- delivered
+
+não devem entrar em novas rotas disponíveis.
+
+Pedidos cancelados também não entram em rotas.
+
+2. Agrupamento automático de rotas
+
+Criar botão:
+Gerar Rotas
+
+Ao clicar, o sistema deve agrupar pedidos delivery prontos em rotas.
+
+Cada rota pode ter no máximo 4 pedidos.
+
+Prioridade de agrupamento:
+1. mesmo bairro
+2. bairros próximos
+3. bairros compatíveis, caso não exista quantidade suficiente no mesmo bairro
+
+Não misturar bairros aleatórios se existir opção melhor.
+
+3. Bairros próximos
+
+Criar uma estrutura simples de bairros vizinhos para começar.
+
+Pode ser um objeto no backend, por exemplo:
+
+Boqueirão: Hauer, Xaxim, Alto Boqueirão
+Xaxim: Boqueirão, Pinheirinho, Sítio Cercado
+Pinheirinho: Xaxim, Capão Raso, CIC
+Centro: Batel, Rebouças, Alto da XV
+
+A estrutura deve ser fácil de editar depois.
+
+A lógica:
+- primeiro agrupa pedidos do mesmo bairro
+- se tiver menos de 4, tenta completar com bairros vizinhos
+- nunca passa de 4 pedidos por rota
+
+4. Origem da rota
+
+Usar uma origem padrão da loja.
+
+Criar uma constante organizada no código com:
+- nome da loja
+- CEP da loja
+- endereço da loja
+
+Exemplo temporário:
+PDV Pro
+CEP: 00000-000
+Endereço: Rua da Loja, 123
+
+Essa origem será usada no link do Google Maps.
+
+Deixe isso organizado para futuramente virar tela de configuração.
+
+5. Tabelas/modelos
+
+Criar persistência para rotas.
+
+Sugestão de tabelas:
+
+delivery_routes:
+- id
+- name
+- mainNeighborhood
+- includedNeighborhoods
+- status: available | in_progress | completed
+- color
+- courierName
+- storeOrigin
+- mapsUrl
+- startedAt
+- completedAt
+- createdAt
+
+delivery_route_orders:
+- id
+- routeId
+- orderId
+- stopOrder
+
+Use os padrões atuais do projeto.
+
+6. Endpoints
+
+Criar endpoints coerentes com a estrutura atual, por exemplo:
+
+GET /delivery/routes
+POST /delivery/routes/generate
+POST /delivery/routes/:id/assign
+POST /delivery/routes/:id/complete
+GET /delivery/routes/:id/maps-link
+
+Ou nomes equivalentes que combinem com o projeto.
+
+7. Tela visual de rotas
+
+A página Rotas deve ter um design mais forte, visual e sagaz.
+
+Use:
+- cards grandes
+- cores diferentes por rota
+- badges de status
+- botões grandes
+- layout responsivo para celular
+- visual rápido para motoboy entender e agir
+
+Cada card de rota deve mostrar:
+- cor da rota
+- nome da rota, exemplo: Rota 1 — Boqueirão
+- bairro principal
+- bairros incluídos
+- quantidade de pedidos
+- lista dos pedidos
+- nome dos clientes
+- telefone
+- endereço resumido
+- taxa total de entrega da rota
+- status da rota
+- botão Assumir Rota
+- botão Ver QR Code
+- botão Concluir Rota
+
+8. Assumir rota
+
+Quando clicar em Assumir Rota:
+- abrir campo para informar nome do motoboy
+- salvar courierName
+- mudar rota para in_progress
+- mudar pedidos da rota para deliveryStatus = out_for_delivery
+- salvar startedAt
+
+9. QR Code do Google Maps
+
+Gerar um QR Code para cada rota.
+
+O QR Code deve conter um link do Google Maps com:
+- origem = endereço/CEP da loja
+- destino final = último pedido da rota
+- waypoints = pedidos intermediários
+- ordem das paradas definida por stopOrder
+
+O link deve funcionar no celular.
+
+Não usar API paga do Google.
+Apenas montar URL pública do Google Maps.
+
+Após fechar o modal do QR Code, a tela deve voltar ao normal.
+
+10. Ordem das entregas
+
+Por enquanto, ordenar assim:
+1. bairro principal primeiro
+2. bairros vizinhos depois
+3. dentro do mesmo bairro, ordenar por endereço em ordem alfabética
+
+Não precisa calcular distância real ainda.
+
+11. Concluir rota
+
+Quando clicar em Concluir Rota:
+- rota muda para completed
+- pedidos da rota mudam para deliveryStatus = delivered
+- salvar completedAt
+
+12. Regras importantes
+
+- Nenhuma rota pode ter mais de 4 pedidos.
+- Pedido já em rota não pode entrar em outra rota.
+- Pedido entregue não pode entrar em rota.
+- Pedido cancelado não pode entrar em rota.
+- Rotas precisam continuar salvas após atualizar a página.
+- Não quebrar a tela Pedidos.
+- Não quebrar pagamento.
+- Não quebrar caixa.
+
+13. Testes obrigatórios
+
+Teste:
+- criar pelo menos 5 pedidos delivery
+- marcar todos como prontos para entrega
+- gerar rotas
+- confirmar que nenhuma rota tem mais de 4 pedidos
+- confirmar agrupamento por bairro
+- confirmar agrupamento por bairros próximos quando necessário
+- assumir uma rota com nome do motoboy
+- confirmar que pedidos mudam para out_for_delivery
+- abrir QR Code
+- confirmar que o QR Code gera link válido do Google Maps
+- fechar QR Code e voltar para a tela normal
+- concluir rota
+- confirmar que pedidos mudam para delivered
+- atualizar a página e confirmar que rotas continuam salvas
+
+Ao finalizar, responda em português brasileiro com:
+1. Arquivos alterados.
+2. Tabelas/modelos criados ou modificados.
+3. Endpoints criados ou alterados.
+4. Como funciona a lógica de agrupamento por bairro.
+5. Como o link do Google Maps é montado.
+6. Como testar passo a passo.
+7. Limitações que ainda existem.
+8. Se o painel dos motoboys está pronto para uso interno.

@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   AlertCircle,
   BookOpen,
+  Truck,
 } from "lucide-react";
 import {
   useHealthCheck,
@@ -25,6 +26,7 @@ const navItems = [
   { href: "/kitchen", label: "Cozinha", icon: ChefHat },
   { href: "/menu", label: "Cardápio", icon: BookOpen },
   { href: "/customers", label: "Clientes", icon: Users },
+  { href: "/routes", label: "Rotas", icon: Truck },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {

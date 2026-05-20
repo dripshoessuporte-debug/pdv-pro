@@ -493,6 +493,65 @@ export type CashRegisterDetail = CashRegister & {
   summary?: CashSummary;
 };
 
+export interface DeliveryRouteOrder {
+  id: number;
+  routeId: number;
+  orderId: number;
+  stopOrder: number;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  customerPhone?: string | null;
+  /** @nullable */
+  deliveryAddress?: string | null;
+  /** @nullable */
+  deliveryNeighborhood?: string | null;
+  deliveryFee?: number;
+  /** @nullable */
+  deliveryStatus?: string | null;
+}
+
+export type DeliveryRouteStatus = typeof DeliveryRouteStatus[keyof typeof DeliveryRouteStatus];
+
+
+export const DeliveryRouteStatus = {
+  available: 'available',
+  in_progress: 'in_progress',
+  completed: 'completed',
+} as const;
+
+export interface DeliveryRoute {
+  id: number;
+  name: string;
+  mainNeighborhood: string;
+  includedNeighborhoods: string[];
+  status: DeliveryRouteStatus;
+  color: string;
+  /** @nullable */
+  courierName?: string | null;
+  storeOrigin: string;
+  /** @nullable */
+  mapsUrl?: string | null;
+  totalDeliveryFee: number;
+  /** @nullable */
+  startedAt?: string | null;
+  /** @nullable */
+  completedAt?: string | null;
+  createdAt: string;
+  orders: DeliveryRouteOrder[];
+}
+
+export interface AssignRouteInput {
+  courierName: string;
+}
+
+export type ListDeliveryRoutesResponse = DeliveryRoute[];
+
+export interface GenerateRoutesResponse {
+  created: number;
+  routes?: DeliveryRoute[];
+}
+
 export type ListCustomersParams = {
 search?: string;
 };
