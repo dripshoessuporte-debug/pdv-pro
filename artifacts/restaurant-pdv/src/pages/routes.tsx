@@ -948,7 +948,7 @@ function RouteCard({
   const isInProgress = route.status === "in_progress";
   const isCompleted = route.status === "completed";
   const sortedOrders = [...route.orders].sort((a, b) => a.stopOrder - b.stopOrder);
-  const canMoveOrders = isAvailable;
+  const canMoveOrders = isAvailable || isInProgress;
 
   const timeStatus = !isCompleted ? getTimeStatus(route.dispatchDeadline) : null;
   const urgency = timeStatus?.urgency ?? "ok";
@@ -1173,31 +1173,13 @@ function RouteCard({
           {isAvailable && (
             <Button
               size="sm"
-              className={`h-8 gap-1.5 rounded-lg font-semibold transition-all ${
-                allOrdersReady
-                  ? "bg-primary hover:bg-primary/90 text-primary-foreground"
-                  : "bg-muted text-muted-foreground cursor-not-allowed border border-border"
-              }`}
-              onClick={allOrdersReady ? onAssign : undefined}
-              disabled={!allOrdersReady}
-              title={
-                !allOrdersReady
-                  ? `Aguardando ${totalCount - readyCount} pedido(s) ficarem prontos`
-                  : "Assumir esta rota"
-              }
+              className="h-8 gap-1.5 rounded-lg font-semibold"
+              onClick={onAssign}
+              title="Assumir esta rota"
               data-testid={`button-assign-${route.id}`}
             >
-              {allOrdersReady ? (
-                <>
-                  <Play className="w-3.5 h-3.5" />
-                  Assumir Rota
-                </>
-              ) : (
-                <>
-                  <Lock className="w-3.5 h-3.5" />
-                  {readyCount}/{totalCount} Prontos
-                </>
-              )}
+              <Play className="w-3.5 h-3.5" />
+              Assumir Rota
             </Button>
           )}
 
