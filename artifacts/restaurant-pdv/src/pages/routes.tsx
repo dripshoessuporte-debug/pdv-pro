@@ -4,7 +4,7 @@ import {
   Truck, RefreshCw, Sparkles, MapPin, Package, DollarSign, User, Phone,
   Banknote, CreditCard, Smartphone, QrCode, Play, CheckCircle2, Clock,
   AlertTriangle, AlertCircle, Hash, Plus, Minus, ArrowRightLeft, Zap, X,
-  ChevronRight, Timer, PlusCircle, Lock,
+  ChevronRight, ChevronDown, Timer, PlusCircle, Lock, ShoppingBag,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,13 @@ import { Layout } from "@/components/layout";
 type RouteStatus = "available" | "in_progress" | "completed";
 type DeliveryOrderStatus = "pending" | "preparing" | "ready" | "out_for_delivery" | "delivered";
 
+interface RouteOrderItem {
+  productId: number | null;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+}
+
 interface RouteOrder {
   id: number;
   orderId: number;
@@ -43,6 +50,7 @@ interface RouteOrder {
   changeFor: number | null;
   deliveryPaymentMethod: string | null;
   deliveryPaymentNotes: string | null;
+  items: RouteOrderItem[];
 }
 
 interface DeliveryRoute {
@@ -1121,6 +1129,13 @@ function RouteCard({
   const isCompleted = route.status === "completed";
   const sortedOrders = [...route.orders].sort((a, b) => a.stopOrder - b.stopOrder);
   const canMoveOrders = isAvailable || isInProgress;
+  const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
+
+  // Refrigerante count across all orders in this route
+  const totalFridges = sortedOrders
+    .flatMap((o) => o.items ?? [])
+    .filter((i) => i.productName.toLowerCase().includes("refri"))
+    .reduce((sum, i) => sum + i.quantity, 0);
 
   const timeStatus = !isCompleted ? getTimeStatus(route.dispatchDeadline) : null;
   const urgency = timeStatus?.urgency ?? "ok";
@@ -1242,65 +1257,113 @@ function RouteCard({
                 ? Math.max(0, order.changeFor - order.totalAmount)
                 : null;
 
+            const isExpanded = expandedOrderId === order.orderId;
+            const orderFridges = (order.items ?? []).filter((i) => i.productName.toLowerCase().includes("refri"));
+            const hasFridges = orderFridges.length > 0;
+
             return (
-              <div
-                key={order.id}
-                className="flex items-center gap-2.5 px-3 py-2.5 transition-colors text-xs group rounded-lg mx-1 my-0.5"
-                style={{ backgroundColor: "#F8FAFC" }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#F1F5F9")}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#F8FAFC")}
-                data-testid={`route-order-${order.orderId}`}
-              >
-                {/* Stop number */}
+              <div key={order.id} className="rounded-lg mx-1 my-0.5 overflow-hidden border border-transparent transition-all"
+                style={{ borderColor: isExpanded ? `${vc.color}40` : "transparent" }}>
+                {/* ── Order row (clickable) ── */}
                 <div
-                  className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-black shrink-0 border"
-                  style={{
-                    backgroundColor: `${vc.color}18`,
-                    borderColor: vc.color,
-                    color: vc.color,
-                  }}
+                  className="flex items-center gap-2.5 px-3 py-2.5 text-xs group cursor-pointer select-none"
+                  style={{ backgroundColor: isExpanded ? `${vc.color}08` : "#F8FAFC" }}
+                  onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = "#F1F5F9"; }}
+                  onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = "#F8FAFC"; }}
+                  onClick={() => setExpandedOrderId(isExpanded ? null : order.orderId)}
+                  data-testid={`route-order-${order.orderId}`}
                 >
-                  {order.stopOrder}
-                </div>
+                  {/* Stop number */}
+                  <div
+                    className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-black shrink-0 border"
+                    style={{ backgroundColor: `${vc.color}18`, borderColor: vc.color, color: vc.color }}
+                  >
+                    {order.stopOrder}
+                  </div>
 
-                {/* Status dot */}
-                <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                  {/* Status dot */}
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
 
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-[#0F172A] truncate">{order.customerName ?? `Pedido #${order.orderId}`}</p>
-                  <p className="text-[#64748B] truncate text-[11px]">
-                    {order.deliveryAddress ?? "—"}
-                    {order.deliveryNeighborhood ? ` · ${order.deliveryNeighborhood}` : ""}
-                  </p>
-                  {order.paymentTiming === "on_delivery" && (
-                    <div className="text-amber-600 font-semibold flex items-center gap-1 mt-0.5">
-                      {PayIcon && <PayIcon className="w-3 h-3 shrink-0" />}
-                      Cobrar R$ {order.totalAmount.toFixed(2)}
-                      {changeAmt !== null && ` · Troco R$ ${changeAmt.toFixed(2)}`}
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-[#0F172A] truncate">{order.customerName ?? `Pedido #${order.orderId}`}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                      {order.paymentTiming === "on_delivery" && (
+                        <span className="text-amber-600 font-semibold flex items-center gap-0.5">
+                          {PayIcon && <PayIcon className="w-3 h-3 shrink-0" />}
+                          Cobrar R$ {order.totalAmount.toFixed(2)}
+                        </span>
+                      )}
+                      {hasFridges && (
+                        <span className="text-blue-500 font-semibold flex items-center gap-0.5">
+                          🥤 {orderFridges.reduce((s, i) => s + i.quantity, 0)} refri
+                        </span>
+                      )}
                     </div>
-                  )}
+                  </div>
+
+                  {/* Right: status + chevron */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {dsLabel && (
+                      <span className={`px-1.5 py-px rounded-full font-medium text-[10px] ${DELIVERY_STATUS_COLORS[ds!]}`}>
+                        {dsLabel}
+                      </span>
+                    )}
+                    {canMoveOrders && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-[#94A3B8] hover:text-[#0F172A] hover:bg-slate-100 opacity-0 group-hover:opacity-100 transition-all rounded-lg"
+                        onClick={(e) => { e.stopPropagation(); onMoveOrder(order.orderId, order.customerName); }}
+                        title="Mover pedido"
+                      >
+                        <ArrowRightLeft className="w-3 h-3" />
+                      </Button>
+                    )}
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-[#94A3B8] transition-transform shrink-0 ${isExpanded ? "rotate-180" : ""}`}
+                    />
+                  </div>
                 </div>
 
-                {/* Right: status label + move button */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {dsLabel && (
-                    <span className={`px-1.5 py-px rounded-full font-medium text-[10px] ${DELIVERY_STATUS_COLORS[ds!]}`}>
-                      {dsLabel}
-                    </span>
-                  )}
-                  {canMoveOrders && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 text-[#94A3B8] hover:text-[#0F172A] hover:bg-slate-100 opacity-0 group-hover:opacity-100 transition-all rounded-lg"
-                      onClick={() => onMoveOrder(order.orderId, order.customerName)}
-                      title="Mover pedido"
-                    >
-                      <ArrowRightLeft className="w-3 h-3" />
-                    </Button>
-                  )}
-                </div>
+                {/* ── Expanded items panel ── */}
+                {isExpanded && (
+                  <div className="px-3 pb-3 pt-1 space-y-1.5" style={{ backgroundColor: `${vc.color}06` }}>
+                    <p className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wide flex items-center gap-1">
+                      <ShoppingBag className="w-3 h-3" /> Itens do pedido #{order.orderId}
+                    </p>
+                    {(order.items ?? []).length === 0 ? (
+                      <p className="text-[11px] text-[#94A3B8] italic">Nenhum item registrado</p>
+                    ) : (
+                      <div className="space-y-0.5">
+                        {(order.items ?? []).map((item, idx) => {
+                          const isFridge = item.productName.toLowerCase().includes("refri");
+                          return (
+                            <div key={idx} className={`flex items-center justify-between text-[11px] px-2 py-1 rounded-md ${isFridge ? "bg-blue-50 text-blue-800 font-semibold" : "text-[#334155]"}`}>
+                              <span className="flex items-center gap-1">
+                                {isFridge && <span>🥤</span>}
+                                {item.productName}
+                              </span>
+                              <span className={`font-bold shrink-0 ml-2 ${isFridge ? "text-blue-600" : "text-[#0F172A]"}`}>
+                                × {item.quantity}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <p className="text-[#64748B] text-[10px] truncate pt-0.5">
+                      📍 {order.deliveryAddress ?? "—"}{order.deliveryNeighborhood ? ` · ${order.deliveryNeighborhood}` : ""}
+                    </p>
+                    {order.paymentTiming === "on_delivery" && (
+                      <div className="flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 rounded-md px-2 py-1">
+                        <Banknote className="w-3 h-3 shrink-0" />
+                        Cobrar R$ {order.totalAmount.toFixed(2)}
+                        {changeAmt !== null && <span className="ml-1 text-orange-500">· Troco R$ {changeAmt.toFixed(2)}</span>}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -1328,16 +1391,31 @@ function RouteCard({
           </div>
         )}
 
-        {/* ── Cobrança summary ── */}
-        {sortedOrders.some((o) => o.paymentTiming === "on_delivery") && !isCompleted && (
-          <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs space-y-0.5">
-            <p className="font-semibold text-amber-800 flex items-center gap-1">
-              <Banknote className="w-3.5 h-3.5" />
-              Resumo de cobrança
-            </p>
-            <p>Total: <strong>R$ {route.totalToReceive.toFixed(2)}</strong></p>
-            {route.totalChangeNeeded > 0 && (
-              <p>Troco: <strong>R$ {route.totalChangeNeeded.toFixed(2)}</strong></p>
+        {/* ── Resumo da rota ── */}
+        {!isCompleted && (totalFridges > 0 || sortedOrders.some((o) => o.paymentTiming === "on_delivery")) && (
+          <div className="rounded-xl border px-3 py-2 text-xs space-y-1.5" style={{ backgroundColor: "#F8FAFC", borderColor: "#E2E8F0" }}>
+            <p className="font-semibold text-[#0F172A] text-[11px] uppercase tracking-wide">Resumo da rota</p>
+            {totalFridges > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1 text-blue-700 font-medium">🥤 Refrigerantes</span>
+                <span className="font-bold text-blue-700">{totalFridges} un.</span>
+              </div>
+            )}
+            {sortedOrders.some((o) => o.paymentTiming === "on_delivery") && (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1 text-amber-700 font-medium">
+                    <Banknote className="w-3 h-3" /> A cobrar
+                  </span>
+                  <span className="font-bold text-amber-700">R$ {route.totalToReceive.toFixed(2)}</span>
+                </div>
+                {route.totalChangeNeeded > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-orange-600 font-medium">Troco necessário</span>
+                    <span className="font-bold text-orange-600">R$ {route.totalChangeNeeded.toFixed(2)}</span>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

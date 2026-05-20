@@ -111,6 +111,7 @@ const PAYABLE = ["open", "preparing", "ready"];
 export default function Orders() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [period, setPeriod] = useState<PeriodFilter>("today");
+  const [deliveryOnly, setDeliveryOnly] = useState(false);
   const [completingDelivery, setCompletingDelivery] = useState<number | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -150,9 +151,10 @@ export default function Orders() {
   }, [periodOrders]);
 
   const displayed = useMemo(() => {
-    if (statusFilter === "all") return periodOrders;
-    return periodOrders.filter((o) => o.status === statusFilter);
-  }, [periodOrders, statusFilter]);
+    let list = deliveryOnly ? periodOrders.filter((o) => o.type === "delivery") : periodOrders;
+    if (statusFilter !== "all") list = list.filter((o) => o.status === statusFilter);
+    return list;
+  }, [periodOrders, statusFilter, deliveryOnly]);
 
   // Group by date only in "all" period
   const groupedDisplayed = useMemo(() => {
@@ -349,6 +351,37 @@ export default function Orders() {
               <Plus className="w-4 h-4 mr-2" /> Novo Pedido
             </Link>
           </Button>
+        </div>
+
+        {/* ── Aba Delivery ── */}
+        <div className="flex items-center gap-1 bg-muted/40 rounded-xl p-1 self-start w-fit">
+          <button
+            onClick={() => setDeliveryOnly(false)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              !deliveryOnly ? "bg-white shadow-sm text-[#0F172A]" : "text-muted-foreground hover:text-foreground"
+            }`}
+            data-testid="tab-all-orders"
+          >
+            Todos os pedidos
+          </button>
+          <button
+            onClick={() => setDeliveryOnly(true)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              deliveryOnly ? "bg-white shadow-sm text-[#0F172A]" : "text-muted-foreground hover:text-foreground"
+            }`}
+            data-testid="tab-delivery-only"
+          >
+            <Truck className="w-3.5 h-3.5" />
+            Delivery
+            {(() => {
+              const cnt = periodOrders.filter((o) => o.type === "delivery").length;
+              return cnt > 0 ? (
+                <span className={`text-xs font-semibold rounded-full px-1.5 leading-5 min-w-[1.2rem] text-center ${deliveryOnly ? "bg-[#0F172A] text-white" : "bg-muted text-muted-foreground"}`}>
+                  {cnt}
+                </span>
+              ) : null;
+            })()}
+          </button>
         </div>
 
         {/* ── Filtros de período ── */}

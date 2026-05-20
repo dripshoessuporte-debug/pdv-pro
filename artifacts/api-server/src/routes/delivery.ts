@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, inArray, notInArray, sql, or, isNull } from "drizzle-orm";
-import { db, deliveryRoutesTable, deliveryRouteOrdersTable, ordersTable, customersTable, couriersTable } from "@workspace/db";
+import { db, deliveryRoutesTable, deliveryRouteOrdersTable, ordersTable, customersTable, couriersTable, orderItemsTable, productsTable } from "@workspace/db";
 import { getOrCreateSettings } from "./settings";
 
 const router: IRouter = Router();
@@ -101,6 +101,22 @@ async function getRouteWithOrders(routeId: number) {
     .where(eq(deliveryRouteOrdersTable.routeId, routeId))
     .orderBy(deliveryRouteOrdersTable.stopOrder);
 
+  // Fetch items for all orders in this route
+  const orderIds = routeOrders.map((o) => o.orderId);
+  const allItems = orderIds.length > 0
+    ? await db
+        .select({
+          orderId: orderItemsTable.orderId,
+          productId: orderItemsTable.productId,
+          productName: productsTable.name,
+          quantity: orderItemsTable.quantity,
+          unitPrice: orderItemsTable.unitPrice,
+        })
+        .from(orderItemsTable)
+        .leftJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
+        .where(inArray(orderItemsTable.orderId, orderIds))
+    : [];
+
   const totalDeliveryFee = routeOrders.reduce(
     (sum, o) => sum + parseFloat(String(o.deliveryFee ?? "0")),
     0
@@ -136,6 +152,14 @@ async function getRouteWithOrders(routeId: number) {
       totalAmount: parseFloat(String(o.totalAmount ?? "0")),
       changeFor: o.changeFor ? parseFloat(String(o.changeFor)) : null,
       orderCreatedAt: o.orderCreatedAt?.toISOString() ?? null,
+      items: allItems
+        .filter((i) => i.orderId === o.orderId)
+        .map((i) => ({
+          productId: i.productId,
+          productName: i.productName ?? "Item",
+          quantity: i.quantity,
+          unitPrice: parseFloat(String(i.unitPrice)),
+        })),
     })),
   };
 }
