@@ -985,6 +985,15 @@ function PendingOrderRow({
   );
 }
 
+// ─── Rarity system based on total delivery fee ────────────────────────────────
+
+function getRarity(fee: number): { color: string; glow: string; label: string } {
+  if (fee > 50) return { color: "#eab308", glow: "rgba(234,179,8,0.35)",  label: "Ouro"  };
+  if (fee > 20) return { color: "#a855f7", glow: "rgba(168,85,247,0.35)", label: "Roxo"  };
+  if (fee > 10) return { color: "#22c55e", glow: "rgba(34,197,94,0.35)",  label: "Verde" };
+  return          { color: "#3b82f6", glow: "rgba(59,130,246,0.35)",  label: "Azul"  };
+}
+
 // ─── RouteCard ────────────────────────────────────────────────────────────────
 
 function RouteCard({
@@ -1019,18 +1028,24 @@ function RouteCard({
   const totalCount = route.orders.length;
   const allOrdersReady = totalCount > 0 && readyCount === totalCount;
 
+  const rarity = getRarity(route.totalDeliveryFee);
+
   const progressRatio = isCompleted ? 1 : isInProgress ? 1 : (totalCount > 0 ? deliveredCount / totalCount : 0);
   const ringR = 20;
   const ringCirc = 2 * Math.PI * ringR;
   const ringOffset = ringCirc * (1 - progressRatio);
-  const ringColor = isCompleted ? "#22c55e" : isInProgress ? route.color : "hsl(var(--primary))";
+  const ringColor = isCompleted ? "#22c55e" : rarity.color;
 
   const otherNeighborhoods = route.includedNeighborhoods.filter((n) => n !== route.mainNeighborhood);
 
   return (
     <div
-      className="rounded-2xl border border-border bg-card shadow-[0_4px_24px_-4px_rgba(0,0,0,0.12)] hover:shadow-[0_8px_32px_-4px_rgba(0,0,0,0.18)] transition-shadow overflow-hidden flex flex-col"
+      className="rounded-2xl border-2 overflow-hidden flex flex-col bg-zinc-100 text-zinc-900 transition-shadow"
       data-testid={`card-route-${route.id}`}
+      style={{
+        borderColor: rarity.color,
+        boxShadow: `0 0 28px 6px ${rarity.glow}, 0 4px 16px -4px rgba(0,0,0,0.4)`,
+      }}
     >
       <div className="p-4 flex flex-col gap-3 flex-1">
 
@@ -1133,7 +1148,7 @@ function RouteCard({
             return (
               <div
                 key={order.id}
-                className="flex items-center gap-2.5 px-3 py-2.5 bg-zinc-200 hover:bg-zinc-300 transition-colors text-xs group"
+                className="flex items-center gap-2.5 px-3 py-2.5 bg-zinc-300 hover:bg-zinc-400 transition-colors text-xs group"
                 data-testid={`route-order-${order.orderId}`}
               >
                 {/* Stop number */}
@@ -1246,7 +1261,8 @@ function RouteCard({
           {isAvailable && (
             <Button
               size="sm"
-              className="h-8 gap-1.5 rounded-lg font-semibold"
+              className="h-8 gap-1.5 rounded-lg font-semibold text-white border-0"
+              style={{ backgroundColor: rarity.color }}
               onClick={onAssign}
               title="Assumir esta rota"
               data-testid={`button-assign-${route.id}`}
