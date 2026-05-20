@@ -751,6 +751,66 @@ router.post("/delivery/routes/:id/adjust-time", async (req, res): Promise<void> 
   res.json(await getRouteWithOrders(routeId));
 });
 
+// ─── POST /delivery/routes/:id/add-order ─────────────────────────────────────
+// Add a pending (not yet routed) delivery order directly to this route
+
+router.post("/delivery/routes/:id/add-order", async (req, res): Promise<void> => {
+  const routeId = parseInt(req.params.id ?? "", 10);
+  if (isNaN(routeId)) { res.status(400).json({ error: "Invalid route id" }); return; }
+
+  const orderId = parseInt(String(req.body?.orderId ?? ""), 10);
+  if (isNaN(orderId)) { res.status(400).json({ error: "orderId required" }); return; }
+
+  const [route] = await db.select().from(deliveryRoutesTable).where(eq(deliveryRoutesTable.id, routeId));
+  if (!route) { res.status(404).json({ error: "Route not found" }); return; }
+  if (route.status === "completed") { res.status(400).json({ error: "Cannot add order to a completed route" }); return; }
+
+  const [order] = await db
+    .select({ id: ordersTable.id, type: ordersTable.type, deliveryStatus: ordersTable.deliveryStatus, kitchenAcceptedAt: ordersTable.kitchenAcceptedAt })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, orderId));
+  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+  if (order.type !== "delivery") { res.status(400).json({ error: "Order is not a delivery order" }); return; }
+
+  // Check not already in an active route
+  const existingAssignment = await db
+    .select({ id: deliveryRouteOrdersTable.id })
+    .from(deliveryRouteOrdersTable)
+    .innerJoin(deliveryRoutesTable, eq(deliveryRouteOrdersTable.routeId, deliveryRoutesTable.id))
+    .where(
+      and(
+        eq(deliveryRouteOrdersTable.orderId, orderId),
+        notInArray(deliveryRoutesTable.status, ["completed"])
+      )
+    );
+  if (existingAssignment.length > 0) { res.status(400).json({ error: "Order is already in an active route" }); return; }
+
+  const settings = await getOrCreateSettings();
+  const storeOriginParts = [settings.storeAddress, settings.storeNeighborhood, settings.storeCity ?? "Curitiba, PR"].filter(Boolean);
+  const storeOrigin = storeOriginParts.length > 0 ? storeOriginParts.join(", ") : "Curitiba, PR";
+
+  // Add to end of route
+  const currentOrders = await db
+    .select({ id: deliveryRouteOrdersTable.id })
+    .from(deliveryRouteOrdersTable)
+    .where(eq(deliveryRouteOrdersTable.routeId, routeId));
+
+  await db.insert(deliveryRouteOrdersTable).values({
+    routeId,
+    orderId,
+    stopOrder: currentOrders.length + 1,
+  });
+
+  // Ensure order has kitchenAcceptedAt set if missing
+  if (!order.kitchenAcceptedAt) {
+    await db.update(ordersTable).set({ kitchenAcceptedAt: new Date() }).where(eq(ordersTable.id, orderId));
+  }
+
+  await recalcRoute(routeId, storeOrigin, settings.storeCity ?? null, settings.deliveryDispatchTimeMinutes);
+
+  res.json(await getRouteWithOrders(routeId));
+});
+
 // ─── POST /delivery/routes/:id/move-order ────────────────────────────────────
 
 router.post("/delivery/routes/:id/move-order", async (req, res): Promise<void> => {
