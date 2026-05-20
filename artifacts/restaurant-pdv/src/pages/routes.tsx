@@ -483,15 +483,16 @@ export default function Routes() {
         {(routes.length > 0 || pendingOrders.length > 0) && (
           <div className="flex items-center gap-3 flex-wrap">
             {[
-              { label: "Aguardando rota", count: pendingOrders.length, color: "text-orange-500", dot: "bg-orange-400" },
-              { label: "Disponíveis", count: activeRoutes.filter((r) => r.status === "available").length, color: "text-blue-500", dot: "bg-blue-400" },
-              { label: "Em andamento", count: activeRoutes.filter((r) => r.status === "in_progress").length, color: "text-amber-500", dot: "bg-amber-400" },
-              { label: "Concluídas hoje", count: completedRoutes.length, color: "text-emerald-600", dot: "bg-emerald-400" },
+              { label: "Aguardando rota", count: pendingOrders.length },
+              { label: "Disponíveis", count: activeRoutes.filter((r) => r.status === "available").length },
+              { label: "Em andamento", count: activeRoutes.filter((r) => r.status === "in_progress").length },
+              { label: "Concluídas hoje", count: completedRoutes.length },
             ].map((s) => (
               <div key={s.label} className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${s.dot}`} />
-                <span className={`text-xl font-bold ${s.color}`}>{s.count}</span>
-                <span className="text-xs text-muted-foreground">{s.label}</span>
+                <span className="min-w-[1.75rem] h-7 rounded-md bg-[#0F172A] text-white text-sm font-bold flex items-center justify-center px-1.5">
+                  {s.count}
+                </span>
+                <span className="text-xs font-medium text-[#0F172A]">{s.label}</span>
               </div>
             ))}
           </div>
