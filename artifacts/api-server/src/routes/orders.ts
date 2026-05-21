@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, sql } from "drizzle-orm";
-import { db, ordersTable, orderItemsTable, tablesTable, customersTable, productsTable, kitchenTicketsTable } from "@workspace/db";
+import { db, ordersTable, orderItemsTable, tablesTable, customersTable, productsTable, kitchenTicketsTable, paymentsTable, cashMovementsTable } from "@workspace/db";
 import {
   CreateOrderBody,
   GetOrderParams,
@@ -356,6 +356,76 @@ router.post("/orders/:id/cancel", async (req, res): Promise<void> => {
 
   const full = await getOrderWithItems(params.data.id);
   res.json(CancelOrderResponse.parse(full));
+});
+
+// ─── POST /orders/:id/finalize ("Dar Baixa") ─────────────────────────────────
+// Encerra operacionalmente um pedido já pago/resolvido.
+// Não cria pagamento — apenas garante status=closed e libera mesa se aplicável.
+
+router.post("/orders/:id/finalize", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id ?? "", 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const [order] = await db
+    .select({
+      id: ordersTable.id,
+      status: ordersTable.status,
+      type: ordersTable.type,
+      tableId: ordersTable.tableId,
+      paymentTiming: ordersTable.paymentTiming,
+      deliveryStatus: ordersTable.deliveryStatus,
+      paidAt: ordersTable.paidAt,
+    })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, id));
+
+  if (!order) { res.status(404).json({ error: "Pedido não encontrado" }); return; }
+  if (order.status === "cancelled") { res.status(400).json({ error: "Pedido cancelado não pode ser finalizado" }); return; }
+
+  // Already fully finalized
+  if (order.status === "closed" && (order.type !== "delivery" || ["delivered", null].includes(order.deliveryStatus))) {
+    res.status(409).json({ error: "Pedido já está finalizado" }); return;
+  }
+
+  // Delivery on_delivery: require payment + cash_movement to exist
+  if (order.type === "delivery" && order.paymentTiming === "on_delivery") {
+    if (order.deliveryStatus === "awaiting_settlement") {
+      const [payment] = await db.select({ id: paymentsTable.id }).from(paymentsTable)
+        .where(eq(paymentsTable.orderId, id)).limit(1);
+      if (!payment) { res.status(400).json({ error: "Aguardando baixa financeira no Caixa" }); return; }
+      const [movement] = await db.select({ id: cashMovementsTable.id }).from(cashMovementsTable)
+        .where(eq(cashMovementsTable.orderId, id)).limit(1);
+      if (!movement) { res.status(400).json({ error: "Aguardando registro no Caixa" }); return; }
+    } else if (order.deliveryStatus !== "delivered" && order.deliveryStatus !== "out_for_delivery") {
+      res.status(400).json({ error: `Aguardando entrega (status: ${order.deliveryStatus ?? "—"})` }); return;
+    }
+  }
+
+  // Non-delivery and delivery-now: must be paid
+  if (order.type !== "delivery" || order.paymentTiming !== "on_delivery") {
+    if (!order.paidAt && order.status !== "closed") {
+      res.status(400).json({ error: "Aguardando pagamento" }); return;
+    }
+  }
+
+  const now = new Date();
+  await db.update(ordersTable)
+    .set({
+      status: "closed",
+      closedAt: now,
+      deliveryStatus: order.type === "delivery" ? "delivered" : order.deliveryStatus,
+    })
+    .where(eq(ordersTable.id, id));
+
+  // Release table if applicable
+  if (order.tableId) {
+    await db.update(tablesTable)
+      .set({ status: "available", currentOrderId: null })
+      .where(eq(tablesTable.id, order.tableId));
+  }
+
+  req.log.info({ orderId: id }, "order finalized via dar-baixa");
+  res.json({ ok: true });
 });
 
 router.patch("/orders/:id/delivery-status", async (req, res): Promise<void> => {

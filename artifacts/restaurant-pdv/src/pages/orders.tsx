@@ -36,7 +36,16 @@ const DELIVERY_STATUS_LABELS: Record<string, string> = {
   ready: "Pronto p/ entrega",
   out_for_delivery: "Saiu para entrega",
   delivered: "Entregue",
-  awaiting_settlement: "Aguardando baixa",
+  awaiting_settlement: "Aguard. baixa financeira",
+};
+
+const DELIVERY_STATUS_COLORS: Record<string, string> = {
+  pending: "bg-gray-100 text-gray-600",
+  preparing: "bg-amber-100 text-amber-800",
+  ready: "bg-green-100 text-green-800",
+  out_for_delivery: "bg-blue-100 text-blue-800",
+  delivered: "bg-purple-100 text-purple-800",
+  awaiting_settlement: "bg-orange-100 text-orange-800",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -116,6 +125,7 @@ export default function Orders() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const [completingDelivery, setCompletingDelivery] = useState<number | null>(null);
+  const [finalizingOrder, setFinalizingOrder] = useState<number | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -131,6 +141,23 @@ export default function Orders() {
       toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
     } finally {
       setCompletingDelivery(null);
+    }
+  };
+
+  const finalizeOrder = async (orderId: number) => {
+    setFinalizingOrder(orderId);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/finalize`, { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? "Erro ao finalizar");
+      }
+      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+      toast({ title: "Pedido finalizado com sucesso." });
+    } catch (e) {
+      toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
+    } finally {
+      setFinalizingOrder(null);
     }
   };
 
@@ -285,8 +312,8 @@ export default function Orders() {
                 )}
 
                 {isDelivery && order.deliveryStatus && (
-                  <span className="text-xs text-slate-500 font-medium">
-                    · {DELIVERY_STATUS_LABELS[order.deliveryStatus] ?? order.deliveryStatus}
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${DELIVERY_STATUS_COLORS[order.deliveryStatus] ?? "bg-gray-100 text-gray-600"}`}>
+                    {DELIVERY_STATUS_LABELS[order.deliveryStatus] ?? order.deliveryStatus}
                   </span>
                 )}
               </div>
@@ -345,8 +372,7 @@ export default function Orders() {
               {isDelivery && order.deliveryStatus === "out_for_delivery" && (
                 <Button
                   size="sm"
-                  variant="outline"
-                  className="gap-1.5 border-emerald-500 text-emerald-600 hover:bg-emerald-50"
+                  className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
                   onClick={() => markDelivered(order.id)}
                   disabled={completingDelivery === order.id}
                   title="Confirmar entrega"
@@ -354,6 +380,21 @@ export default function Orders() {
                 >
                   <PackageCheck className="w-4 h-4" />
                   {completingDelivery === order.id ? "..." : "Dar Baixa"}
+                </Button>
+              )}
+
+              {!isDelivery && order.status === "closed" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 border-emerald-400 text-emerald-700 hover:bg-emerald-50"
+                  onClick={() => finalizeOrder(order.id)}
+                  disabled={finalizingOrder === order.id}
+                  title="Dar baixa no pedido"
+                  data-testid={`button-finalize-${order.id}`}
+                >
+                  <PackageCheck className="w-4 h-4" />
+                  {finalizingOrder === order.id ? "..." : "Dar Baixa"}
                 </Button>
               )}
 

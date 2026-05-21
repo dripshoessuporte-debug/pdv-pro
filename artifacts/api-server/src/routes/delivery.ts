@@ -736,15 +736,25 @@ router.post("/delivery/routes/:id/assign", async (req, res): Promise<void> => {
     .set({ status: "in_progress", courierId, courierName, startedAt: new Date() })
     .where(eq(deliveryRoutesTable.id, routeId));
 
+  // Fetch each order's current deliveryStatus so we only advance 'ready' ones.
+  // Orders still 'preparing' stay as 'preparing' — the kitchen will mark them ready.
   const routeOrders = await db
-    .select({ orderId: deliveryRouteOrdersTable.orderId })
+    .select({
+      orderId: deliveryRouteOrdersTable.orderId,
+      deliveryStatus: ordersTable.deliveryStatus,
+    })
     .from(deliveryRouteOrdersTable)
+    .leftJoin(ordersTable, eq(deliveryRouteOrdersTable.orderId, ordersTable.id))
     .where(eq(deliveryRouteOrdersTable.routeId, routeId));
 
-  if (routeOrders.length > 0) {
+  const readyOrderIds = routeOrders
+    .filter((ro) => ro.deliveryStatus === "ready")
+    .map((ro) => ro.orderId);
+
+  if (readyOrderIds.length > 0) {
     await db.update(ordersTable)
       .set({ deliveryStatus: "out_for_delivery" })
-      .where(inArray(ordersTable.id, routeOrders.map((ro) => ro.orderId)));
+      .where(inArray(ordersTable.id, readyOrderIds));
   }
 
   res.json(await getRouteWithOrders(routeId));

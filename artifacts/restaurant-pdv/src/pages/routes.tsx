@@ -218,6 +218,7 @@ export default function Routes() {
       .then(setCouriers)
       .catch(() => setCouriers([]));
   }, [assignRoute]);
+  const [preparingConfirm, setPreparingConfirm] = useState(false);
   const [completing, setCompleting] = useState<number | null>(null);
   const [moveOrderState, setMoveOrderState] = useState<MoveOrderState | null>(null);
   const [movingOrder, setMovingOrder] = useState(false);
@@ -313,11 +314,22 @@ export default function Routes() {
     }
   };
 
-  const handleAssign = async () => {
+  const handleAssign = async (forcePrep = false) => {
     if (!assignRoute) return;
     const hasSelection = selectedCourierId !== null || courierName.trim();
     if (!hasSelection) return;
+
+    // Warn if some orders are still preparing
+    if (!forcePrep) {
+      const preparingCount = assignRoute.orders.filter((o) => o.deliveryStatus === "preparing").length;
+      if (preparingCount > 0) {
+        setPreparingConfirm(true);
+        return;
+      }
+    }
+
     setAssigning(true);
+    setPreparingConfirm(false);
     try {
       const body = selectedCourierId
         ? { courierId: selectedCourierId }
@@ -386,6 +398,19 @@ export default function Routes() {
       toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
     } finally {
       setMovingOrder(false);
+    }
+  };
+
+  const handleDirectRemoveFromRoute = async (routeId: number, orderId: number) => {
+    try {
+      await apiFetch(`/delivery/routes/${routeId}/move-order`, {
+        method: "POST",
+        body: JSON.stringify({ orderId }),
+      });
+      await Promise.all([fetchRoutes(), fetchPendingOrders()]);
+      toast({ title: "Pedido removido da rota." });
+    } catch (e) {
+      toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
     }
   };
 
@@ -521,7 +546,7 @@ export default function Routes() {
             <Button onClick={handleGroupRoutes} disabled={generating} className="gap-1.5"
               data-testid="button-generate-routes">
               <Sparkles className="w-4 h-4" />
-              {generating ? "Agrupando..." : "Rotas Prontas"}
+              {generating ? "Agrupando..." : "Gerar Rotas"}
             </Button>
           </div>
         </div>
@@ -560,7 +585,7 @@ export default function Routes() {
             <p className="text-lg font-semibold mb-1">Nenhum pedido delivery</p>
             <p className="text-sm max-w-xs mx-auto">
               Pedidos de delivery aparecem aqui assim que registrados. Use{" "}
-              <strong>Rotas Prontas</strong> para agrupá-los.
+              <strong>Gerar Rotas</strong> para agrupá-los.
             </p>
           </div>
         )}
@@ -684,6 +709,7 @@ export default function Routes() {
                   onMoveOrder={(orderId, customerName) =>
                     setMoveOrderState({ orderId, routeId: route.id, customerName })
                   }
+                  onDirectRemove={(orderId) => handleDirectRemoveFromRoute(route.id, orderId)}
                   completing={completing === route.id}
                 />
               ))}
@@ -692,7 +718,7 @@ export default function Routes() {
             <div className="text-center py-10 border-2 border-dashed rounded-xl text-muted-foreground">
               <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-30" />
               <p className="text-sm font-medium">Nenhuma rota disponível</p>
-              <p className="text-xs mt-1">Clique em <strong>Rotas Prontas</strong> para agrupar os pedidos</p>
+              <p className="text-xs mt-1">Clique em <strong>Gerar Rotas</strong> para agrupar os pedidos</p>
             </div>
           )
         ) : (
@@ -711,6 +737,7 @@ export default function Routes() {
                   onMoveOrder={(orderId, customerName) =>
                     setMoveOrderState({ orderId, routeId: route.id, customerName })
                   }
+                  onDirectRemove={(orderId) => handleDirectRemoveFromRoute(route.id, orderId)}
                   completing={completing === route.id}
                 />
               ))}
@@ -750,6 +777,7 @@ export default function Routes() {
                     onComplete={() => {}}
                     onQrCode={() => setQrRoute(route)}
                     onMoveOrder={() => {}}
+                    onDirectRemove={() => {}}
                     completing={false}
                   />
                 ))}
@@ -886,12 +914,30 @@ export default function Routes() {
 
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1" onClick={() => { setAssignRoute(null); setSelectedCourierId(null); setCourierName(""); }}>Cancelar</Button>
-              <Button className="flex-1" onClick={handleAssign}
+              <Button className="flex-1" onClick={() => handleAssign()}
                 disabled={assigning || (!selectedCourierId && !courierName.trim())}
                 data-testid="button-confirm-assign">
                 {assigning ? "Salvando..." : "Confirmar"}
               </Button>
             </div>
+
+            {preparingConfirm && (
+              <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 p-3 text-sm space-y-2">
+                <p className="font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  {assignRoute?.orders.filter((o) => o.deliveryStatus === "preparing").length} pedido(s) ainda em preparo
+                </p>
+                <p className="text-amber-700 dark:text-amber-400 text-xs">
+                  O motoboy sairá com pedidos que ainda não estão prontos na cozinha. Eles continuarão como "Em preparo" na rota até ficarem prontos. Confirma?
+                </p>
+                <div className="flex gap-2 pt-1">
+                  <Button variant="outline" size="sm" className="flex-1" onClick={() => setPreparingConfirm(false)}>Voltar</Button>
+                  <Button size="sm" className="flex-1 bg-amber-600 hover:bg-amber-700 text-white" onClick={() => handleAssign(true)} disabled={assigning}>
+                    {assigning ? "Salvando..." : "Confirmar mesmo assim"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -1240,6 +1286,7 @@ function RouteCard({
   onComplete,
   onQrCode,
   onMoveOrder,
+  onDirectRemove,
   completing,
 }: {
   route: DeliveryRoute;
@@ -1250,6 +1297,7 @@ function RouteCard({
   onComplete: () => void;
   onQrCode: () => void;
   onMoveOrder: (orderId: number, customerName: string | null) => void;
+  onDirectRemove: (orderId: number) => void;
   completing: boolean;
 }) {
   const isAvailable = route.status === "available";
@@ -1464,6 +1512,21 @@ function RouteCard({
                       <span className={`px-1.5 py-px rounded-full font-medium text-[10px] ${DELIVERY_STATUS_COLORS[ds!]}`}>
                         {dsLabel}
                       </span>
+                    )}
+                    {canMoveOrders && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-red-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all rounded-lg shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDirectRemove(order.orderId);
+                        }}
+                        title="Remover da rota"
+                        data-testid={`button-remove-from-route-${order.orderId}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
                     )}
                     {canMoveOrders && expanded && (
                       <Button

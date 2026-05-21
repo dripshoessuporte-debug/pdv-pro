@@ -1,0 +1,345 @@
+Faça um ajuste final no fluxo operacional de Pedidos + Rotas + Baixa final.
+
+Não refaça o projeto do zero.
+Não mexa no visual geral.
+Não altere cores.
+Não remova funcionalidades existentes.
+
+Preserve:
+- pedidos
+- cozinha
+- caixa
+- pagamento
+- delivery
+- rotas
+- baixa financeira de entregas
+- alertas
+- dashboard
+- cardápio
+- configurações
+
+OBJETIVO GERAL:
+Deixar o fluxo funcional e claro para operação real.
+
+Precisamos resolver 3 coisas:
+
+1. Rotas devem poder ser geradas com pedidos delivery em preparo, não apenas pedidos prontos.
+2. O operador precisa poder remover um pedido de uma rota manualmente.
+3. Na aba Pedidos, depois que um pedido estiver pago e operacionalmente concluído, deve existir um botão/ação de "Dar baixa" ou "Finalizar" para ele sair dos pedidos ativos e contar corretamente como encerrado no sistema.
+4. Criar 10 pedidos delivery de teste para validar esse fluxo.
+
+==================================================
+PARTE 1 — ROTAS COM PEDIDOS EM PREPARO
+==================================================
+
+Corrigir a geração de rotas.
+
+Hoje o sistema parece exigir que o pedido esteja pronto na cozinha para entrar na rota.
+Quero que a rota possa ser montada assim que o pedido delivery for enviado para a cozinha.
+
+Pedidos elegíveis para gerar rota:
+
+- type = delivery
+- deliveryStatus = preparing OU ready
+- status principal = preparing OU ready, se o sistema usar status principal também
+- pedido não pode estar cancelled
+- pedido não pode estar closed
+- pedido não pode estar delivered
+- pedido não pode estar out_for_delivery
+- pedido não pode estar awaiting_settlement
+- pedido não pode já estar vinculado a uma rota ativa
+
+Regra:
+Se o pedido foi enviado para cozinha e está em preparo, ele já pode entrar na rota.
+
+Não precisa esperar ficar pronto.
+
+==================================================
+PARTE 2 — ROTAS COM PEDIDOS PREPARANDO E PRONTOS
+==================================================
+
+Dentro do card da rota, diferenciar:
+
+- Preparando
+- Pronto
+
+A barra de progresso da rota deve continuar baseada em quantos pedidos estão prontos:
+
+Exemplo:
+- rota com 4 pedidos
+- 0 prontos = 0%
+- 1 pronto = 25%
+- 2 prontos = 50%
+- 3 prontos = 75%
+- 4 prontos = 100%
+
+A rota pode existir com 0% pronto.
+Isso significa que ela está planejada, mas a cozinha ainda está preparando.
+
+Quando todos os pedidos da rota estiverem prontos, mostrar algo como:
+"Todos prontos — pode sair"
+
+==================================================
+PARTE 3 — ASSUMIR ROTA COM PEDIDOS EM PREPARO
+==================================================
+
+Permitir assumir uma rota mesmo que alguns pedidos ainda estejam em preparo, mas com aviso.
+
+Ao clicar em "Assumir Rota", se houver pedidos ainda em preparo, mostrar confirmação:
+
+"Esta rota possui pedidos ainda em preparo. Deseja assumir mesmo assim?"
+
+Se o operador confirmar:
+- rota muda para in_progress
+- pedidos da rota mudam para out_for_delivery apenas se fizer sentido
+- se for mais seguro, manter os pedidos preparando como preparing até ficarem prontos, mas a rota já fica assumida
+
+Escolha a solução que menos quebra o fluxo atual, mas documente o comportamento.
+
+==================================================
+PARTE 4 — REMOVER PEDIDO DA ROTA
+==================================================
+
+Criar ou garantir botão em cada pedido dentro da rota:
+
+"Remover da rota"
+
+Regras:
+1. Permitir remover pedido se a rota estiver:
+   - available
+   - in_progress
+
+2. Ao remover:
+   - desvincular o pedido da rota
+   - não cancelar o pedido
+   - não apagar o pedido
+   - não mexer no pagamento
+   - se o pedido estiver preparing ou ready, ele volta a ficar elegível para outra rota futura
+
+3. Recalcular a rota:
+   - quantidade de entregas
+   - valor total da rota
+   - total a receber
+   - troco necessário
+   - barra de progresso
+   - link/QR Code do Google Maps
+   - ordem das paradas
+
+4. Se a rota ficar sem pedidos:
+   - excluir a rota
+   OU
+   - marcar como cancelada/vazia
+   Escolha a opção mais segura e explique.
+
+==================================================
+PARTE 5 — BAIXA FINAL NA ABA PEDIDOS
+==================================================
+
+Hoje alguns pedidos podem ficar confusos na tela de Pedidos, mesmo depois de pagos ou resolvidos.
+
+Quero criar uma lógica clara de baixa final.
+
+Na aba Pedidos, quando um pedido já estiver:
+- pago
+- sem pendência de cozinha
+- sem pendência de entrega
+- sem pendência de baixa financeira
+- sem rota pendente
+- sem mesa pendente
+
+deve aparecer uma ação:
+
+"Dar baixa"
+ou
+"Finalizar"
+
+Escolha o nome mais claro para o operador. Minha preferência:
+"Dar baixa"
+
+Esse botão deve servir para encerrar operacionalmente o pedido.
+
+==================================================
+PARTE 6 — REGRAS PARA O BOTÃO "DAR BAIXA"
+==================================================
+
+O botão "Dar baixa" só deve aparecer quando for seguro.
+
+Balcão:
+Pode dar baixa quando:
+- pedido está pago
+- cozinha está pronta ou não se aplica
+
+Mesa:
+Pode dar baixa quando:
+- pedido está pago
+- mesa pode ser liberada
+- não há pendência de cozinha
+
+Takeaway / Retirada:
+Pode dar baixa quando:
+- pedido está pago
+- pedido está pronto
+- cliente retirou ou operador confirma retirada
+
+Delivery pago antes:
+Pode dar baixa quando:
+- pedido foi entregue
+- rota concluída
+- pagamento já existe
+
+Delivery pagamento na entrega:
+Só pode dar baixa quando:
+- rota concluída
+- pedido está awaiting_settlement
+- baixa financeira já foi registrada no Caixa
+- payment existe
+- cash_movement existe
+
+Se o pedido ainda tiver pendência, não mostrar o botão ou mostrar desabilitado com motivo.
+
+Exemplos de motivo:
+- "Aguardando pagamento"
+- "Aguardando cozinha"
+- "Aguardando entrega"
+- "Aguardando baixa financeira"
+- "Rota em andamento"
+
+==================================================
+PARTE 7 — O QUE "DAR BAIXA" DEVE FAZER
+==================================================
+
+Ao clicar em "Dar baixa":
+
+1. Marcar pedido como operacionalmente finalizado.
+2. Garantir status final correto:
+   - status = closed
+   - closedAt = now, se existir
+3. Se for mesa:
+   - liberar mesa
+4. Garantir que o pedido não aparece mais como ativo.
+5. Garantir que ele continua no histórico.
+6. Garantir que Dashboard e relatórios não contem pedido aberto indevidamente.
+7. Não criar pagamento novo se já existe payment.
+8. Não criar cash_movement novo se já existe cash_movement.
+9. Evitar duplicidade:
+   - se o pedido já estiver finalizado, retornar 409 ou mensagem clara.
+
+IMPORTANTE:
+"Dar baixa" não é pagamento.
+Pagamento cria payment e cash_movement.
+Dar baixa apenas encerra operacionalmente o pedido quando todas as pendências já foram resolvidas.
+
+==================================================
+PARTE 8 — STATUS VISUAL NA TELA PEDIDOS
+==================================================
+
+Na tela Pedidos, deixar status mais claro:
+
+- Aberto
+- Em preparo
+- Pronto
+- Aguardando pagamento
+- Aguardando retirada
+- Saiu para entrega
+- Aguardando baixa financeira
+- Pago
+- Finalizado
+- Cancelado
+
+Se não quiser criar status novos no banco, pode criar labels visuais calculados a partir dos campos existentes.
+
+O importante é o operador entender o que falta fazer.
+
+==================================================
+PARTE 9 — CRIAR 10 PEDIDOS DELIVERY DE TESTE
+==================================================
+
+Criar 10 pedidos delivery de teste para validar o fluxo de rotas.
+
+Esses pedidos devem:
+
+- ser type = delivery
+- estar enviados para cozinha
+- ficar em deliveryStatus = preparing
+- ficar status = preparing, se aplicável
+- NÃO estar prontos ainda
+- NÃO estar em rota
+- NÃO estar pagos, exceto se fizer sentido para variação
+- ter endereço, bairro, CEP, taxa de entrega
+- ter pagamento variado:
+  - alguns paymentTiming = now
+  - alguns paymentTiming = on_delivery
+
+Objetivo:
+Eu quero ir em Rotas, clicar em gerar rotas, e ver que esses pedidos em preparo já entram nas rotas.
+
+Usar bairros de Curitiba:
+- Batel
+- Rebouças
+- Água Verde
+- Centro
+- Mercês
+- Bigorrilho
+- Portão
+- Xaxim
+- Boqueirão
+- Hauer
+
+Cada pedido deve ter:
+- cliente fictício
+- telefone
+- endereço
+- CEP coerente
+- taxa de entrega
+- 1 ou 2 itens
+- total realista
+
+Não criar rotas prontas automaticamente.
+Apenas criar os pedidos em preparo para eu testar manualmente a geração de rotas.
+
+==================================================
+PARTE 10 — TESTES OBRIGATÓRIOS
+==================================================
+
+Teste rota com pedido em preparo:
+
+1. Criar os 10 pedidos delivery em preparo.
+2. Ir em Rotas.
+3. Clicar em Gerar Rotas.
+4. Confirmar que pedidos em preparo entram nas rotas.
+5. Confirmar que aparecem como "Preparando".
+6. Confirmar barra de progresso 0/N prontos.
+7. Marcar alguns pedidos como pronto na Cozinha.
+8. Confirmar barra de progresso atualiza para 1/N, 2/N etc.
+9. Remover um pedido da rota.
+10. Confirmar que a rota recalcula valor, progresso, QR/Maps e entregas.
+11. Confirmar que pedido removido pode entrar em outra rota depois.
+
+Teste dar baixa:
+
+12. Criar pedido balcão, pagar e dar baixa.
+13. Criar pedido mesa, pagar, dar baixa e confirmar mesa liberada.
+14. Criar pedido takeaway, pagar, marcar como pronto/retirado e dar baixa.
+15. Criar delivery paymentTiming = now, entregar e dar baixa.
+16. Criar delivery paymentTiming = on_delivery, concluir rota, registrar baixa financeira no Caixa, depois dar baixa final.
+17. Confirmar que pedido baixado não aparece como ativo.
+18. Confirmar que pedido baixado continua no histórico.
+19. Confirmar que dashboard não conta pedido aberto como faturamento.
+20. Confirmar que dashboard conta faturamento por payment.
+21. Rodar typecheck sem erros.
+
+==================================================
+PARTE 11 — RESPOSTA FINAL
+==================================================
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Como ficou a regra para gerar rotas com pedidos em preparo.
+3. Como funciona remover pedido da rota.
+4. Como funciona o botão "Dar baixa" na aba Pedidos.
+5. Quando o botão aparece e quando não aparece.
+6. Como o sistema evita duplicar pagamento ou caixa.
+7. Quantos pedidos de teste foram criados.
+8. Como testar passo a passo.
+9. Limitações restantes.
