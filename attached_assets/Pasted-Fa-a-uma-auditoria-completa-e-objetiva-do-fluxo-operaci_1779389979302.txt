@@ -1,0 +1,455 @@
+Faça uma auditoria completa e objetiva do fluxo operacional do PDV como um sistema único, incluindo também um sistema de notificações internas para lembrar o operador de finalizar etapas pendentes.
+
+Não implemente nada ainda.
+Não refaça o projeto.
+Não crie telas novas agora.
+Apenas analise o fluxo real e proponha a correção mais simples para deixar tudo redondo.
+
+Contexto:
+O sistema será vendido para restaurantes, pizzarias, hamburguerias e operações com delivery.
+Hoje ele tem Pedidos, Cozinha, Caixa, Delivery, Rotas, Motoboys e Dashboard, mas o fluxo está confuso.
+Preciso organizar o ciclo de vida do pedido do começo ao fim.
+
+OBJETIVO:
+Criar uma lógica única e clara de status, baixas, finalização e notificações para todos os tipos de pedido:
+
+- balcão
+- mesa
+- retirada/takeaway
+- delivery
+- rotas/motoboy
+- pagamento na hora
+- pagamento na entrega
+
+==================================================
+1. CICLO DE VIDA DO PEDIDO
+==================================================
+
+Mapeie o fluxo ideal para cada tipo de pedido.
+
+Balcão:
+- criado
+- enviado para cozinha, se aplicável
+- pronto
+- pago
+- finalizado
+
+Mesa:
+- criado
+- enviado para cozinha
+- pronto
+- pago
+- mesa liberada
+- finalizado
+
+Takeaway/Retirada:
+- criado
+- enviado para cozinha
+- pronto para retirada
+- pago
+- retirado
+- finalizado
+
+Delivery:
+- criado
+- enviado para cozinha
+- em preparo
+- pronto
+- entra em rota
+- saiu para entrega
+- entregue
+- pagamento baixado
+- finalizado
+
+Explique onde o fluxo atual está diferente disso.
+
+==================================================
+2. STATUS ATUAIS
+==================================================
+
+Verifique os status existentes no sistema:
+
+- status do pedido
+- deliveryStatus
+- kitchen status
+- route status
+- payment status
+- cash movement
+
+Diga se existem conflitos ou duplicidade entre eles.
+
+Exemplos de possíveis problemas:
+- pedido está closed, mas pagamento não entrou no caixa
+- delivery está delivered, mas pedido não foi pago
+- rota foi concluída, mas pedido não teve baixa financeira
+- cozinha marcou pronto, mas pedido foi tratado como finalizado antes da entrega
+- pedido pago aparece como ativo
+- pedido entregue ainda aparece em lugar errado
+
+==================================================
+3. DEFINIR STATUS PRINCIPAL DO PEDIDO
+==================================================
+
+Proponha uma lógica clara para o status principal do pedido.
+
+Sugestão:
+- open = aberto
+- preparing = em preparo
+- ready = pronto
+- out_for_delivery = saiu para entrega
+- delivered = entregue
+- awaiting_payment_settlement = aguardando baixa financeira
+- closed = finalizado
+- cancelled = cancelado
+
+Diga se é melhor usar esses status ou manter os atuais com mapeamento.
+
+Explique qual status deve aparecer na tela Pedidos para cada situação.
+
+==================================================
+4. DEFINIR SUBSTATUS POR ÁREA
+==================================================
+
+Organize os substatus sem bagunçar o status principal.
+
+Cozinha:
+- pending
+- preparing
+- ready
+
+Delivery:
+- pending
+- preparing
+- ready
+- out_for_delivery
+- delivered
+
+Pagamento:
+- unpaid
+- paid
+- pay_on_delivery
+- awaiting_settlement
+
+Rota:
+- available
+- in_progress
+- completed
+
+Explique como eles devem conversar entre si.
+
+==================================================
+5. BAIXAS OPERACIONAIS
+==================================================
+
+Defina exatamente o que significa “dar baixa” em cada contexto:
+
+- baixa da cozinha
+- baixa do pagamento
+- baixa do caixa
+- baixa da entrega
+- baixa da rota
+- baixa da mesa
+
+Explique qual ação deve alterar o quê.
+
+Exemplos:
+
+Quando cozinha marca pronto:
+- altera kitchen status
+- altera pedido para ready
+- não finaliza pedido
+
+Quando motoboy assume rota:
+- altera rota para in_progress
+- altera deliveryStatus para out_for_delivery
+- não fecha pedido
+- não registra pagamento ainda
+
+Quando motoboy conclui entrega:
+- altera deliveryStatus para delivered
+- se pagamento foi na entrega, pedido vai para aguardando baixa financeira
+- se já estava pago, pedido pode ir para finalizado
+
+Quando caixa registra recebimento da entrega:
+- cria payment
+- cria cash_movement
+- marca pedido como paid/closed
+- conta no dashboard
+
+==================================================
+6. FLUXO IDEAL PARA DELIVERY COM PAGAMENTO NA ENTREGA
+==================================================
+
+Analise e proponha o fluxo correto:
+
+Pedido delivery com pagamento na entrega:
+- cria pedido
+- envia para cozinha
+- aparece em rotas quando estiver em preparo
+- rota é assumida
+- pedido sai para entrega
+- motoboy conclui entrega
+- pedido fica aguardando baixa financeira
+- caixa recebe a baixa do motoboy
+- sistema cria pagamento e movimentação no caixa
+- pedido fica finalizado
+- dashboard contabiliza pelo dia do pagamento/baixa
+
+Diga se é necessário criar uma aba:
+- Entregas pendentes de baixa
+
+Ou se isso deve ficar dentro da página Caixa.
+
+==================================================
+7. FLUXO IDEAL PARA DELIVERY JÁ PAGO
+==================================================
+
+Pedido delivery pago antes:
+- cria pedido
+- pagamento entra no caixa
+- envia para cozinha
+- rota é assumida
+- entrega concluída
+- pedido finaliza automaticamente
+- não precisa baixa financeira posterior
+
+Explique como o sistema deve diferenciar delivery pago antes e delivery pago na entrega.
+
+==================================================
+8. FLUXO IDEAL PARA BALCÃO, MESA E RETIRADA
+==================================================
+
+Analise se esses fluxos estão corretos.
+
+Garanta que:
+- pedido não finaliza só porque ficou pronto
+- pedido só finaliza quando for pago e/ou entregue/retirado
+- mesa só libera depois do pagamento/finalização
+- dashboard não conta pedido aberto como faturamento
+- caixa só conta pagamento real
+- retirada/takeaway não deve ficar eternamente como pronto sem baixa
+
+Diga se precisa existir um botão:
+- Retirado
+- Finalizar pedido
+- Entregue ao cliente
+- Liberar mesa
+
+==================================================
+9. DASHBOARD
+==================================================
+
+Verifique como a Dashboard deve contar:
+
+- faturamento de hoje
+- pedidos hoje
+- pedidos ativos
+- pedidos em cozinha
+- pedidos prontos aguardando retirada
+- entregas em andamento
+- entregas pendentes de baixa
+- pedidos finalizados
+- pedidos cancelados
+- ticket médio
+
+Regra importante:
+Faturamento deve vir de pagamentos confirmados, não apenas de pedido fechado.
+
+Explique quais métricas atuais estão corretas e quais precisam ser corrigidas.
+
+==================================================
+10. CAIXA
+==================================================
+
+Verifique o fluxo correto do caixa:
+
+- abrir caixa
+- registrar pagamentos normais
+- registrar pagamento na entrega quando motoboy volta
+- sangria
+- suprimento
+- fechar caixa
+
+O caixa não deve fechar se houver:
+- entrega pendente de baixa
+- rota em andamento com pagamento na entrega
+- pagamento pendente que deveria entrar naquele caixa
+
+Explique a regra ideal.
+
+Diga se precisa existir um painel dentro do caixa chamado:
+- Entregas pendentes de baixa
+- Receber entregas
+- Baixa de motoboy
+
+==================================================
+11. ROTAS / MOTOBOY
+==================================================
+
+Analise a página de Rotas.
+
+Ela deve permitir:
+- montar rota com pedidos em preparo ou prontos
+- assumir rota
+- acompanhar em andamento
+- concluir entrega
+- enviar pedidos para baixa financeira quando necessário
+
+Diga se precisa criar um botão:
+- Finalizar entrega
+- Dar baixa da rota
+- Receber pagamentos da rota
+
+Ou se a baixa deve ser feita no Caixa.
+
+Explique o que deve acontecer quando:
+- rota é criada
+- rota é assumida
+- rota é concluída
+- pedido da rota foi pago antes
+- pedido da rota será pago na entrega
+
+==================================================
+12. RELATÓRIOS E HISTÓRICO
+==================================================
+
+Verifique se o sistema salva data/hora suficiente para auditar:
+
+- criado em
+- enviado para cozinha em
+- pronto em
+- saiu para entrega em
+- entregue em
+- pago em
+- finalizado em
+- cancelado em
+- caixa aberto em
+- caixa fechado em
+- rota criada em
+- rota assumida em
+- rota concluída em
+
+Diga quais campos faltam.
+
+==================================================
+13. SISTEMA DE NOTIFICAÇÕES OPERACIONAIS
+==================================================
+
+Analise também a necessidade de um sistema de notificações internas para lembrar o operador de finalizar etapas pendentes.
+
+Objetivo:
+Evitar que pedidos, entregas, pagamentos, rotas ou caixa fiquem esquecidos no sistema.
+
+Verifique onde precisamos de alertas/notificações.
+
+COZINHA:
+- pedido enviado para cozinha há muito tempo e ainda não marcado como pronto
+- pedido pronto, mas ainda não foi retirado/enviado
+- muitos pedidos acumulados em preparo
+
+DELIVERY / ROTAS:
+- pedido delivery em preparo, mas ainda sem rota
+- rota disponível, mas ainda não assumida
+- rota em andamento há muito tempo
+- rota concluída, mas com pagamento na entrega sem baixa financeira
+- pedido entregue, mas ainda não finalizado
+- rota com todos os pedidos prontos, mas ainda não assumida
+
+CAIXA:
+- existem entregas pendentes de baixa
+- caixa aberto há muitas horas
+- tentativa de fechar caixa com pendências
+- divergência de fechamento
+- recebimento na entrega ainda não registrado
+
+PEDIDOS:
+- pedido aberto há muito tempo
+- pedido pronto sem pagamento
+- pedido pago mas não finalizado
+- pedido cancelado sem motivo
+- pedido mesa parado sem fechamento
+- pedido takeaway pronto e não retirado
+
+DASHBOARD:
+- mostrar alertas operacionais principais:
+  - entregas pendentes de baixa
+  - rotas em andamento
+  - pedidos atrasados na cozinha
+  - pedidos prontos aguardando ação
+  - caixa aberto
+  - caixa com pendência
+  - rotas prontas não assumidas
+
+Sugira uma estrutura simples de notificações para MVP:
+
+- id
+- type
+- priority: low, medium, high, critical
+- title
+- message
+- relatedEntityType: order, route, cash_register, kitchen_ticket
+- relatedEntityId
+- status: unread, read, resolved
+- createdAt
+- resolvedAt
+
+Sugira também onde mostrar:
+- sino de notificações no topo
+- painel de alertas na Dashboard
+- badges nas abas Pedidos, Cozinha, Rotas e Caixa
+- avisos dentro das próprias telas
+
+Não implemente ainda.
+Apenas diga quais notificações são realmente necessárias no MVP e quais podem ficar para depois.
+
+==================================================
+14. PRODUTO REPLICÁVEL PARA TERCEIROS
+==================================================
+
+Analise também o que falta para esse PDV ser entregue para terceiros de forma limpa.
+
+Verifique:
+- dados de teste
+- base virgem
+- configurações da loja
+- reset de demo
+- modo produção
+- usuários
+- permissões
+- operador de caixa
+- motoboy
+- garçom
+- cozinha
+- fiscal futuramente
+- multi-loja futuramente
+
+Diga o que precisa ser prioridade agora e o que pode ficar para depois.
+
+==================================================
+15. PROPOSTA FINAL
+==================================================
+
+No final, entregue:
+
+1. Diagnóstico geral do fluxo atual.
+2. Onde o fluxo está confuso.
+3. Qual deve ser o ciclo de vida único do pedido.
+4. Quais status devem existir.
+5. O que cada botão deve fazer.
+6. O que deve contar no dashboard.
+7. O que deve entrar no caixa.
+8. Onde deve ficar a baixa do motoboy.
+9. Quais notificações precisam existir no MVP.
+10. Quais notificações podem ficar para depois.
+11. Quais arquivos provavelmente precisam mudar.
+12. Quais tabelas/modelos provavelmente precisam mudar.
+13. Quais telas precisam mudar.
+14. O que é P0, P1, P2 e P3.
+15. Próximo prompt recomendado para implementar a correção P0.
+
+IMPORTANTE:
+Quero uma resposta objetiva, técnica e direta.
+Não implemente nada ainda.
+Não gaste tempo com visual.
+Não mexa em cor.
+Não crie funcionalidade nova sem primeiro organizar o fluxo.
