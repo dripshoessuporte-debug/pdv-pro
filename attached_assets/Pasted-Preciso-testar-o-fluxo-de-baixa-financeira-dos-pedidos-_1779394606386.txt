@@ -1,0 +1,151 @@
+Preciso testar o fluxo de baixa financeira dos pedidos delivery.
+
+Crie uma massa de teste com 10 pedidos delivery pendentes de baixa.
+
+Não refaça o projeto.
+Não altere o visual.
+Não mexa em funcionalidades fora do necessário.
+Preserve tudo que já funciona.
+
+OBJETIVO:
+Criar 10 pedidos delivery no estado correto para aparecerem em:
+
+Caixa → Entregas pendentes de baixa
+
+Esses pedidos devem simular entregas que já foram realizadas pelo motoboy, mas ainda precisam ter o pagamento registrado no caixa.
+
+==================================================
+1. CRIAR 10 PEDIDOS PENDENTES DE BAIXA
+==================================================
+
+Criar 10 pedidos delivery fictícios com:
+
+- type = delivery
+- paymentTiming = on_delivery
+- deliveryStatus = awaiting_settlement
+- status ainda não deve estar closed/finalizado
+- sem payment registrado
+- sem cash_movement registrado
+- com totalAmount válido
+- com cliente
+- telefone
+- endereço
+- bairro
+- CEP
+- taxa de entrega
+- forma prevista de pagamento
+- troco, quando for dinheiro
+
+Esses pedidos devem aparecer no endpoint/lista:
+
+GET /delivery/orders/awaiting-settlement
+
+E também no painel:
+
+Caixa → Entregas pendentes de baixa
+
+==================================================
+2. DADOS FICTÍCIOS
+==================================================
+
+Use 10 clientes fictícios.
+
+Distribuir métodos de pagamento assim:
+
+1. Dinheiro com troco
+2. Dinheiro sem troco
+3. Pix
+4. Cartão de crédito
+5. Cartão de débito
+6. Dinheiro com troco
+7. Pix
+8. Dinheiro sem troco
+9. Cartão de crédito
+10. Dinheiro com troco
+
+Usar bairros variados de Curitiba, por exemplo:
+
+- Batel
+- Rebouças
+- Água Verde
+- Centro
+- Mercês
+- Bigorrilho
+- Portão
+- Xaxim
+- Boqueirão
+- Hauer
+
+Cada pedido deve ter pelo menos 1 ou 2 itens com valores realistas.
+
+==================================================
+3. NÃO CRIAR PAYMENT
+==================================================
+
+Importante:
+
+Não criar registro em payments para esses pedidos.
+Não criar cash_movement para esses pedidos.
+
+Eles precisam estar realmente pendentes de baixa.
+
+==================================================
+4. CAIXA ABERTO
+==================================================
+
+Verifique se existe caixa aberto.
+
+Se não existir, crie ou abra um caixa de teste com:
+
+- operador: Teste Baixa
+- fundo inicial: 100
+
+Porque a baixa financeira precisa de caixa aberto para ser registrada.
+
+==================================================
+5. ROTAS
+==================================================
+
+Não precisa criar rotas novas se não for necessário.
+
+Mas, se o sistema exigir relação com rota, pode criar uma rota concluída de teste ou vincular os pedidos a uma rota concluída.
+
+O importante é que os pedidos apareçam no painel de baixa financeira.
+
+==================================================
+6. TESTES OBRIGATÓRIOS
+==================================================
+
+Depois de criar os pedidos, teste:
+
+1. Abrir a página Caixa.
+2. Confirmar que o painel "Entregas pendentes de baixa" aparece.
+3. Confirmar que existem 10 pedidos pendentes.
+4. Confirmar que cada pedido mostra:
+   - cliente
+   - endereço
+   - valor total
+   - forma prevista
+   - troco, se houver
+5. Clicar em "Receber" em um pedido.
+6. Registrar recebimento.
+7. Confirmar que:
+   - criou payment
+   - criou cash_movement
+   - pedido saiu da lista de pendências
+   - pedido ficou closed/finalizado
+   - dashboard passou a contar o valor no faturamento de hoje
+8. Tentar dar baixa no mesmo pedido de novo e confirmar que não duplica.
+
+==================================================
+7. RESPOSTA FINAL
+==================================================
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Quantos pedidos pendentes foram criados.
+2. Se existe caixa aberto.
+3. Onde eu devo clicar para testar.
+4. Quais métodos de pagamento foram usados.
+5. Se os pedidos aparecem corretamente no painel de baixa.
+6. Como testar passo a passo.
