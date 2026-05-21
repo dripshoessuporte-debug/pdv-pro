@@ -813,6 +813,19 @@ export const MarkTicketReadyResponse = zod.object({
 
 
 /**
+ * @summary Get operational alert counts for badges and dashboard
+ */
+export const GetAlertsResponse = zod.object({
+  "awaitingSettlement": zod.number(),
+  "routesInProgress": zod.number(),
+  "routesAvailable": zod.number(),
+  "readyNotActioned": zod.number(),
+  "deliveryWithoutRoute": zod.number(),
+  "cashRegisterOpenHours": zod.number()
+})
+
+
+/**
  * @summary Get dashboard summary stats
  */
 export const GetDashboardSummaryResponse = zod.object({

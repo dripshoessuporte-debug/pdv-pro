@@ -7,6 +7,7 @@
  */
 
 export * from './adjustRouteTimeInput';
+export * from './alertsSummary';
 export * from './assignRouteInput';
 export * from './awaitingSettlementOrder';
 export * from './cashMovement';

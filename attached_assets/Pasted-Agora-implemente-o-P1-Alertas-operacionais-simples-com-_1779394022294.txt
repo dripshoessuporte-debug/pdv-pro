@@ -1,0 +1,95 @@
+Agora implemente o P1 — Alertas operacionais simples com badges.
+
+Não refaça o projeto do zero.
+Não mexa no visual geral.
+Não crie tabela de notificações ainda.
+Não implemente login, multi-tenant ou fiscal.
+Preserve tudo que já funciona.
+
+Objetivo:
+Criar alertas calculados em tempo real para lembrar o operador de finalizar pendências importantes.
+
+Implementar endpoint:
+
+GET /alerts
+
+Esse endpoint deve retornar contagens como:
+
+{
+  "awaitingSettlement": 0,
+  "routesInProgress": 0,
+  "routesAvailable": 0,
+  "readyNotActioned": 0,
+  "deliveryWithoutRoute": 0,
+  "cashRegisterOpenHours": 0
+}
+
+Regras dos alertas:
+
+1. awaitingSettlement
+Contar entregas com:
+- deliveryStatus = awaiting_settlement
+- paymentTiming = on_delivery
+- sem payment registrado
+
+2. routesInProgress
+Contar rotas com:
+- status = in_progress
+
+3. routesAvailable
+Contar rotas disponíveis para assumir:
+- status = available
+
+4. readyNotActioned
+Contar pedidos prontos há mais de 20 minutos que ainda não foram pagos, retirados, entregues ou finalizados.
+
+5. deliveryWithoutRoute
+Contar pedidos delivery:
+- deliveryStatus = preparing ou ready
+- ainda não vinculados a rota ativa
+
+6. cashRegisterOpenHours
+Se houver caixa aberto, retornar há quantas horas ele está aberto.
+Se não houver caixa aberto, retornar 0.
+
+Frontend:
+
+1. Mostrar badges pequenos no menu lateral:
+- Caixa: badge se awaitingSettlement > 0
+- Rotas: badge se routesInProgress + routesAvailable + deliveryWithoutRoute > 0
+- Cozinha/Pedidos: badge se readyNotActioned > 0
+
+2. Dashboard:
+Adicionar um card ou painel discreto chamado:
+"Alertas operacionais"
+
+Mostrar apenas alertas com valor maior que zero:
+- Entregas pendentes de baixa
+- Rotas em andamento
+- Rotas disponíveis
+- Delivery sem rota
+- Pedidos prontos parados
+- Caixa aberto há X horas
+
+3. Atualização:
+Fazer polling a cada 30 segundos.
+
+4. Não bloquear nada ainda.
+Apenas avisar.
+
+Testes obrigatórios:
+- criar entrega pendente de baixa e ver badge no Caixa
+- criar rota em andamento e ver badge em Rotas
+- criar pedido delivery em preparo sem rota e ver alerta
+- deixar pedido pronto há mais de 20 min ou simular condição e ver alerta
+- abrir caixa e ver horas em aberto
+- confirmar que alertas somem quando pendências são resolvidas
+- rodar typecheck sem erros
+
+Ao finalizar, responda em português brasileiro com:
+1. Arquivos alterados.
+2. Endpoint criado.
+3. Como cada alerta é calculado.
+4. Onde os badges aparecem.
+5. Como testar passo a passo.
+6. Limitações restantes.

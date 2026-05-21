@@ -414,6 +414,15 @@ export interface KitchenTicket {
   items: OrderItem[];
 }
 
+export interface AlertsSummary {
+  awaitingSettlement: number;
+  routesInProgress: number;
+  routesAvailable: number;
+  readyNotActioned: number;
+  deliveryWithoutRoute: number;
+  cashRegisterOpenHours: number;
+}
+
 export interface DashboardSummary {
   totalOrdersToday: number;
   totalRevenueToday: number;

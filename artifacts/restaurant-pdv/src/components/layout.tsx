@@ -17,7 +17,9 @@ import {
 import {
   useHealthCheck,
   useGetCurrentCashRegister,
+  useGetAlerts,
   getGetCurrentCashRegisterQueryKey,
+  getGetAlertsQueryKey,
 } from "@workspace/api-client-react";
 
 const navItems = [
@@ -33,6 +35,15 @@ const navItems = [
   { href: "/settings", label: "Configurações", icon: Settings },
 ];
 
+function AlertBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { data: health } = useHealthCheck();
@@ -46,7 +57,33 @@ export function Layout({ children }: { children: ReactNode }) {
     },
   });
 
+  const { data: alerts } = useGetAlerts({
+    query: {
+      queryKey: getGetAlertsQueryKey(),
+      refetchInterval: 30_000,
+      staleTime: 20_000,
+      retry: false,
+    },
+  });
+
   const cashOpen = !noCash && !!cashRegister;
+
+  // Badge counts per nav section
+  const cashBadge = alerts?.awaitingSettlement ?? 0;
+  const routesBadge =
+    (alerts?.routesInProgress ?? 0) +
+    (alerts?.routesAvailable ?? 0) +
+    (alerts?.deliveryWithoutRoute ?? 0);
+  const kitchenBadge = alerts?.readyNotActioned ?? 0;
+  const ordersBadge = alerts?.readyNotActioned ?? 0;
+
+  function getBadge(href: string): number {
+    if (href === "/cash") return cashBadge;
+    if (href === "/routes") return routesBadge;
+    if (href === "/kitchen") return kitchenBadge;
+    if (href === "/orders") return ordersBadge;
+    return 0;
+  }
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden">
@@ -59,6 +96,7 @@ export function Layout({ children }: { children: ReactNode }) {
           {navItems.map((item) => {
             const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
             const isCash = item.href === "/cash";
+            const badge = getBadge(item.href);
             return (
               <Link
                 key={item.href}
@@ -73,15 +111,18 @@ export function Layout({ children }: { children: ReactNode }) {
                   <item.icon className="w-5 h-5 mr-3" />
                   {item.label}
                 </span>
-                {isCash && (
-                  <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${
-                    cashOpen
-                      ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
-                      : "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400"
-                  }`}>
-                    {cashOpen ? "Aberto" : "Fechado"}
-                  </span>
-                )}
+                <span className="flex items-center gap-1.5">
+                  {badge > 0 && <AlertBadge count={badge} />}
+                  {isCash && (
+                    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${
+                      cashOpen
+                        ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
+                        : "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400"
+                    }`}>
+                      {cashOpen ? "Aberto" : "Fechado"}
+                    </span>
+                  )}
+                </span>
               </Link>
             );
           })}

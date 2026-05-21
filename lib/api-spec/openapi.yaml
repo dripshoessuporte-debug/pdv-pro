@@ -678,6 +678,19 @@ paths:
                 $ref: "#/components/schemas/KitchenTicket"
 
   # Dashboard
+  /alerts:
+    get:
+      operationId: getAlerts
+      tags: [dashboard]
+      summary: Get operational alert counts for badges and dashboard
+      responses:
+        "200":
+          description: Alert counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertsSummary"
+
   /dashboard/summary:
     get:
       operationId: getDashboardSummary
@@ -1364,6 +1377,23 @@ components:
             $ref: "#/components/schemas/OrderItem"
 
     # Dashboard
+    AlertsSummary:
+      type: object
+      required: [awaitingSettlement, routesInProgress, routesAvailable, readyNotActioned, deliveryWithoutRoute, cashRegisterOpenHours]
+      properties:
+        awaitingSettlement:
+          type: integer
+        routesInProgress:
+          type: integer
+        routesAvailable:
+          type: integer
+        readyNotActioned:
+          type: integer
+        deliveryWithoutRoute:
+          type: integer
+        cashRegisterOpenHours:
+          type: number
+
     DashboardSummary:
       type: object
       required: [totalOrdersToday, totalRevenueToday, openOrders, occupiedTables, availableTables, pendingKitchenTickets, awaitingSettlement]

@@ -5,12 +5,26 @@ import {
   useGetDashboardSummary,
   useGetRecentOrders,
   useGetSalesByCategory,
+  useGetAlerts,
   getGetDashboardSummaryQueryKey,
   getGetRecentOrdersQueryKey,
   getGetSalesByCategoryQueryKey,
+  getGetAlertsQueryKey,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, ShoppingBag, UtensilsCrossed, ChefHat, TrendingUp } from "lucide-react";
+import {
+  DollarSign,
+  ShoppingBag,
+  UtensilsCrossed,
+  ChefHat,
+  TrendingUp,
+  Bell,
+  Truck,
+  Clock,
+  MapPin,
+  Banknote,
+  Navigation,
+} from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,19 +67,82 @@ export default function Dashboard() {
     },
   });
 
-  // Show only today's orders in the dashboard
   const recentOrders = useMemo(() => {
     if (!allRecentOrders) return allRecentOrders;
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     return allRecentOrders.filter((o) => new Date(o.createdAt) >= todayStart);
   }, [allRecentOrders]);
+
   const { data: sales, isLoading: loadingSales } = useGetSalesByCategory({
     query: {
       queryKey: getGetSalesByCategoryQueryKey(),
       refetchInterval: 60_000,
     },
   });
+
+  const { data: alerts } = useGetAlerts({
+    query: {
+      queryKey: getGetAlertsQueryKey(),
+      refetchInterval: 30_000,
+      staleTime: 20_000,
+      retry: false,
+    },
+  });
+
+  // Build list of active alerts (only those > 0)
+  const activeAlerts = alerts
+    ? [
+        alerts.awaitingSettlement > 0 && {
+          key: "awaitingSettlement",
+          icon: Banknote,
+          color: "text-orange-600 dark:text-orange-400",
+          bg: "bg-orange-50 dark:bg-orange-900/20",
+          label: `${alerts.awaitingSettlement} entrega${alerts.awaitingSettlement > 1 ? "s" : ""} pendente${alerts.awaitingSettlement > 1 ? "s" : ""} de baixa financeira`,
+          href: "/cash",
+        },
+        alerts.deliveryWithoutRoute > 0 && {
+          key: "deliveryWithoutRoute",
+          icon: MapPin,
+          color: "text-red-600 dark:text-red-400",
+          bg: "bg-red-50 dark:bg-red-900/20",
+          label: `${alerts.deliveryWithoutRoute} delivery sem rota atribuída`,
+          href: "/routes",
+        },
+        alerts.routesInProgress > 0 && {
+          key: "routesInProgress",
+          icon: Navigation,
+          color: "text-blue-600 dark:text-blue-400",
+          bg: "bg-blue-50 dark:bg-blue-900/20",
+          label: `${alerts.routesInProgress} rota${alerts.routesInProgress > 1 ? "s" : ""} em andamento`,
+          href: "/routes",
+        },
+        alerts.routesAvailable > 0 && {
+          key: "routesAvailable",
+          icon: Truck,
+          color: "text-violet-600 dark:text-violet-400",
+          bg: "bg-violet-50 dark:bg-violet-900/20",
+          label: `${alerts.routesAvailable} rota${alerts.routesAvailable > 1 ? "s" : ""} disponível${alerts.routesAvailable > 1 ? "is" : ""} aguardando motoboy`,
+          href: "/routes",
+        },
+        alerts.readyNotActioned > 0 && {
+          key: "readyNotActioned",
+          icon: Clock,
+          color: "text-amber-600 dark:text-amber-400",
+          bg: "bg-amber-50 dark:bg-amber-900/20",
+          label: `${alerts.readyNotActioned} pedido${alerts.readyNotActioned > 1 ? "s" : ""} pronto${alerts.readyNotActioned > 1 ? "s" : ""} há mais de 20 min sem ação`,
+          href: "/orders",
+        },
+        alerts.cashRegisterOpenHours >= 12 && {
+          key: "cashOpenHours",
+          icon: Clock,
+          color: "text-gray-600 dark:text-gray-400",
+          bg: "bg-gray-50 dark:bg-gray-900/20",
+          label: `Caixa aberto há ${alerts.cashRegisterOpenHours.toFixed(1)}h`,
+          href: "/cash",
+        },
+      ].filter(Boolean)
+    : [];
 
   return (
     <Layout>
@@ -79,6 +156,34 @@ export default function Dashboard() {
             <Link href="/orders/new">+ Novo Pedido</Link>
           </Button>
         </div>
+
+        {/* Operational Alerts */}
+        {activeAlerts.length > 0 && (
+          <Card className="border-amber-300 dark:border-amber-700">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                <Bell className="w-4 h-4" />
+                Alertas operacionais
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {activeAlerts.map((alert) => {
+                  if (!alert) return null;
+                  const Icon = alert.icon;
+                  return (
+                    <Link key={alert.key} href={alert.href}>
+                      <div className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:opacity-80 transition-opacity ${alert.bg}`}>
+                        <Icon className={`w-4 h-4 shrink-0 ${alert.color}`} />
+                        <span className={`text-sm font-medium ${alert.color}`}>{alert.label}</span>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
