@@ -8,6 +8,7 @@
 
 export * from './adjustRouteTimeInput';
 export * from './assignRouteInput';
+export * from './awaitingSettlementOrder';
 export * from './cashMovement';
 export * from './cashMovementInput';
 export * from './cashMovementInputType';
@@ -62,6 +63,8 @@ export * from './product';
 export * from './productInput';
 export * from './productUpdate';
 export * from './receipt';
+export * from './settleDeliveryBody';
+export * from './settleDeliveryBodyMethod';
 export * from './storeSettings';
 export * from './storeSettingsInput';
 export * from './table';

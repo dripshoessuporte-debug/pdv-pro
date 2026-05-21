@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, sql, gte } from "drizzle-orm";
 import { db, ordersTable, tablesTable, kitchenTicketsTable, orderItemsTable, productsTable, categoriesTable, customersTable, paymentsTable } from "@workspace/db";
+
 import {
   GetDashboardSummaryResponse,
   GetRecentOrdersResponse,
@@ -14,9 +15,9 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   today.setHours(0, 0, 0, 0);
 
   const [revenueToday] = await db
-    .select({ total: sql<string>`coalesce(sum(${ordersTable.totalAmount}), 0)` })
-    .from(ordersTable)
-    .where(and(gte(ordersTable.createdAt, today), eq(ordersTable.status, "closed")));
+    .select({ total: sql<string>`coalesce(sum(${paymentsTable.amount}), 0)` })
+    .from(paymentsTable)
+    .where(and(gte(paymentsTable.createdAt, today), eq(paymentsTable.status, "approved")));
 
   const [countToday] = await db
     .select({ count: sql<number>`count(*)` })
@@ -26,7 +27,12 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   const [openOrders] = await db
     .select({ count: sql<number>`count(*)` })
     .from(ordersTable)
-    .where(sql`${ordersTable.status} in ('open', 'preparing', 'ready')`);
+    .where(sql`${ordersTable.status} in ('open', 'preparing', 'ready') OR ${ordersTable.deliveryStatus} = 'awaiting_settlement'`);
+
+  const [awaitingSettlement] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(ordersTable)
+    .where(eq(ordersTable.deliveryStatus, "awaiting_settlement"));
 
   const [occupiedTables] = await db
     .select({ count: sql<number>`count(*)` })
@@ -50,6 +56,7 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
     occupiedTables: Number(occupiedTables?.count ?? 0),
     availableTables: Number(availableTables?.count ?? 0),
     pendingKitchenTickets: Number(pendingTickets?.count ?? 0),
+    awaitingSettlement: Number(awaitingSettlement?.count ?? 0),
   };
 
   res.json(GetDashboardSummaryResponse.parse(summary));

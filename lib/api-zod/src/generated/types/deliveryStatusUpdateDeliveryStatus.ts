@@ -15,4 +15,5 @@ export const DeliveryStatusUpdateDeliveryStatus = {
   ready: 'ready',
   out_for_delivery: 'out_for_delivery',
   delivered: 'delivered',
+  awaiting_settlement: 'awaiting_settlement',
 } as const;

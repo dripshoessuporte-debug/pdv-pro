@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, sql } from "drizzle-orm";
-import { db, cashRegistersTable, cashMovementsTable } from "@workspace/db";
+import { db, cashRegistersTable, cashMovementsTable, ordersTable } from "@workspace/db";
 import {
   OpenCashRegisterBody,
   CloseCashRegisterBody,
@@ -146,6 +146,19 @@ router.post("/cash/:id/close", async (req, res): Promise<void> => {
   }
   if (register.status === "closed") {
     res.status(409).json({ error: "Cash register is already closed" });
+    return;
+  }
+
+  const [pending] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(ordersTable)
+    .where(eq(ordersTable.deliveryStatus, "awaiting_settlement"));
+
+  if (Number(pending?.count ?? 0) > 0) {
+    res.status(409).json({
+      error: `Existem ${pending?.count} entrega(s) pendente(s) de baixa financeira. Registre os recebimentos antes de fechar o caixa.`,
+      pendingSettlements: Number(pending?.count ?? 0),
+    });
     return;
   }
 

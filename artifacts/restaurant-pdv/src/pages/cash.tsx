@@ -6,9 +6,13 @@ import {
   useCloseCashRegister,
   useAddCashMovement,
   useListCashRegisters,
+  useListAwaitingSettlement,
+  useSettleDeliveryOrder,
   getGetCurrentCashRegisterQueryKey,
   getListCashRegistersQueryKey,
+  getListAwaitingSettlementQueryKey,
   type CashRegisterDetail,
+  type AwaitingSettlementOrder,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -44,6 +48,7 @@ import {
   ArrowUpCircle,
   Plus,
   Clock,
+  Truck,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -264,8 +269,9 @@ function OpenRegisterView({
         setCloseOpen(false);
         onSuccess();
       },
-      onError: () => {
-        toast({ title: "Erro ao fechar caixa", variant: "destructive" });
+      onError: (err) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Erro ao fechar caixa";
+        toast({ title: msg, variant: "destructive" });
       },
     },
   });
@@ -426,6 +432,9 @@ function OpenRegisterView({
         </CardContent>
       </Card>
 
+      {/* Pending Delivery Settlements */}
+      <PendingSettlementsPanel />
+
       {/* Movements List */}
       <Card>
         <CardHeader className="pb-3">
@@ -469,6 +478,220 @@ function OpenRegisterView({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function PendingSettlementsPanel() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [settleOrderId, setSettleOrderId] = useState<number | null>(null);
+  const [settleMethod, setSettleMethod] = useState("cash");
+  const [settleAmountReceived, setSettleAmountReceived] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const { data: pending, isLoading } = useListAwaitingSettlement({
+    query: { queryKey: getListAwaitingSettlementQueryKey(), refetchInterval: 15_000 },
+  });
+
+  const settle = useSettleDeliveryOrder({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "✅ Recebimento registrado com sucesso!" });
+        setModalOpen(false);
+        setSettleOrderId(null);
+        setSettleAmountReceived("");
+        queryClient.invalidateQueries({ queryKey: getListAwaitingSettlementQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetCurrentCashRegisterQueryKey() });
+      },
+      onError: (err) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Erro ao registrar recebimento";
+        toast({ title: msg, variant: "destructive" });
+      },
+    },
+  });
+
+  if (isLoading || !pending || pending.length === 0) return null;
+
+  const selectedOrder: AwaitingSettlementOrder | undefined = pending.find((o) => o.id === settleOrderId);
+  const receivedNum = parseFloat(settleAmountReceived) || 0;
+  const changePreview =
+    selectedOrder && settleMethod === "cash" && receivedNum > selectedOrder.totalAmount
+      ? receivedNum - selectedOrder.totalAmount
+      : null;
+
+  function openModal(order: AwaitingSettlementOrder) {
+    setSettleOrderId(order.id);
+    const autoMethod =
+      order.deliveryPaymentMethod === "dinheiro" ? "cash"
+      : order.deliveryPaymentMethod === "pix" ? "pix"
+      : order.deliveryPaymentMethod === "cartao" ? "credit_card"
+      : "cash";
+    setSettleMethod(autoMethod);
+    setSettleAmountReceived(order.changeFor ? String(order.changeFor) : "");
+    setModalOpen(true);
+  }
+
+  function handleSettle() {
+    if (!settleOrderId) return;
+    settle.mutate({
+      id: settleOrderId,
+      data: {
+        method: settleMethod as "cash" | "pix" | "credit_card" | "debit_card" | "voucher",
+        ...(settleMethod === "cash" && settleAmountReceived
+          ? { amountReceived: receivedNum }
+          : {}),
+      },
+    });
+  }
+
+  return (
+    <Card className="border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/10">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base text-orange-800 dark:text-orange-300 flex items-center gap-2">
+          <Truck className="w-4 h-4" />
+          Entregas aguardando baixa financeira ({pending.length})
+        </CardTitle>
+        <p className="text-xs text-orange-700 dark:text-orange-400">
+          Registre os recebimentos antes de fechar o caixa
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          {pending.map((order) => (
+            <div
+              key={order.id}
+              className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-sm">Pedido #{order.id}</span>
+                  {order.customerName && (
+                    <span className="text-sm text-muted-foreground">· {order.customerName}</span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {order.deliveryNeighborhood ?? order.deliveryAddress ?? "Sem endereço"}
+                  {order.courierName && ` · Motoboy: ${order.courierName}`}
+                </p>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className="font-bold text-sm text-green-700 dark:text-green-400">
+                    {fmt(order.totalAmount)}
+                  </span>
+                  {order.deliveryPaymentMethod && (
+                    <span className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                      {order.deliveryPaymentMethod === "dinheiro"
+                        ? "Dinheiro"
+                        : order.deliveryPaymentMethod === "pix"
+                        ? "PIX"
+                        : "Cartão"}
+                    </span>
+                  )}
+                  {order.needsChange && order.expectedChange != null && order.expectedChange > 0 && (
+                    <span className="text-xs text-amber-700 dark:text-amber-400">
+                      Troco: {fmt(order.expectedChange)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                className="ml-3 shrink-0"
+                onClick={() => openModal(order)}
+                data-testid={`button-settle-${order.id}`}
+              >
+                Receber
+              </Button>
+            </div>
+          ))}
+        </div>
+
+        <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Registrar Recebimento</DialogTitle>
+            </DialogHeader>
+            {selectedOrder && (
+              <div className="space-y-4">
+                <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span>Pedido</span>
+                    <span className="font-semibold">#{selectedOrder.id}</span>
+                  </div>
+                  {selectedOrder.customerName && (
+                    <div className="flex justify-between">
+                      <span>Cliente</span>
+                      <span>{selectedOrder.customerName}</span>
+                    </div>
+                  )}
+                  {selectedOrder.deliveryNeighborhood && (
+                    <div className="flex justify-between">
+                      <span>Bairro</span>
+                      <span>{selectedOrder.deliveryNeighborhood}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold border-t pt-2">
+                    <span>Total a receber</span>
+                    <span className="text-green-700 dark:text-green-400">
+                      {fmt(selectedOrder.totalAmount)}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Forma de pagamento recebida</Label>
+                  <Select value={settleMethod} onValueChange={setSettleMethod}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Dinheiro</SelectItem>
+                      <SelectItem value="pix">PIX</SelectItem>
+                      <SelectItem value="credit_card">Crédito</SelectItem>
+                      <SelectItem value="debit_card">Débito</SelectItem>
+                      <SelectItem value="voucher">Voucher</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {settleMethod === "cash" && (
+                  <div>
+                    <Label htmlFor="settle-amount">Valor recebido (R$) *</Label>
+                    <Input
+                      id="settle-amount"
+                      type="number"
+                      step="0.01"
+                      min={selectedOrder.totalAmount}
+                      placeholder={selectedOrder.totalAmount.toFixed(2)}
+                      value={settleAmountReceived}
+                      onChange={(e) => setSettleAmountReceived(e.target.value)}
+                      data-testid="input-settle-amount"
+                    />
+                    {changePreview !== null && changePreview > 0 && (
+                      <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                        Troco a devolver: {fmt(changePreview)}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <Button
+                  className="w-full"
+                  onClick={handleSettle}
+                  disabled={
+                    settle.isPending ||
+                    (settleMethod === "cash" &&
+                      (!settleAmountReceived || receivedNum < selectedOrder.totalAmount))
+                  }
+                  data-testid="button-confirm-settle"
+                >
+                  {settle.isPending ? "Registrando..." : "Confirmar Recebimento"}
+                </Button>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </CardContent>
+    </Card>
   );
 }
 

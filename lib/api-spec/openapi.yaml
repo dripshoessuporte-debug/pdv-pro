@@ -866,6 +866,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/StoreSettings"
 
+  /delivery/orders/awaiting-settlement:
+    get:
+      operationId: listAwaitingSettlement
+      tags: [delivery]
+      summary: List delivery orders awaiting payment settlement
+      responses:
+        "200":
+          description: List of orders awaiting financial settlement
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AwaitingSettlementOrder"
+
+  /delivery/orders/{id}/settle:
+    post:
+      operationId: settleDeliveryOrder
+      tags: [delivery]
+      summary: Register payment receipt for a delivery order paid on delivery
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettleDeliveryBody"
+      responses:
+        "201":
+          description: Payment registered and order closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+        "409":
+          description: Duplicate payment or no open cash register
+
   /delivery/routes/{id}/adjust-time:
     post:
       operationId: adjustRouteTime
@@ -1125,7 +1167,7 @@ components:
           type: ["string", "null"]
         deliveryStatus:
           type: ["string", "null"]
-          enum: [pending, preparing, ready, out_for_delivery, delivered, null]
+          enum: [pending, preparing, ready, out_for_delivery, delivered, awaiting_settlement, null]
         paymentTiming:
           type: string
           enum: [now, on_delivery]
@@ -1136,6 +1178,10 @@ components:
         changeFor:
           type: ["number", "null"]
         deliveryPaymentNotes:
+          type: ["string", "null"]
+        paidAt:
+          type: ["string", "null"]
+        closedAt:
           type: ["string", "null"]
         createdAt:
           type: string
@@ -1206,7 +1252,7 @@ components:
       properties:
         deliveryStatus:
           type: string
-          enum: [pending, preparing, ready, out_for_delivery, delivered]
+          enum: [pending, preparing, ready, out_for_delivery, delivered, awaiting_settlement]
 
     OrderItem:
       type: object
@@ -1320,7 +1366,7 @@ components:
     # Dashboard
     DashboardSummary:
       type: object
-      required: [totalOrdersToday, totalRevenueToday, openOrders, occupiedTables, availableTables, pendingKitchenTickets]
+      required: [totalOrdersToday, totalRevenueToday, openOrders, occupiedTables, availableTables, pendingKitchenTickets, awaitingSettlement]
       properties:
         totalOrdersToday:
           type: integer
@@ -1333,6 +1379,8 @@ components:
         availableTables:
           type: integer
         pendingKitchenTickets:
+          type: integer
+        awaitingSettlement:
           type: integer
 
     CategorySales:
@@ -1609,3 +1657,57 @@ components:
       properties:
         minutesDelta:
           type: integer
+
+    AwaitingSettlementOrder:
+      type: object
+      required: [id, totalAmount, deliveryFee, deliveryStatus, paymentTiming, needsChange, createdAt]
+      properties:
+        id:
+          type: integer
+        customerName:
+          type: ["string", "null"]
+        customerPhone:
+          type: ["string", "null"]
+        deliveryAddress:
+          type: ["string", "null"]
+        deliveryNeighborhood:
+          type: ["string", "null"]
+        deliveryCep:
+          type: ["string", "null"]
+        totalAmount:
+          type: number
+        deliveryFee:
+          type: number
+        deliveryStatus:
+          type: ["string", "null"]
+        paymentTiming:
+          type: string
+        deliveryPaymentMethod:
+          type: ["string", "null"]
+        needsChange:
+          type: boolean
+        changeFor:
+          type: ["number", "null"]
+        expectedChange:
+          type: ["number", "null"]
+        deliveryPaymentNotes:
+          type: ["string", "null"]
+        routeName:
+          type: ["string", "null"]
+        courierName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    SettleDeliveryBody:
+      type: object
+      required: [method]
+      properties:
+        method:
+          type: string
+          enum: [cash, pix, credit_card, debit_card, voucher]
+        amountReceived:
+          type: number
+          minimum: 0
+        notes:
+          type: string

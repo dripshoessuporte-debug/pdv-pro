@@ -13,4 +13,5 @@ export interface DashboardSummary {
   occupiedTables: number;
   availableTables: number;
   pendingKitchenTickets: number;
+  awaitingSettlement: number;
 }

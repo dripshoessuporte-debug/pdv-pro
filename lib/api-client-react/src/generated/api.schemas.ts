@@ -176,6 +176,7 @@ export const OrderDeliveryStatus = {
   ready: 'ready',
   out_for_delivery: 'out_for_delivery',
   delivered: 'delivered',
+  awaiting_settlement: 'awaiting_settlement',
 } as const;
 
 export type OrderPaymentTiming = typeof OrderPaymentTiming[keyof typeof OrderPaymentTiming];
@@ -237,6 +238,10 @@ export interface Order {
   changeFor?: number | null;
   /** @nullable */
   deliveryPaymentNotes?: string | null;
+  /** @nullable */
+  paidAt?: string | null;
+  /** @nullable */
+  closedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
   items: OrderItem[];
@@ -307,6 +312,7 @@ export const DeliveryStatusUpdateDeliveryStatus = {
   ready: 'ready',
   out_for_delivery: 'out_for_delivery',
   delivered: 'delivered',
+  awaiting_settlement: 'awaiting_settlement',
 } as const;
 
 export interface DeliveryStatusUpdate {
@@ -415,6 +421,7 @@ export interface DashboardSummary {
   occupiedTables: number;
   availableTables: number;
   pendingKitchenTickets: number;
+  awaitingSettlement: number;
 }
 
 export interface CategorySales {
@@ -612,6 +619,57 @@ export interface StoreSettingsInput {
 
 export interface AdjustRouteTimeInput {
   minutesDelta: number;
+}
+
+export interface AwaitingSettlementOrder {
+  id: number;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  customerPhone?: string | null;
+  /** @nullable */
+  deliveryAddress?: string | null;
+  /** @nullable */
+  deliveryNeighborhood?: string | null;
+  /** @nullable */
+  deliveryCep?: string | null;
+  totalAmount: number;
+  deliveryFee: number;
+  /** @nullable */
+  deliveryStatus: string | null;
+  paymentTiming: string;
+  /** @nullable */
+  deliveryPaymentMethod?: string | null;
+  needsChange: boolean;
+  /** @nullable */
+  changeFor?: number | null;
+  /** @nullable */
+  expectedChange?: number | null;
+  /** @nullable */
+  deliveryPaymentNotes?: string | null;
+  /** @nullable */
+  routeName?: string | null;
+  /** @nullable */
+  courierName?: string | null;
+  createdAt: string;
+}
+
+export type SettleDeliveryBodyMethod = typeof SettleDeliveryBodyMethod[keyof typeof SettleDeliveryBodyMethod];
+
+
+export const SettleDeliveryBodyMethod = {
+  cash: 'cash',
+  pix: 'pix',
+  credit_card: 'credit_card',
+  debit_card: 'debit_card',
+  voucher: 'voucher',
+} as const;
+
+export interface SettleDeliveryBody {
+  method: SettleDeliveryBodyMethod;
+  /** @minimum 0 */
+  amountReceived?: number;
+  notes?: string;
 }
 
 export type ListCustomersParams = {

@@ -50,6 +50,10 @@ export interface Order {
   changeFor?: number | null;
   /** @nullable */
   deliveryPaymentNotes?: string | null;
+  /** @nullable */
+  paidAt?: string | null;
+  /** @nullable */
+  closedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
   items: OrderItem[];

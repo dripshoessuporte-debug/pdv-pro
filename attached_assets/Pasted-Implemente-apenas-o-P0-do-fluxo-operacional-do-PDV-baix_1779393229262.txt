@@ -1,0 +1,327 @@
+Implemente apenas o P0 do fluxo operacional do PDV: baixa financeira de delivery com pagamento na entrega e correção do faturamento.
+
+Não refaça o projeto do zero.
+Não mexa no visual.
+Não altere cores.
+Não implemente login, multi-tenant, nota fiscal, reset de base ou notificações persistentes agora.
+Preserve tudo que já funciona:
+- pedidos
+- cozinha
+- caixa
+- pagamentos normais
+- rotas
+- delivery
+- cardápio
+- dashboard
+- configurações
+
+OBJETIVO:
+Corrigir o buraco crítico do sistema: pedidos delivery com paymentTiming = "on_delivery" não podem ser finalizados/fechados sem antes dar baixa financeira no caixa.
+
+Hoje o problema é:
+- motoboy conclui a rota
+- pedido é considerado entregue/fechado
+- mas nenhum payment é criado
+- nenhum cash_movement é criado
+- o caixa fecha errado
+- o dashboard pode contar errado
+
+Quero corrigir isso com o fluxo correto.
+
+==================================================
+PARTE 1 — ADICIONAR ESTADO "AGUARDANDO BAIXA"
+==================================================
+
+Adicionar suporte ao status:
+
+deliveryStatus = "awaiting_settlement"
+
+Esse status significa:
+- entrega foi concluída fisicamente
+- o motoboy voltou ou precisa prestar conta
+- o pagamento foi combinado para ser feito na entrega
+- ainda falta registrar o recebimento no caixa
+
+Não finalizar financeiramente o pedido nesse estado.
+
+==================================================
+PARTE 2 — AJUSTAR CONCLUSÃO DE ROTA
+==================================================
+
+Alterar o endpoint/ação de concluir rota.
+
+Quando uma rota for concluída:
+
+Para cada pedido da rota:
+
+1. Se paymentTiming = "now":
+   - significa que o pedido já foi pago antes
+   - pode marcar:
+     - deliveryStatus = delivered
+     - status = closed
+     - closedAt = now, se existir
+
+2. Se paymentTiming = "on_delivery":
+   - NÃO criar payment automaticamente
+   - NÃO criar cash_movement automaticamente
+   - NÃO marcar como closed ainda
+   - marcar:
+     - deliveryStatus = awaiting_settlement
+     - status deve permanecer ativo ou usar status apropriado para aguardando baixa
+   - esse pedido deve aparecer no Caixa como pendente de baixa
+
+Regra importante:
+Pedido pago na entrega só fecha depois da baixa financeira no caixa.
+
+==================================================
+PARTE 3 — CORRIGIR ENTREGA INDIVIDUAL
+==================================================
+
+Verificar também endpoint/ação tipo:
+
+POST /delivery/orders/:id/delivered
+
+ou equivalente.
+
+Se o pedido tiver paymentTiming = "on_delivery":
+- não pode fechar o pedido direto
+- deve marcar deliveryStatus = awaiting_settlement
+- deve aguardar baixa financeira
+
+Se paymentTiming = "now":
+- pode marcar delivered/closed normalmente, pois já foi pago
+
+==================================================
+PARTE 4 — CRIAR LISTA DE ENTREGAS PENDENTES DE BAIXA
+==================================================
+
+Criar endpoint para listar entregas pendentes:
+
+GET /delivery/orders/awaiting-settlement
+
+Deve retornar pedidos com:
+- type = delivery
+- deliveryStatus = awaiting_settlement
+- paymentTiming = on_delivery
+- sem payment registrado
+- não cancelados
+
+Retornar dados:
+- orderId
+- número do pedido
+- cliente
+- telefone
+- endereço
+- bairro
+- motoboy/rota, se houver
+- forma prevista de pagamento
+- valor total
+- troco para quanto, se houver
+- troco necessário
+- data/hora da entrega
+- observações de pagamento
+
+==================================================
+PARTE 5 — CRIAR ENDPOINT DE BAIXA FINANCEIRA
+==================================================
+
+Criar endpoint:
+
+POST /delivery/orders/:id/settle
+
+Esse endpoint registra a baixa financeira do pedido entregue.
+
+Payload sugerido:
+{
+  "method": "cash" | "pix" | "credit" | "debit" | "voucher",
+  "amountReceived": number,
+  "notes": string optional
+}
+
+Regras:
+
+1. Precisa existir caixa aberto.
+Se não houver caixa aberto:
+- retornar erro claro:
+"Abra o caixa antes de registrar recebimentos de entrega."
+
+2. Evitar duplicidade.
+Se o pedido já tiver payment registrado:
+- retornar 409:
+"Pagamento deste pedido já foi registrado."
+
+3. Validar status.
+Só permitir baixa se:
+- deliveryStatus = awaiting_settlement
+- paymentTiming = on_delivery
+
+4. Se método for dinheiro:
+- validar amountReceived >= total do pedido
+- calcular troco real
+
+5. Criar payment.
+6. Criar cash_movement do tipo payment no caixa aberto.
+7. Atualizar pedido:
+- deliveryStatus = delivered
+- status = closed
+- paidAt = now, se o campo existir
+- closedAt = now, se o campo existir
+
+8. Fazer tudo dentro de transação.
+Se qualquer etapa falhar, nada deve ficar salvo pela metade.
+
+==================================================
+PARTE 6 — ADICIONAR PAINEL NO CAIXA
+==================================================
+
+Na tela Caixa, adicionar um painel chamado:
+
+"Entregas pendentes de baixa"
+
+Esse painel deve aparecer quando existirem pedidos aguardando baixa.
+
+Mostrar para cada pedido:
+- Pedido #ID
+- Cliente
+- Bairro/endereço resumido
+- Motoboy/rota, se disponível
+- Total a receber
+- Forma prevista
+- Troco necessário, se houver
+- Botão "Registrar recebimento"
+
+Ao clicar em "Registrar recebimento":
+- abrir modal/formulário
+- mostrar valor esperado
+- permitir selecionar forma real:
+  - dinheiro
+  - pix
+  - crédito
+  - débito
+  - voucher
+- se dinheiro:
+  - informar valor recebido
+  - calcular troco
+- confirmar baixa
+
+Depois de confirmar:
+- pedido some da lista de pendências
+- entra no caixa
+- entra no dashboard como faturamento do dia do pagamento
+
+==================================================
+PARTE 7 — BLOQUEAR FECHAMENTO DE CAIXA COM PENDÊNCIAS
+==================================================
+
+Antes de fechar caixa:
+
+Verificar se existem entregas pendentes de baixa.
+
+Se existirem:
+- bloquear fechamento
+- mostrar mensagem clara:
+"Existem entregas pendentes de baixa. Registre os recebimentos antes de fechar o caixa."
+
+Não permitir fechar caixa enquanto houver:
+- deliveryStatus = awaiting_settlement
+- paymentTiming = on_delivery
+- sem payment registrado
+
+==================================================
+PARTE 8 — CORRIGIR DASHBOARD
+==================================================
+
+Corrigir cálculo do faturamento.
+
+Faturamento Hoje deve ser baseado em:
+- payments criados/aprovados hoje
+
+E não apenas em:
+- orders.status = closed
+
+Regra:
+- faturamento entra no dia em que o pagamento foi registrado
+- se entrega aconteceu ontem mas a baixa foi hoje, o faturamento entra hoje
+- se pedido foi fechado mas não tem payment, não conta como faturamento
+
+Adicionar métrica, se couber:
+
+"Entregas pendentes de baixa"
+
+Contar pedidos:
+- deliveryStatus = awaiting_settlement
+- paymentTiming = on_delivery
+- sem payment
+
+==================================================
+PARTE 9 — TIMESTAMPS OPCIONAIS, MAS RECOMENDADOS
+==================================================
+
+Se for simples e seguro, adicionar em orders:
+
+- paidAt
+- closedAt
+- readyAt
+- cancelledAt
+
+Obrigatório para este P0:
+- paidAt
+- closedAt
+
+Se isso exigir muita mudança, pelo menos usar payments.createdAt para dashboard e relatórios.
+
+Não quebrar o sistema por causa disso.
+
+==================================================
+PARTE 10 — STATUS VISUAL
+==================================================
+
+Na tela Pedidos e Detalhe do Pedido:
+
+Quando deliveryStatus = awaiting_settlement, mostrar status claro:
+
+"Aguardando baixa financeira"
+
+ou
+
+"Entregue — aguardando recebimento"
+
+Esse pedido não deve parecer finalizado.
+
+==================================================
+PARTE 11 — TESTES OBRIGATÓRIOS
+==================================================
+
+Teste:
+
+1. Criar pedido delivery com paymentTiming = on_delivery e método dinheiro.
+2. Enviar para cozinha.
+3. Gerar rota.
+4. Assumir rota.
+5. Concluir rota.
+6. Confirmar que o pedido NÃO fica closed diretamente.
+7. Confirmar que fica como awaiting_settlement.
+8. Confirmar que aparece em Caixa > Entregas pendentes de baixa.
+9. Registrar recebimento no caixa.
+10. Confirmar que cria payment.
+11. Confirmar que cria cash_movement.
+12. Confirmar que pedido muda para delivered/closed.
+13. Confirmar que some das pendências.
+14. Confirmar que dashboard soma o valor no faturamento de hoje.
+15. Tentar registrar baixa de novo e confirmar erro 409.
+16. Tentar fechar caixa com entrega pendente e confirmar bloqueio.
+17. Testar delivery paymentTiming = now e confirmar que continua funcionando.
+18. Testar balcão/mesa/takeaway e confirmar que não quebrou.
+19. Rodar typecheck sem erros.
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Tabelas/modelos alterados.
+3. Endpoints criados ou alterados.
+4. Como ficou o novo fluxo de entrega com pagamento na entrega.
+5. Como funciona o painel de baixa no caixa.
+6. Como o dashboard calcula faturamento agora.
+7. Como o fechamento de caixa bloqueia pendências.
+8. Como testar passo a passo.
+9. Limitações restantes.

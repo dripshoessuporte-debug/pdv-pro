@@ -36,6 +36,7 @@ const DELIVERY_STATUS_LABELS: Record<string, string> = {
   ready: "Pronto p/ entrega",
   out_for_delivery: "Saiu para entrega",
   delivered: "Entregue",
+  awaiting_settlement: "Aguardando baixa",
 };
 
 const TYPE_LABELS: Record<string, string> = {

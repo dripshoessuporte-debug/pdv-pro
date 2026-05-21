@@ -21,6 +21,7 @@ import type {
 
 import type {
   AdjustRouteTimeInput,
+  AwaitingSettlementOrder,
   CashMovement,
   CashMovementInput,
   CashRegisterClose,
@@ -52,6 +53,7 @@ import type {
   ProductInput,
   ProductUpdate,
   Receipt,
+  SettleDeliveryBody,
   StoreSettings,
   StoreSettingsInput,
   Table,
@@ -3331,6 +3333,155 @@ export const useUpdateStoreSettings = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateStoreSettingsMutationOptions(options));
+    }
+
+export const getListAwaitingSettlementUrl = () => {
+
+
+
+
+  return `/api/delivery/orders/awaiting-settlement`
+}
+
+/**
+ * @summary List delivery orders awaiting payment settlement
+ */
+export const listAwaitingSettlement = async ( options?: RequestInit): Promise<AwaitingSettlementOrder[]> => {
+
+  return customFetch<AwaitingSettlementOrder[]>(getListAwaitingSettlementUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAwaitingSettlementQueryKey = () => {
+    return [
+    `/api/delivery/orders/awaiting-settlement`
+    ] as const;
+    }
+
+
+export const getListAwaitingSettlementQueryOptions = <TData = Awaited<ReturnType<typeof listAwaitingSettlement>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAwaitingSettlement>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAwaitingSettlementQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAwaitingSettlement>>> = ({ signal }) => listAwaitingSettlement({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAwaitingSettlement>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAwaitingSettlementQueryResult = NonNullable<Awaited<ReturnType<typeof listAwaitingSettlement>>>
+export type ListAwaitingSettlementQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List delivery orders awaiting payment settlement
+ */
+
+export function useListAwaitingSettlement<TData = Awaited<ReturnType<typeof listAwaitingSettlement>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAwaitingSettlement>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAwaitingSettlementQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSettleDeliveryOrderUrl = (id: number,) => {
+
+
+
+
+  return `/api/delivery/orders/${id}/settle`
+}
+
+/**
+ * @summary Register payment receipt for a delivery order paid on delivery
+ */
+export const settleDeliveryOrder = async (id: number,
+    settleDeliveryBody: SettleDeliveryBody, options?: RequestInit): Promise<Payment> => {
+
+  return customFetch<Payment>(getSettleDeliveryOrderUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      settleDeliveryBody,)
+  }
+);}
+
+
+
+
+export const getSettleDeliveryOrderMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof settleDeliveryOrder>>, TError,{id: number;data: BodyType<SettleDeliveryBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof settleDeliveryOrder>>, TError,{id: number;data: BodyType<SettleDeliveryBody>}, TContext> => {
+
+const mutationKey = ['settleDeliveryOrder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof settleDeliveryOrder>>, {id: number;data: BodyType<SettleDeliveryBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  settleDeliveryOrder(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SettleDeliveryOrderMutationResult = NonNullable<Awaited<ReturnType<typeof settleDeliveryOrder>>>
+    export type SettleDeliveryOrderMutationBody = BodyType<SettleDeliveryBody>
+    export type SettleDeliveryOrderMutationError = ErrorType<void>
+
+    /**
+ * @summary Register payment receipt for a delivery order paid on delivery
+ */
+export const useSettleDeliveryOrder = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof settleDeliveryOrder>>, TError,{id: number;data: BodyType<SettleDeliveryBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof settleDeliveryOrder>>,
+        TError,
+        {id: number;data: BodyType<SettleDeliveryBody>},
+        TContext
+      > => {
+      return useMutation(getSettleDeliveryOrderMutationOptions(options));
     }
 
 export const getAdjustRouteTimeUrl = (id: number,) => {

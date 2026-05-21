@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, inArray, notInArray, sql, or, isNull } from "drizzle-orm";
-import { db, deliveryRoutesTable, deliveryRouteOrdersTable, ordersTable, customersTable, couriersTable, orderItemsTable, productsTable } from "@workspace/db";
+import { db, deliveryRoutesTable, deliveryRouteOrdersTable, ordersTable, customersTable, couriersTable, orderItemsTable, productsTable, paymentsTable, cashRegistersTable, cashMovementsTable } from "@workspace/db";
 import { getOrCreateSettings } from "./settings";
 
 const router: IRouter = Router();
@@ -767,14 +767,36 @@ router.post("/delivery/routes/:id/complete", async (req, res): Promise<void> => 
     .where(eq(deliveryRoutesTable.id, routeId));
 
   const routeOrders = await db
-    .select({ orderId: deliveryRouteOrdersTable.orderId })
+    .select({
+      orderId: deliveryRouteOrdersTable.orderId,
+      paymentTiming: ordersTable.paymentTiming,
+    })
     .from(deliveryRouteOrdersTable)
+    .leftJoin(ordersTable, eq(deliveryRouteOrdersTable.orderId, ordersTable.id))
     .where(eq(deliveryRouteOrdersTable.routeId, routeId));
 
-  if (routeOrders.length > 0) {
+  const now = new Date();
+
+  // Orders already paid (paymentTiming=now): close them out immediately
+  const nowOrderIds = routeOrders
+    .filter((o) => o.paymentTiming !== "on_delivery")
+    .map((o) => o.orderId);
+
+  // Orders to be paid on delivery: move to awaiting_settlement — do NOT close
+  const onDeliveryOrderIds = routeOrders
+    .filter((o) => o.paymentTiming === "on_delivery")
+    .map((o) => o.orderId);
+
+  if (nowOrderIds.length > 0) {
     await db.update(ordersTable)
-      .set({ deliveryStatus: "delivered" })
-      .where(inArray(ordersTable.id, routeOrders.map((ro) => ro.orderId)));
+      .set({ deliveryStatus: "delivered", status: "closed", closedAt: now })
+      .where(inArray(ordersTable.id, nowOrderIds));
+  }
+
+  if (onDeliveryOrderIds.length > 0) {
+    await db.update(ordersTable)
+      .set({ deliveryStatus: "awaiting_settlement" })
+      .where(inArray(ordersTable.id, onDeliveryOrderIds));
   }
 
   res.json(await getRouteWithOrders(routeId));
@@ -924,8 +946,241 @@ router.post("/delivery/routes/:id/move-order", async (req, res): Promise<void> =
   res.json({ sourceRoute, targetRoute });
 });
 
+// ─── GET /delivery/orders/awaiting-settlement ─────────────────────────────────
+// Lista pedidos entregues aguardando baixa financeira (on_delivery, sem payment).
+
+router.get("/delivery/orders/awaiting-settlement", async (_req, res): Promise<void> => {
+  const orders = await db
+    .select({
+      id: ordersTable.id,
+      customerName: ordersTable.customerName,
+      customerPhone: ordersTable.customerPhone,
+      deliveryAddress: ordersTable.deliveryAddress,
+      deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+      deliveryCep: ordersTable.deliveryCep,
+      totalAmount: ordersTable.totalAmount,
+      deliveryFee: ordersTable.deliveryFee,
+      deliveryStatus: ordersTable.deliveryStatus,
+      paymentTiming: ordersTable.paymentTiming,
+      deliveryPaymentMethod: ordersTable.deliveryPaymentMethod,
+      needsChange: ordersTable.needsChange,
+      changeFor: ordersTable.changeFor,
+      deliveryPaymentNotes: ordersTable.deliveryPaymentNotes,
+      createdAt: ordersTable.createdAt,
+    })
+    .from(ordersTable)
+    .where(
+      and(
+        eq(ordersTable.type, "delivery"),
+        eq(ordersTable.deliveryStatus, "awaiting_settlement"),
+        eq(ordersTable.paymentTiming, "on_delivery")
+      )
+    )
+    .orderBy(sql`${ordersTable.createdAt} ASC`);
+
+  // Fetch route/courier info for each order
+  const orderIds = orders.map((o) => o.id);
+  const routeAssignments = orderIds.length > 0
+    ? await db
+        .select({
+          orderId: deliveryRouteOrdersTable.orderId,
+          routeName: deliveryRoutesTable.name,
+          courierName: deliveryRoutesTable.courierName,
+        })
+        .from(deliveryRouteOrdersTable)
+        .leftJoin(deliveryRoutesTable, eq(deliveryRouteOrdersTable.routeId, deliveryRoutesTable.id))
+        .where(inArray(deliveryRouteOrdersTable.orderId, orderIds))
+    : [];
+
+  const routeMap = new Map(routeAssignments.map((r) => [r.orderId, r]));
+
+  const result = orders.map((o) => {
+    const route = routeMap.get(o.id);
+    const totalAmount = parseFloat(String(o.totalAmount ?? "0"));
+    const changeFor = o.changeFor ? parseFloat(String(o.changeFor)) : null;
+    return {
+      id: o.id,
+      customerName: o.customerName ?? null,
+      customerPhone: o.customerPhone ?? null,
+      deliveryAddress: o.deliveryAddress ?? null,
+      deliveryNeighborhood: o.deliveryNeighborhood ?? null,
+      deliveryCep: o.deliveryCep ?? null,
+      totalAmount,
+      deliveryFee: parseFloat(String(o.deliveryFee ?? "0")),
+      deliveryStatus: o.deliveryStatus,
+      paymentTiming: o.paymentTiming,
+      deliveryPaymentMethod: o.deliveryPaymentMethod ?? null,
+      needsChange: o.needsChange === "true",
+      changeFor,
+      expectedChange: (o.needsChange === "true" && changeFor !== null)
+        ? Math.max(0, changeFor - totalAmount)
+        : null,
+      deliveryPaymentNotes: o.deliveryPaymentNotes ?? null,
+      routeName: route?.routeName ?? null,
+      courierName: route?.courierName ?? null,
+      createdAt: o.createdAt.toISOString(),
+    };
+  });
+
+  res.json(result);
+});
+
+// ─── POST /delivery/orders/:id/settle ─────────────────────────────────────────
+// Registra a baixa financeira de um pedido entregue com pagamento na entrega.
+
+router.post("/delivery/orders/:id/settle", async (req, res): Promise<void> => {
+  const orderId = parseInt(req.params.id ?? "", 10);
+  if (isNaN(orderId)) {
+    res.status(400).json({ error: "orderId inválido" });
+    return;
+  }
+
+  const rawMethod = typeof req.body?.method === "string" ? req.body.method.trim() : "";
+  const amountReceived = typeof req.body?.amountReceived === "number" ? req.body.amountReceived : null;
+  const notes = typeof req.body?.notes === "string" ? req.body.notes.trim() : null;
+
+  const VALID_METHODS = ["cash", "pix", "credit_card", "debit_card", "voucher"];
+  if (!VALID_METHODS.includes(rawMethod)) {
+    res.status(400).json({ error: `Método inválido. Use: ${VALID_METHODS.join(", ")}` });
+    return;
+  }
+
+  const [order] = await db
+    .select({
+      id: ordersTable.id,
+      type: ordersTable.type,
+      deliveryStatus: ordersTable.deliveryStatus,
+      paymentTiming: ordersTable.paymentTiming,
+      totalAmount: ordersTable.totalAmount,
+      status: ordersTable.status,
+    })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, orderId))
+    .limit(1);
+
+  if (!order) {
+    res.status(404).json({ error: "Pedido não encontrado" });
+    return;
+  }
+
+  if (order.deliveryStatus !== "awaiting_settlement") {
+    res.status(409).json({ error: `Pedido não está aguardando baixa (status atual: ${order.deliveryStatus})` });
+    return;
+  }
+
+  if (order.paymentTiming !== "on_delivery") {
+    res.status(400).json({ error: "Apenas pedidos com pagamento na entrega podem ser baixados aqui" });
+    return;
+  }
+
+  const totalAmount = parseFloat(String(order.totalAmount ?? "0"));
+
+  if (rawMethod === "cash") {
+    if (amountReceived === null || isNaN(amountReceived)) {
+      res.status(400).json({ error: "Para pagamento em dinheiro, informe o valor recebido (amountReceived)" });
+      return;
+    }
+    if (amountReceived < totalAmount) {
+      res.status(400).json({ error: `Valor recebido (R$ ${amountReceived.toFixed(2)}) menor que o total do pedido (R$ ${totalAmount.toFixed(2)})` });
+      return;
+    }
+  }
+
+  const change = rawMethod === "cash" && amountReceived !== null
+    ? Math.max(0, amountReceived - totalAmount)
+    : null;
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      // Check no duplicate payment
+      const [existing] = await tx
+        .select({ id: paymentsTable.id })
+        .from(paymentsTable)
+        .where(eq(paymentsTable.orderId, orderId))
+        .limit(1);
+
+      if (existing) {
+        const err = new Error("Pagamento deste pedido já foi registrado.") as Error & { duplicate: true };
+        err.duplicate = true;
+        throw err;
+      }
+
+      // Check open cash register
+      const [openRegister] = await tx
+        .select({ id: cashRegistersTable.id })
+        .from(cashRegistersTable)
+        .where(eq(cashRegistersTable.status, "open"))
+        .orderBy(sql`${cashRegistersTable.openedAt} DESC`)
+        .limit(1);
+
+      if (!openRegister) {
+        const err = new Error("Abra o caixa antes de registrar recebimentos de entrega.") as Error & { noCash: true };
+        err.noCash = true;
+        throw err;
+      }
+
+      const now = new Date();
+
+      // Create payment record
+      const [payment] = await tx
+        .insert(paymentsTable)
+        .values({
+          orderId,
+          amount: String(totalAmount),
+          method: rawMethod,
+          status: "approved",
+          change: change !== null ? String(change) : null,
+        })
+        .returning();
+
+      // Create cash movement
+      await tx.insert(cashMovementsTable).values({
+        cashRegisterId: openRegister.id,
+        type: "payment",
+        amount: String(totalAmount),
+        paymentMethod: rawMethod,
+        reason: notes ?? `Baixa entrega Pedido #${orderId}`,
+        orderId,
+      });
+
+      // Close the order
+      await tx
+        .update(ordersTable)
+        .set({
+          deliveryStatus: "delivered",
+          status: "closed",
+          paidAt: now,
+          closedAt: now,
+        })
+        .where(eq(ordersTable.id, orderId));
+
+      return payment!;
+    });
+
+    res.status(201).json({
+      ...result,
+      amount: parseFloat(String(result.amount)),
+      change: result.change !== null ? parseFloat(String(result.change)) : null,
+      createdAt: result.createdAt.toISOString(),
+    });
+  } catch (err) {
+    if (err && typeof err === "object") {
+      if ((err as { duplicate?: boolean }).duplicate) {
+        res.status(409).json({ error: "Pagamento deste pedido já foi registrado." });
+        return;
+      }
+      if ((err as { noCash?: boolean }).noCash) {
+        res.status(409).json({ error: "Abra o caixa antes de registrar recebimentos de entrega." });
+        return;
+      }
+    }
+    throw err;
+  }
+});
+
 // ─── POST /delivery/orders/:orderId/delivered ─────────────────────────────────
-// Marca um pedido de delivery individual como entregue e fecha o pedido.
+// Marca um pedido de delivery individual como entregue.
+// Para on_delivery: move para awaiting_settlement. Para now: fecha direto.
 
 router.post("/delivery/orders/:orderId/delivered", async (req, res): Promise<void> => {
   const orderId = parseInt(req.params.orderId, 10);
@@ -935,7 +1190,12 @@ router.post("/delivery/orders/:orderId/delivered", async (req, res): Promise<voi
   }
 
   const [order] = await db
-    .select({ id: ordersTable.id, type: ordersTable.type, deliveryStatus: ordersTable.deliveryStatus })
+    .select({
+      id: ordersTable.id,
+      type: ordersTable.type,
+      deliveryStatus: ordersTable.deliveryStatus,
+      paymentTiming: ordersTable.paymentTiming,
+    })
     .from(ordersTable)
     .where(eq(ordersTable.id, orderId))
     .limit(1);
@@ -950,12 +1210,22 @@ router.post("/delivery/orders/:orderId/delivered", async (req, res): Promise<voi
     return;
   }
 
-  await db
-    .update(ordersTable)
-    .set({ deliveryStatus: "delivered", status: "closed" })
-    .where(eq(ordersTable.id, orderId));
+  const now = new Date();
 
-  req.log.info({ orderId }, "delivery order marked as delivered");
+  if (order.paymentTiming === "on_delivery") {
+    await db
+      .update(ordersTable)
+      .set({ deliveryStatus: "awaiting_settlement" })
+      .where(eq(ordersTable.id, orderId));
+    req.log.info({ orderId }, "delivery order moved to awaiting_settlement");
+  } else {
+    await db
+      .update(ordersTable)
+      .set({ deliveryStatus: "delivered", status: "closed", closedAt: now })
+      .where(eq(ordersTable.id, orderId));
+    req.log.info({ orderId }, "delivery order marked as delivered and closed");
+  }
+
   res.json({ ok: true });
 });
 
