@@ -448,7 +448,10 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     alreadyInRouteOrderIds = existing.map((ro) => ro.orderId);
   }
 
-  // Eligible orders: delivery, preparing OR ready, not cancelled, not already in route
+  // Eligible orders: delivery, (preparing/ready deliveryStatus) OR (in-kitchen with pending/null deliveryStatus),
+  // not cancelled, not already in route.
+  // The fallback `status = 'preparing'` covers orders sent to kitchen whose deliveryStatus
+  // may not have been updated (e.g. older records or edge-cases in the transition logic).
   let eligibleOrders = await db
     .select({
       id: ordersTable.id,
@@ -463,8 +466,14 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     .where(
       and(
         eq(ordersTable.type, "delivery"),
-        inArray(ordersTable.deliveryStatus, ELIGIBLE_DELIVERY_STATUSES),
-        notInArray(ordersTable.status, ["cancelled"])
+        notInArray(ordersTable.status, ["cancelled"]),
+        or(
+          inArray(ordersTable.deliveryStatus, ELIGIBLE_DELIVERY_STATUSES),
+          and(
+            eq(ordersTable.status, "preparing"),
+            or(isNull(ordersTable.deliveryStatus), eq(ordersTable.deliveryStatus, "pending"))
+          )
+        )
       )
     );
 

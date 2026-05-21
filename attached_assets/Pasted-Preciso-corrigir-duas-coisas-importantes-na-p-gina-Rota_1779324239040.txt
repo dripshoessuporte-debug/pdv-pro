@@ -1,0 +1,241 @@
+Preciso corrigir duas coisas importantes na página Rotas:
+
+1. Deixar os cards responsivos e visualmente equilibrados, sem um card gigante e outro curto.
+2. Permitir gerar rota com pedidos delivery que já foram enviados para a cozinha / estão em preparo, não apenas quando já estão prontos.
+
+Não refaça o projeto do zero.
+Não altere funcionalidades fora do necessário.
+Preserve:
+- pedidos
+- cozinha
+- caixa
+- pagamento
+- cardápio
+- delivery
+- rotas
+- configurações
+- QR Code
+- pagamento na entrega
+- alertas de tempo
+- agrupamento por CEP/bairro
+- organização dos pedidos por data
+- visual clean atual
+- bordas coloridas das rotas
+- cores por valor da rota
+
+==================================================
+PARTE 1 — CORRIGIR RESPONSIVIDADE E ALTURA DOS CARDS
+==================================================
+
+Problema atual:
+Na página Rotas, alguns cards ficam muito altos porque têm muitas informações, como resumo da rota, cobrança na entrega, troco, itens e vários pedidos.
+Outros cards ficam curtos.
+Isso quebra a harmonia visual da tela.
+
+Quero uma solução mais responsiva e organizada.
+
+Implementar:
+
+1. Todos os cards de rota devem ter uma estrutura principal com altura mais equilibrada.
+2. A parte principal do card deve mostrar apenas as informações essenciais:
+   - identificador curto da rota
+   - bairro principal
+   - quantidade de entregas
+   - progresso de pedidos prontos
+   - tempo / atraso
+   - lista compacta dos pedidos
+   - valor da rota
+   - receber na entrega
+   - troco necessário
+   - botão QR Code
+   - botão Assumir Rota
+
+3. Informações longas devem ir para uma área expansível/recolhível.
+
+Criar um botão ou setinha tipo:
+- "Ver detalhes"
+- "Mais detalhes"
+- ícone de seta para baixo
+
+Quando clicar, o card expande e mostra:
+- resumo completo da rota
+- itens agrupados
+- cobranças na entrega
+- detalhes de troco por pedido
+- endereços completos, se estiverem cortados
+- observações, se existirem
+
+Quando clicar de novo, recolhe.
+
+4. Por padrão, os cards devem abrir recolhidos, mostrando apenas o essencial.
+
+5. O card recolhido deve ter uma altura visual mais parecida entre as rotas.
+
+6. Se precisar limitar a lista de pedidos no modo recolhido:
+   - mostrar até 3 pedidos
+   - se houver mais, mostrar texto:
+     "+1 entrega"
+     "+2 entregas"
+   - no detalhe expandido mostra todos
+
+7. A lista interna dos pedidos deve ter altura controlada.
+Se houver muitos pedidos, usar rolagem interna pequena ou expansão.
+
+8. A grade dos cards deve continuar responsiva:
+   - desktop: 3 cards por linha, se couber
+   - tablet: 2 cards
+   - celular: 1 card
+
+9. Não deixar um card esticar todos os outros de forma desnecessária.
+Cada card pode crescer quando expandido, mas no modo padrão deve ficar compacto e harmonioso.
+
+==================================================
+PARTE 2 — MELHORAR O LAYOUT COM MENU EXPANSÍVEL
+==================================================
+
+Dentro do card:
+
+Área sempre visível:
+- topo com número curto + bairro
+- status de tempo
+- indicador de entregas/progresso
+- lista compacta de pedidos
+- valores principais
+- botões principais
+
+Área expansível:
+- resumo da rota
+- detalhes de cobrança
+- itens do pedido
+- troco detalhado
+- informações completas de cada entrega
+
+Visual:
+- manter tema clean claro
+- fundo branco
+- borda colorida da rota
+- glow leve atual
+- conteúdo bem legível
+- botão "Ver detalhes" discreto
+
+==================================================
+PARTE 3 — CORRIGIR ELEGIBILIDADE PARA GERAR ROTAS
+==================================================
+
+Problema atual:
+O sistema só está deixando gerar rota quando o pedido está "Pronto" na cozinha.
+Mas o fluxo correto do restaurante é:
+
+Pedido delivery criado
+↓
+enviado para cozinha
+↓
+status fica preparando/em preparo
+↓
+já deve poder entrar na geração de rotas
+
+Ou seja:
+Se o pedido delivery foi enviado para a cozinha e está em preparo, ele já deve poder ser usado para montar rotas.
+
+Corrigir a regra de elegibilidade da geração de rotas.
+
+Pedidos delivery elegíveis para gerar rota:
+
+- type = delivery
+- pedido não cancelado
+- pedido não entregue
+- pedido não fechado/cancelado de forma incompatível
+- ainda não está em rota
+- ainda não foi entregue
+- deliveryStatus = preparing OU ready
+
+Também aceitar pedidos cujo status principal indique preparo, se o projeto usa:
+- status = preparing
+- ou status = open mas deliveryStatus = preparing
+- ou kitchen status equivalente
+
+O importante:
+Pedido delivery enviado para cozinha / em preparo deve entrar na lista para gerar rota.
+
+Não precisa esperar todos os pedidos ficarem prontos.
+
+==================================================
+PARTE 4 — DIFERENCIAR PREPARANDO E PRONTO DENTRO DA ROTA
+==================================================
+
+Dentro do card da rota:
+
+1. Pedidos que ainda estão em preparo devem aparecer como:
+   - Preparando
+
+2. Pedidos já prontos devem aparecer como:
+   - Pronto
+
+3. A barra de progresso deve continuar baseada nos pedidos prontos:
+   - 0/3 prontos = 0%
+   - 1/3 prontos = 33%
+   - 2/3 prontos = 66%
+   - 3/3 prontos = 100%
+
+4. Mesmo que a rota tenha pedidos preparando, ela pode existir.
+5. O motoboy/balcão consegue planejar a rota antes de tudo ficar pronto.
+6. Quando todos ficarem prontos, o card deve indicar claramente:
+   - "Todos prontos — pronto para sair"
+
+==================================================
+PARTE 5 — AJUSTAR BOTÃO ROTAS PRONTAS
+==================================================
+
+O botão "Rotas Prontas" ou "Gerar Rotas" deve gerar rotas usando os pedidos delivery elegíveis em preparo ou prontos.
+
+Não deve exigir que todos estejam prontos.
+
+Se existirem 20 pedidos delivery em preparo e nenhum pronto, ainda assim o sistema deve conseguir montar rotas.
+
+A rota criada com pedidos em preparo deve aparecer em "Rotas Disponíveis", mas mostrando que ainda há pedidos preparando.
+
+==================================================
+PARTE 6 — NÃO DUPLICAR PEDIDOS EM ROTAS
+==================================================
+
+Ao gerar rotas:
+
+1. Não incluir pedido que já está em uma rota existente.
+2. Não incluir pedido de rota em andamento.
+3. Não incluir pedido já entregue.
+4. Não criar rota duplicada para o mesmo pedido.
+5. Se clicar em gerar rotas novamente, deve ignorar pedidos que já estão vinculados a alguma rota ativa.
+
+==================================================
+PARTE 7 — TESTES OBRIGATÓRIOS
+==================================================
+
+Teste:
+
+1. Criar pedidos delivery.
+2. Enviar os pedidos para cozinha.
+3. Sem marcar como pronto, ir em Rotas.
+4. Clicar em Rotas Prontas / Gerar Rotas.
+5. Confirmar que os pedidos em preparo entram nas rotas.
+6. Confirmar que os pedidos aparecem como "Preparando" dentro da rota.
+7. Confirmar que a barra de progresso fica 0/N prontos se nenhum estiver pronto.
+8. Marcar um pedido como pronto na cozinha.
+9. Confirmar que a barra muda para 1/N prontos.
+10. Marcar todos como prontos.
+11. Confirmar que a barra fica 100% e aparece indicação de todos prontos.
+12. Confirmar que os cards não ficam gigantes/desalinhados no modo padrão.
+13. Confirmar que existe botão/seta "Ver detalhes" ou equivalente.
+14. Confirmar que ao expandir o card aparecem os detalhes completos.
+15. Confirmar que ao recolher o card volta a ficar compacto.
+16. Confirmar que a tela continua responsiva.
+17. Rodar typecheck sem erros.
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Como foi corrigida a altura/responsividade dos cards.
+3. Como funciona o menu expansível dos detalhes.
+4. Como foi corrigida a elegibilidade de pedidos em preparo para geração de rotas.
+5. Como funciona agora a barra de progresso.
+6. Como testar passo a passo.
+7. Limitações restantes.

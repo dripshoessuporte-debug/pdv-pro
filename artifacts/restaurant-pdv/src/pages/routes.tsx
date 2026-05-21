@@ -670,7 +670,7 @@ export default function Routes() {
         {/* ── Routes grid (tab-controlled) ── */}
         {routeView === "available" ? (
           availableRoutes.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {availableRoutes.map((route, idx) => (
                 <RouteCard
                   key={route.id}
@@ -697,7 +697,7 @@ export default function Routes() {
           )
         ) : (
           inProgressRoutes.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {inProgressRoutes.map((route, idx) => (
                 <RouteCard
                   key={route.id}
@@ -738,7 +738,7 @@ export default function Routes() {
               <ChevronRight className={`w-4 h-4 transition-transform ${showCompleted ? "rotate-90" : ""}`} />
             </button>
             {showCompleted && (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mt-3 opacity-60">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-3 opacity-60">
                 {completedRoutes.map((route, idx) => (
                   <RouteCard
                     key={route.id}
@@ -1229,10 +1229,12 @@ const ROUTE_VALUE_LEGEND = [
 
 // ─── RouteCard ────────────────────────────────────────────────────────────────
 
+const COMPACT_MAX_ORDERS = 3;
+
 function RouteCard({
   route,
   index,
-  allActiveRoutes,
+  allActiveRoutes: _allActiveRoutes,
   maxOrders: _maxOrders,
   onAssign,
   onComplete,
@@ -1255,9 +1257,15 @@ function RouteCard({
   const isCompleted = route.status === "completed";
   const sortedOrders = [...route.orders].sort((a, b) => a.stopOrder - b.stopOrder);
   const canMoveOrders = isAvailable || isInProgress;
+
+  // Card expand/collapse (default: collapsed)
+  const [expanded, setExpanded] = useState(false);
+  // Per-order item expansion (only active when card is expanded)
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
 
-  // Refrigerante count across all orders in this route
+  const hiddenCount = Math.max(0, sortedOrders.length - COMPACT_MAX_ORDERS);
+  const visibleOrders = expanded ? sortedOrders : sortedOrders.slice(0, COMPACT_MAX_ORDERS);
+
   const totalFridges = sortedOrders
     .flatMap((o) => o.items ?? [])
     .filter((i) => i.productName.toLowerCase().includes("refri"))
@@ -1268,15 +1276,23 @@ function RouteCard({
   const TimeIcon = URGENCY_ICON[urgency];
 
   const readyCount = route.orders.filter((o) => o.deliveryStatus === "ready").length;
-  const deliveredCount = route.orders.filter((o) => o.deliveryStatus === "delivered").length;
   const totalCount = route.orders.length;
   const allOrdersReady = totalCount > 0 && readyCount === totalCount;
 
   const vc = getRouteValueColor(route.totalDeliveryFee);
-
   const readinessPct = totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
-
   const otherNeighborhoods = route.includedNeighborhoods.filter((n) => n !== route.mainNeighborhood);
+
+  const hasDetailedContent =
+    !isCompleted && (totalFridges > 0 || sortedOrders.some((o) => o.paymentTiming === "on_delivery"));
+  const showExpandToggle = hiddenCount > 0 || hasDetailedContent;
+
+  const handleToggleExpand = () => {
+    setExpanded((v) => {
+      if (v) setExpandedOrderId(null); // collapse resets order expansion
+      return !v;
+    });
+  };
 
   return (
     <div
@@ -1308,7 +1324,10 @@ function RouteCard({
               <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden w-full">
                 <div
                   className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${readinessPct}%`, backgroundColor: readinessPct === 100 ? "#22C55E" : vc.color }}
+                  style={{
+                    width: `${readinessPct}%`,
+                    backgroundColor: readinessPct === 100 ? "#22C55E" : vc.color,
+                  }}
                 />
               </div>
               <span className="text-[10px] text-[#64748B] block text-center mt-0.5">
@@ -1340,25 +1359,25 @@ function RouteCard({
           {/* Time pill */}
           {timeStatus && !isCompleted && (
             <div className={`shrink-0 flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full
-              ${urgency === "ok" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : ""}
-              ${urgency === "warning" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : ""}
-              ${urgency === "danger" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" : ""}
+              ${urgency === "ok" ? "bg-emerald-100 text-emerald-700" : ""}
+              ${urgency === "warning" ? "bg-amber-100 text-amber-700" : ""}
+              ${urgency === "danger" ? "bg-red-100 text-red-700" : ""}
             `}>
               <TimeIcon className="w-3 h-3 shrink-0" />
               <span>{timeStatus.label}</span>
             </div>
           )}
           {isCompleted && route.completedAt && (
-            <div className="shrink-0 flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+            <div className="shrink-0 flex items-center gap-1 text-xs text-emerald-600">
               <CheckCircle2 className="w-3.5 h-3.5" />
               {new Date(route.completedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
             </div>
           )}
         </div>
 
-        {/* ── Orders list ── */}
+        {/* ── Orders list (compact: up to 3; expanded: all) ── */}
         <div className="rounded-xl overflow-hidden border border-[#E2E8F0] divide-y divide-[#E2E8F0]">
-          {sortedOrders.map((order) => {
+          {visibleOrders.map((order) => {
             const ds = order.deliveryStatus as DeliveryOrderStatus | null;
             const isReady = ds === "ready";
             const isPrep = ds === "preparing";
@@ -1383,20 +1402,29 @@ function RouteCard({
                 ? Math.max(0, order.changeFor - order.totalAmount)
                 : null;
 
-            const isExpanded = expandedOrderId === order.orderId;
+            const isOrderExpanded = expanded && expandedOrderId === order.orderId;
             const orderFridges = (order.items ?? []).filter((i) => i.productName.toLowerCase().includes("refri"));
             const hasFridges = orderFridges.length > 0;
 
             return (
-              <div key={order.id} className="rounded-lg mx-1 my-0.5 overflow-hidden border border-transparent transition-all"
-                style={{ borderColor: isExpanded ? `${vc.color}40` : "transparent" }}>
-                {/* ── Order row (clickable) ── */}
+              <div
+                key={order.id}
+                className="overflow-hidden transition-all"
+                style={{ borderColor: isOrderExpanded ? `${vc.color}40` : "transparent" }}
+              >
+                {/* Order row */}
                 <div
-                  className="flex items-center gap-2.5 px-3 py-2.5 text-xs group cursor-pointer select-none"
-                  style={{ backgroundColor: isExpanded ? `${vc.color}08` : "#F8FAFC" }}
-                  onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = "#F1F5F9"; }}
-                  onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = "#F8FAFC"; }}
-                  onClick={() => setExpandedOrderId(isExpanded ? null : order.orderId)}
+                  className={`flex items-center gap-2.5 px-3 py-2.5 text-xs group select-none ${expanded ? "cursor-pointer" : "cursor-default"}`}
+                  style={{ backgroundColor: isOrderExpanded ? `${vc.color}08` : "#F8FAFC" }}
+                  onMouseEnter={(e) => {
+                    if (expanded && !isOrderExpanded) e.currentTarget.style.backgroundColor = "#F1F5F9";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isOrderExpanded) e.currentTarget.style.backgroundColor = "#F8FAFC";
+                  }}
+                  onClick={() => {
+                    if (expanded) setExpandedOrderId(isOrderExpanded ? null : order.orderId);
+                  }}
                   data-testid={`route-order-${order.orderId}`}
                 >
                   {/* Stop number */}
@@ -1412,7 +1440,9 @@ function RouteCard({
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-[#0F172A] truncate">{order.customerName ?? `Pedido #${order.orderId}`}</p>
+                    <p className="font-semibold text-[#0F172A] truncate">
+                      {order.customerName ?? `Pedido #${order.orderId}`}
+                    </p>
                     <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                       {order.paymentTiming === "on_delivery" && (
                         <span className="text-amber-600 font-semibold flex items-center gap-0.5">
@@ -1428,32 +1458,37 @@ function RouteCard({
                     </div>
                   </div>
 
-                  {/* Right: status + chevron */}
+                  {/* Right: status + move + chevron */}
                   <div className="flex items-center gap-1.5 shrink-0">
                     {dsLabel && (
                       <span className={`px-1.5 py-px rounded-full font-medium text-[10px] ${DELIVERY_STATUS_COLORS[ds!]}`}>
                         {dsLabel}
                       </span>
                     )}
-                    {canMoveOrders && (
+                    {canMoveOrders && expanded && (
                       <Button
                         variant="ghost"
                         size="sm"
                         className="h-6 w-6 p-0 text-[#94A3B8] hover:text-[#0F172A] hover:bg-slate-100 opacity-0 group-hover:opacity-100 transition-all rounded-lg"
-                        onClick={(e) => { e.stopPropagation(); onMoveOrder(order.orderId, order.customerName); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onMoveOrder(order.orderId, order.customerName);
+                        }}
                         title="Mover pedido"
                       >
                         <ArrowRightLeft className="w-3 h-3" />
                       </Button>
                     )}
-                    <ChevronDown
-                      className={`w-3.5 h-3.5 text-[#94A3B8] transition-transform shrink-0 ${isExpanded ? "rotate-180" : ""}`}
-                    />
+                    {expanded && (
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 text-[#94A3B8] transition-transform shrink-0 ${isOrderExpanded ? "rotate-180" : ""}`}
+                      />
+                    )}
                   </div>
                 </div>
 
-                {/* ── Expanded items panel ── */}
-                {isExpanded && (
+                {/* Expanded items panel (per-order, only when card is expanded) */}
+                {isOrderExpanded && (
                   <div className="px-3 pb-3 pt-1 space-y-1.5" style={{ backgroundColor: `${vc.color}06` }}>
                     <p className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wide flex items-center gap-1">
                       <ShoppingBag className="w-3 h-3" /> Itens do pedido #{order.orderId}
@@ -1462,10 +1497,15 @@ function RouteCard({
                       <p className="text-[11px] text-[#94A3B8] italic">Nenhum item registrado</p>
                     ) : (
                       <div className="space-y-0.5">
-                        {(order.items ?? []).map((item, idx) => {
+                        {(order.items ?? []).map((item, itemIdx) => {
                           const isFridge = item.productName.toLowerCase().includes("refri");
                           return (
-                            <div key={idx} className={`flex items-center justify-between text-[11px] px-2 py-1 rounded-md ${isFridge ? "bg-blue-50 text-blue-800 font-semibold" : "text-[#334155]"}`}>
+                            <div
+                              key={itemIdx}
+                              className={`flex items-center justify-between text-[11px] px-2 py-1 rounded-md ${
+                                isFridge ? "bg-blue-50 text-blue-800 font-semibold" : "text-[#334155]"
+                              }`}
+                            >
                               <span className="flex items-center gap-1">
                                 {isFridge && <span>🥤</span>}
                                 {item.productName}
@@ -1479,13 +1519,16 @@ function RouteCard({
                       </div>
                     )}
                     <p className="text-[#64748B] text-[10px] truncate pt-0.5">
-                      📍 {order.deliveryAddress ?? "—"}{order.deliveryNeighborhood ? ` · ${order.deliveryNeighborhood}` : ""}
+                      📍 {order.deliveryAddress ?? "—"}
+                      {order.deliveryNeighborhood ? ` · ${order.deliveryNeighborhood}` : ""}
                     </p>
                     {order.paymentTiming === "on_delivery" && (
                       <div className="flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 rounded-md px-2 py-1">
                         <Banknote className="w-3 h-3 shrink-0" />
                         Cobrar R$ {order.totalAmount.toFixed(2)}
-                        {changeAmt !== null && <span className="ml-1 text-orange-500">· Troco R$ {changeAmt.toFixed(2)}</span>}
+                        {changeAmt !== null && (
+                          <span className="ml-1 text-orange-500">· Troco R$ {changeAmt.toFixed(2)}</span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1493,14 +1536,26 @@ function RouteCard({
               </div>
             );
           })}
+
+          {/* "+N entregas" link when collapsed and there are hidden orders */}
+          {!expanded && hiddenCount > 0 && (
+            <button
+              onClick={() => setExpanded(true)}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium hover:bg-slate-50 transition-colors"
+              style={{ color: vc.color }}
+              data-testid={`btn-show-more-${route.id}`}
+            >
+              <Plus className="w-3 h-3" />
+              +{hiddenCount} entrega{hiddenCount > 1 ? "s" : ""}
+            </button>
+          )}
         </div>
 
-        {/* ── Readiness indicator ── */}
+        {/* ── Readiness indicator (always visible) ── */}
         {isAvailable && (
-          <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl
-            ${allOrdersReady
-              ? "bg-emerald-50 text-emerald-700"
-              : "bg-amber-50 text-amber-800"
+          <div
+            className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl ${
+              allOrdersReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"
             }`}
           >
             {allOrdersReady ? (
@@ -1511,57 +1566,15 @@ function RouteCard({
             ) : (
               <>
                 <Clock className="w-3.5 h-3.5 shrink-0" />
-                <span><strong>{readyCount}/{totalCount}</strong> pedidos prontos na cozinha</span>
+                <span>
+                  <strong>{readyCount}/{totalCount}</strong> pedidos prontos na cozinha
+                </span>
               </>
             )}
           </div>
         )}
 
-        {/* ── Resumo da rota ── */}
-        {!isCompleted && (totalFridges > 0 || sortedOrders.some((o) => o.paymentTiming === "on_delivery")) && (
-          <div className="rounded-xl border px-3 py-2 text-xs space-y-1.5" style={{ backgroundColor: "#F8FAFC", borderColor: "#E2E8F0" }}>
-            <p className="font-semibold text-[#0F172A] text-[11px] uppercase tracking-wide">Resumo da rota</p>
-            {totalFridges > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1 text-blue-700 font-medium">🥤 Refrigerantes</span>
-                <span className="font-bold text-blue-700">{totalFridges} un.</span>
-              </div>
-            )}
-            {sortedOrders.filter((o) => o.paymentTiming === "on_delivery").length > 0 && (
-              <>
-                <div className="border-t border-[#E2E8F0] pt-1.5">
-                  <p className="flex items-center gap-1 text-amber-700 font-semibold mb-1">
-                    <Banknote className="w-3 h-3" /> Cobranças na entrega
-                  </p>
-                  {sortedOrders
-                    .filter((o) => o.paymentTiming === "on_delivery")
-                    .map((o) => {
-                      const chg = o.needsChange === "true" && o.changeFor
-                        ? Math.max(0, o.changeFor - o.totalAmount)
-                        : null;
-                      return (
-                        <div key={o.orderId} className="flex items-center justify-between py-0.5">
-                          <span className="font-bold text-amber-800">#{o.orderId}</span>
-                          <div className="text-right">
-                            <span className="font-bold text-amber-700">R$ {o.totalAmount.toFixed(2)}</span>
-                            {chg !== null && chg > 0 && (
-                              <span className="text-orange-500 ml-1.5">· Troco R$ {chg.toFixed(2)}</span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  <div className="border-t border-amber-200 mt-1 pt-1 flex items-center justify-between">
-                    <span className="text-amber-700">Total</span>
-                    <span className="font-bold text-amber-700">R$ {route.totalToReceive.toFixed(2)}</span>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ── Value info panel ── */}
+        {/* ── Value info panel (always visible) ── */}
         <div
           className="rounded-xl px-3 py-2.5 text-xs space-y-1"
           style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}
@@ -1589,6 +1602,67 @@ function RouteCard({
             <span className="font-semibold text-[#0F172A]">{totalCount}</span>
           </div>
         </div>
+
+        {/* ── Expandable: route summary with fridges + charges detail ── */}
+        {expanded && hasDetailedContent && (
+          <div
+            className="rounded-xl border px-3 py-2 text-xs space-y-1.5"
+            style={{ backgroundColor: "#F8FAFC", borderColor: "#E2E8F0" }}
+          >
+            <p className="font-semibold text-[#0F172A] text-[11px] uppercase tracking-wide">Resumo da rota</p>
+            {totalFridges > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1 text-blue-700 font-medium">🥤 Refrigerantes</span>
+                <span className="font-bold text-blue-700">{totalFridges} un.</span>
+              </div>
+            )}
+            {sortedOrders.filter((o) => o.paymentTiming === "on_delivery").length > 0 && (
+              <div className="border-t border-[#E2E8F0] pt-1.5">
+                <p className="flex items-center gap-1 text-amber-700 font-semibold mb-1">
+                  <Banknote className="w-3 h-3" /> Cobranças na entrega
+                </p>
+                {sortedOrders
+                  .filter((o) => o.paymentTiming === "on_delivery")
+                  .map((o) => {
+                    const chg =
+                      o.needsChange === "true" && o.changeFor
+                        ? Math.max(0, o.changeFor - o.totalAmount)
+                        : null;
+                    return (
+                      <div key={o.orderId} className="flex items-center justify-between py-0.5">
+                        <span className="font-bold text-amber-800">#{o.orderId}</span>
+                        <div className="text-right">
+                          <span className="font-bold text-amber-700">R$ {o.totalAmount.toFixed(2)}</span>
+                          {chg !== null && chg > 0 && (
+                            <span className="text-orange-500 ml-1.5">· Troco R$ {chg.toFixed(2)}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                <div className="border-t border-amber-200 mt-1 pt-1 flex items-center justify-between">
+                  <span className="text-amber-700">Total</span>
+                  <span className="font-bold text-amber-700">R$ {route.totalToReceive.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Ver/Ocultar detalhes toggle ── */}
+        {showExpandToggle && (
+          <button
+            onClick={handleToggleExpand}
+            className="flex items-center justify-center gap-1.5 text-xs font-medium transition-colors rounded-lg py-1.5 border border-[#E2E8F0] hover:bg-slate-50"
+            style={{ color: "#64748B" }}
+            data-testid={`btn-toggle-details-${route.id}`}
+          >
+            <ChevronDown
+              className={`w-3.5 h-3.5 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+            />
+            {expanded ? "Ocultar detalhes" : "Ver detalhes"}
+          </button>
+        )}
 
         {/* ── Footer ── */}
         <div className="flex items-center gap-2 pt-1 mt-auto" style={{ borderTop: "1px solid #E2E8F0" }}>
@@ -1632,7 +1706,7 @@ function RouteCard({
           )}
 
           {isCompleted && (
-            <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+            <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
               <CheckCircle2 className="w-3.5 h-3.5" />
               Rota concluída
             </div>
