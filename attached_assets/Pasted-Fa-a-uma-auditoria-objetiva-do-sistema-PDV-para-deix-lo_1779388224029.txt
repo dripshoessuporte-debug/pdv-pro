@@ -1,0 +1,172 @@
+Faça uma auditoria objetiva do sistema PDV para deixá-lo pronto como produto replicável para terceiros.
+
+Não implemente nada ainda.
+Não refaça o projeto.
+Não crie funcionalidades novas agora.
+Apenas analise e entregue um plano técnico direto, sem enrolação.
+
+Contexto:
+Esse sistema será vendido/implantado para restaurantes, pizzarias, hamburguerias e comércios de alimentação.
+Preciso que ele tenha uma base limpa, replicável e funcional, sem dados bagunçados, sem fluxos confusos e com dashboard/caixa/pedidos funcionando corretamente.
+
+Analise especificamente:
+
+1. Fluxo completo do pedido
+Verifique se o fluxo está claro e correto:
+- criar pedido
+- enviar para cozinha
+- preparar
+- marcar pronto
+- enviar para entrega, se delivery
+- pagar
+- finalizar
+- cancelar
+- dar baixa corretamente no sistema
+
+Diga se hoje existe confusão entre:
+- status do pedido
+- status da cozinha
+- status do delivery
+- status do pagamento
+- status da rota
+
+2. Baixas operacionais
+Analise quais ações devem ser consideradas “baixa” no sistema.
+
+Exemplos:
+- pagamento confirmado
+- pedido entregue
+- pedido cancelado
+- rota concluída
+- caixa fechado
+- item enviado para cozinha
+- item pronto
+
+Explique o que cada baixa deve alterar:
+- pedido
+- caixa
+- dashboard
+- mesa
+- cozinha
+- delivery
+- relatórios
+
+3. Dashboard
+Verifique se a Dashboard está calculando corretamente:
+- faturamento de hoje
+- pedidos de hoje
+- pedidos ativos
+- fila da cozinha
+- pedidos recentes
+- mesas livres/ocupadas
+- vendas por categoria
+
+Diga quais métricas ainda precisam ser corrigidas ou padronizadas para uso real.
+
+4. Caixa
+Analise se o fluxo de caixa está pronto para terceiro:
+- abertura de caixa
+- fundo inicial
+- pagamentos por dinheiro, pix, crédito, débito, voucher
+- pagamento na entrega
+- sangria
+- suprimento
+- fechamento
+- sobra/falta
+- histórico
+
+Diga se existe risco de:
+- pagamento ficar fora do caixa
+- caixa fechar errado
+- pedido pago duplicado
+- entrega receber dinheiro sem registrar depois
+- dashboard contar errado
+
+5. Delivery e rotas
+Analise se o delivery está operacional:
+- pedido delivery
+- taxa de entrega
+- pagamento na entrega
+- troco
+- rota
+- motoboy
+- rota em andamento
+- rota concluída
+- pedido entregue
+
+Diga o que precisa ser ajustado para ficar claro para restaurante real.
+
+6. Configurações da loja
+Verifique se existe uma base limpa para cada cliente configurar:
+- nome da loja
+- telefone
+- endereço
+- CEP
+- bairro
+- cidade
+- tempo de entrega
+- limite de pedidos por rota
+- dados fiscais futuramente
+- formas de pagamento
+- preço por entrega ou taxa padrão
+
+Diga o que falta para o sistema ser replicável para várias lojas.
+
+7. Dados de teste
+Verifique se existem dados mockados, seeds ou pedidos de teste misturados.
+Diga como limpar e preparar uma base “virgem” para entregar para um cliente novo.
+
+Preciso de uma sugestão de modo:
+- ambiente demo com dados de exemplo
+- ambiente produção limpo
+
+8. Fiscal / Nota fiscal
+Não implemente nota fiscal agora.
+Apenas analise o que será necessário futuramente para integrar emissão fiscal:
+- NFC-e
+- SAT, se aplicável
+- certificado digital
+- CNPJ
+- inscrição estadual
+- dados do cliente
+- produtos com NCM/CFOP/CSOSN/CST
+- integração com API fiscal externa
+
+Diga quais campos já deveríamos preparar no sistema para não ter retrabalho depois.
+
+9. Produto replicável / multi-cliente
+Analise o que falta para esse PDV virar um produto vendável:
+- separar dados por loja/tenant
+- configurações por loja
+- usuários e permissões
+- operador de caixa
+- admin
+- garçom
+- cozinha
+- motoboy
+- histórico e auditoria
+- backup/exportação
+
+10. Prioridades
+No final, entregue uma lista objetiva em ordem de prioridade:
+
+P0 — corrigir antes de vender
+P1 — importante para MVP comercial
+P2 — melhoria futura
+P3 — integração futura
+
+Quero uma resposta curta, técnica e direta.
+
+Formato da resposta:
+1. Diagnóstico geral
+2. Problemas críticos encontrados
+3. Fluxo ideal do pedido
+4. Fluxo ideal do caixa
+5. Fluxo ideal do delivery
+6. O que precisa mudar no banco/modelos
+7. O que precisa mudar nas telas
+8. O que precisa mudar nos cálculos da Dashboard
+9. Checklist para deixar a base virgem
+10. Próximo prompt recomendado para implementar a primeira correção
+
+Não altere arquivos ainda.
