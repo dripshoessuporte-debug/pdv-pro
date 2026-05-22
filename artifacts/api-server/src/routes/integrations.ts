@@ -4,6 +4,7 @@ import { db, ordersTable, orderItemsTable, storeSettingsTable, deliveryDistanceC
 import { estimateDistanceKmFromCep, calculateDeliveryFee, normalizeCep } from "../lib/delivery-fee";
 import { calculateRouteDistanceKm, isOrsConfigured, getOrsApiKey } from "../lib/openrouteservice";
 import { getOrCreateSettings } from "./settings";
+import { requireIntegrationKey } from "../middleware/security";
 
 const router: IRouter = Router();
 
@@ -13,18 +14,7 @@ const router: IRouter = Router();
  * Receives an external order from iFood, WhatsApp, site, totem, etc.
  * Protected by x-integration-key header when INTEGRATION_API_KEY env var is set.
  */
-router.post("/integrations/orders/inbound", async (req, res): Promise<void> => {
-  // --- Security: API key check ---
-  const requiredKey = process.env.INTEGRATION_API_KEY;
-  if (requiredKey) {
-    const headerKey = req.headers["x-integration-key"];
-    if (headerKey !== requiredKey) {
-      res.status(401).json({ error: "Chave de integração inválida ou ausente." });
-      return;
-    }
-  } else {
-    req.log.warn("INTEGRATION_API_KEY não definida — endpoint /integrations/orders/inbound aberto sem autenticação.");
-  }
+router.post("/integrations/orders/inbound", requireIntegrationKey, async (req, res): Promise<void> => {
 
   const body = req.body ?? {};
 
