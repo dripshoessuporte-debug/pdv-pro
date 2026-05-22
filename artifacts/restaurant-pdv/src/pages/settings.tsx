@@ -119,7 +119,9 @@ export default function Settings() {
       setStoreCity(s.storeCity ?? "");
       setDispatchTime(String(s.deliveryDispatchTimeMinutes));
       setMaxOrders(String(s.maxOrdersPerRoute));
-      setDeliveryFeeMode((s.deliveryFeeMode as "manual" | "per_km" | "distance_tier") || "manual");
+      // map legacy "per_km" to "distance_tier" — UI only has 2 visible modes
+      const rawMode = s.deliveryFeeMode || "manual";
+      setDeliveryFeeMode(rawMode === "per_km" ? "distance_tier" : rawMode as "manual" | "distance_tier");
       setDeliveryPricePerKm(s.deliveryPricePerKm != null ? String(s.deliveryPricePerKm) : "");
       setBaseDeliveryDistanceKm(s.baseDeliveryDistanceKm != null ? String(s.baseDeliveryDistanceKm) : "");
       setBaseDeliveryFee(s.baseDeliveryFee != null ? String(s.baseDeliveryFee) : "");
@@ -381,8 +383,7 @@ export default function Settings() {
                   { value: "manual" as const,        label: "✋ Manual",                          desc: "Operador digita a taxa em cada pedido" },
                   { value: "distance_tier" as const,  label: "📏 Por distância (taxa fixa + extra)", desc: "Taxa fixa até X km, valor adicional acima" },
                 ] as const).map((opt) => {
-                  const isActive = deliveryFeeMode === opt.value ||
-                    (opt.value === "distance_tier" && deliveryFeeMode === "per_km");
+                  const isActive = deliveryFeeMode === opt.value;
                   return (
                     <button
                       key={opt.value}

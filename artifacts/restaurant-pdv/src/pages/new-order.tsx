@@ -130,7 +130,24 @@ export default function NewOrder() {
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.json())
-      .then((s) => setStoreSettings(s))
+      .then((s) => {
+        // API returns numeric DB columns as strings — parse explicitly
+        const pf = (v: unknown) => (v != null && v !== "" ? parseFloat(String(v)) : null);
+        const rawMode = String(s.deliveryFeeMode || "manual");
+        setStoreSettings({
+          deliveryFeeMode: rawMode === "per_km" ? "distance_tier" : rawMode,
+          storeCep: s.storeCep ? String(s.storeCep) : null,
+          storeAddress: s.storeAddress ? String(s.storeAddress) : null,
+          storeCity: s.storeCity ? String(s.storeCity) : null,
+          distanceProvider: String(s.distanceProvider || "approximate_cep"),
+          deliveryPricePerKm: pf(s.deliveryPricePerKm),
+          baseDeliveryDistanceKm: pf(s.baseDeliveryDistanceKm),
+          baseDeliveryFee: pf(s.baseDeliveryFee),
+          additionalPricePerKm: pf(s.additionalPricePerKm),
+          minimumDeliveryFee: pf(s.minimumDeliveryFee),
+          maximumDeliveryFee: pf(s.maximumDeliveryFee),
+        });
+      })
       .catch(() => {/* silent — fee calculation just stays manual */});
   }, []);
 

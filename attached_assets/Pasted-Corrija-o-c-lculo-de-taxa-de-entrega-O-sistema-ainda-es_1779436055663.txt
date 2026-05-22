@@ -1,0 +1,217 @@
+Corrija o cálculo de taxa de entrega. O sistema ainda está calculando errado.
+
+Pelo print, ele está usando:
+- Fonte: Estimativa por CEP
+- Regra: R$ 0.50/km
+- Distância: 10 km
+- Taxa calculada: R$ 24,00
+
+Isso está errado.
+
+Quero que a taxa seja calculada usando uma regra editável nas Configurações da loja:
+
+Exemplo correto:
+- Taxa fixa inicial: R$ 7,00
+- Distância incluída na taxa fixa: até 2 km
+- Valor por km excedente: R$ 2,00
+- Taxa máxima opcional: configurável
+
+Regra correta:
+
+Se distância <= 2 km:
+taxa = R$ 7,00
+
+Se distância > 2 km:
+excedente = distância - 2
+taxa = 7 + (excedente * 2)
+
+Exemplos:
+1 km = R$ 7,00
+2 km = R$ 7,00
+3 km = R$ 9,00
+5 km = R$ 13,00
+10 km = R$ 23,00
+
+==================================================
+1. CORRIGIR CONFIGURAÇÕES
+==================================================
+
+Na página Configurações, garantir que exista uma seção visual clara:
+
+"Regra de Taxa de Entrega"
+
+Campos:
+
+- Modo de cálculo:
+  - Manual
+  - Por distância com taxa fixa inicial
+
+- CEP da loja
+
+- Taxa fixa inicial
+  padrão: 7.00
+
+- Distância incluída na taxa fixa
+  padrão: 2
+
+- Valor por km excedente
+  padrão: 2.00
+
+- Taxa máxima
+  padrão: 25.00
+
+Esses campos precisam ser salvos corretamente em store_settings.
+
+Não pode usar mais regra antiga R$ 0.50/km se o modo estiver em distance_tier.
+
+==================================================
+2. CORRIGIR FUNÇÃO DE CÁLCULO
+==================================================
+
+Verifique a função calculateDeliveryFee.
+
+Ela precisa respeitar deliveryFeeMode.
+
+Se deliveryFeeMode = manual:
+- não calcular automático
+
+Se deliveryFeeMode = per_km:
+- taxa = distância * deliveryPricePerKm
+
+Se deliveryFeeMode = distance_tier:
+usar obrigatoriamente:
+
+if distanceKm <= baseDeliveryDistanceKm:
+  fee = baseDeliveryFee
+else:
+  extraKm = distanceKm - baseDeliveryDistanceKm
+  fee = baseDeliveryFee + (extraKm * additionalPricePerKm)
+
+Depois:
+- aplicar maximumDeliveryFee se existir
+- arredondar para 2 casas decimais
+
+==================================================
+3. CORRIGIR NOVO PEDIDO DELIVERY
+==================================================
+
+Na tela Novo Pedido > Delivery, o resumo da taxa deve mostrar a regra correta.
+
+Hoje aparece:
+Regra: R$ 0.50/km
+
+Deve aparecer algo assim:
+
+Regra: R$ 7,00 até 2 km + R$ 2,00/km excedente
+
+Exemplo visual:
+CEP da loja: 82940-010
+CEP do cliente: 81530-020
+Distância: 10 km
+Fonte: Estimativa por CEP
+Regra: R$ 7,00 até 2 km + R$ 2,00/km excedente
+Taxa calculada: R$ 23,00
+
+Se maximumDeliveryFee = 25:
+taxa final = R$ 23,00
+
+Se o cálculo passar do máximo:
+mostrar taxa limitada pelo máximo.
+
+==================================================
+4. CORRIGIR USO DOS CAMPOS ANTIGOS
+==================================================
+
+Procurar no código onde ainda está usando:
+- deliveryPricePerKm
+- R$ 0.50/km
+- per_km como padrão
+- regra antiga
+
+Se o modo selecionado for distance_tier, NÃO usar deliveryPricePerKm.
+
+Usar:
+- baseDeliveryFee
+- baseDeliveryDistanceKm
+- additionalPricePerKm
+- maximumDeliveryFee
+
+==================================================
+5. CEP DA LOJA
+==================================================
+
+O cálculo deve usar o CEP da loja salvo nas Configurações.
+
+Se não tiver CEP da loja:
+- não calcular
+- mostrar aviso:
+"Configure o CEP da loja para calcular a taxa automaticamente."
+
+No print, ele está usando:
+CEP da loja: 82940-010
+
+Então esse CEP deve ser a origem.
+
+==================================================
+6. SOBRE DISTÂNCIA
+==================================================
+
+Por enquanto, se OpenRouteService ou API real não estiver configurado, pode continuar mostrando:
+Fonte: Estimativa por CEP
+
+Mas a taxa precisa respeitar a regra por faixa.
+
+Não pode gerar taxa usando regra antiga R$ 0.50/km.
+
+==================================================
+7. TESTES OBRIGATÓRIOS
+==================================================
+
+Teste com esta configuração:
+
+deliveryFeeMode = distance_tier
+baseDeliveryFee = 7
+baseDeliveryDistanceKm = 2
+additionalPricePerKm = 2
+maximumDeliveryFee = 25
+
+Testar:
+
+1. Distância 1 km:
+resultado esperado: R$ 7,00
+
+2. Distância 2 km:
+resultado esperado: R$ 7,00
+
+3. Distância 3 km:
+resultado esperado: R$ 9,00
+
+4. Distância 5 km:
+resultado esperado: R$ 13,00
+
+5. Distância 10 km:
+resultado esperado: R$ 23,00
+
+6. Distância muito alta:
+resultado esperado: respeitar maximumDeliveryFee
+
+Também testar no Novo Pedido Delivery:
+- digitar CEP
+- verificar endereço preenchido
+- verificar resumo da taxa
+- confirmar que não aparece mais "Regra: R$ 0.50/km" quando modo for distance_tier
+
+Rodar typecheck sem erros.
+
+==================================================
+8. RESPOSTA FINAL
+==================================================
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Qual era a causa de estar usando R$ 0.50/km.
+2. Arquivos alterados.
+3. Como ficou a regra distance_tier.
+4. Como configurar nas Configurações.
+5. Como testar no Novo Pedido.
+6. Limitações restantes.
