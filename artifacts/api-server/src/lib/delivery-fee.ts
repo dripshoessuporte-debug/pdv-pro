@@ -1,32 +1,39 @@
 /**
  * Delivery fee calculation utilities.
  *
- * MVP approach: approximate distance from CEP numeric difference.
+ * MVP approach: approximate distance from CEP prefix comparison.
  * To integrate a real geocoding API (Google Maps, Mapbox, OpenStreetMap Nominatim, etc.),
  * replace `estimateDistanceKmFromCep` with an async function that calls the external API.
  * All callers are already `async` so no further changes to the rest of the system are needed.
  */
 
+const MVP_MAX_DISTANCE_KM = 15;
+const MVP_SAFETY_MAX_FEE = 30;
+
 /**
  * Strips formatting characters from a Brazilian CEP, returning only 8 digits.
+ * Returns undefined if the result is not exactly 8 numeric digits.
  */
-export function normalizeCep(cep: string): string {
-  return cep.replace(/\D/g, "");
+export function normalizeCep(cep: string): string | undefined {
+  const digits = cep.replace(/\D/g, "");
+  return digits.length === 8 ? digits : undefined;
 }
 
 /**
- * MVP approximation: estimates delivery distance in km based purely on the
- * numeric difference between the store CEP and the customer CEP.
+ * MVP approximation: estimates delivery distance in km using CEP prefix comparison.
  *
- * ⚠️  This is NOT a real geographic calculation. CEP numbers in Brazil are
- *   assigned sequentially within regions (south → north), so nearby CEPs tend
- *   to have small numeric differences — but the mapping is far from precise.
+ * Brazilian CEPs share prefixes within geographic regions, so comparing the longest
+ * common prefix gives a reasonable proximity estimate without any geocoding API.
  *
- * Calibration for Curitiba/PR (typical metropolitan CEP range 80000-000 → 83999-999):
- *   - diff  1 000 → ~0.5 km  (same block / adjacent street)
- *   - diff  3 000 → ~1 km    (a few neighbourhoods apart)
- *   - diff 12 000 → ~4 km    (cross-town)
- *   - diff 30 000 → ~10 km   (edge of metro region)
+ * Distance table:
+ *   - same CEP (8 digits equal)   → 0.5 km
+ *   - same first 5 digits         → 1.5 km
+ *   - same first 4 digits         → 3 km
+ *   - same first 3 digits         → 5 km
+ *   - same first 2 digits         → 8 km
+ *   - completely different prefix → 12 km
+ *
+ * Capped at MVP_MAX_DISTANCE_KM (15 km) to prevent absurd values.
  *
  * Returns `null` when either CEP is invalid.
  */
@@ -37,24 +44,31 @@ export function estimateDistanceKmFromCep(
   const s = normalizeCep(storeCep);
   const c = normalizeCep(customerCep);
 
-  if (s.length !== 8 || c.length !== 8) return null;
+  if (!s || !c) return null;
 
-  const sNum = parseInt(s, 10);
-  const cNum = parseInt(c, 10);
+  let distKm: number;
 
-  if (isNaN(sNum) || isNaN(cNum)) return null;
+  if (s === c) {
+    distKm = 0.5;
+  } else if (s.slice(0, 5) === c.slice(0, 5)) {
+    distKm = 1.5;
+  } else if (s.slice(0, 4) === c.slice(0, 4)) {
+    distKm = 3;
+  } else if (s.slice(0, 3) === c.slice(0, 3)) {
+    distKm = 5;
+  } else if (s.slice(0, 2) === c.slice(0, 2)) {
+    distKm = 8;
+  } else {
+    distKm = 12;
+  }
 
-  const diff = Math.abs(sNum - cNum);
-
-  // ~3 000 CEP units ≈ 1 km in the Curitiba metro area (MVP heuristic)
-  const estimatedKm = Math.max(0.5, diff / 3000);
-
-  // Cap at 50 km to avoid wildly wrong values for cross-state CEPs
-  return Math.min(estimatedKm, 50);
+  return Math.min(distKm, MVP_MAX_DISTANCE_KM);
 }
 
 /**
  * Applies delivery fee rules (price per km, min, max) to a distance value.
+ * When no maximumDeliveryFee is configured, a safety ceiling of MVP_SAFETY_MAX_FEE
+ * is applied to prevent accidentally absurd fees.
  */
 export function calculateDeliveryFee(
   distanceKm: number,
@@ -70,8 +84,13 @@ export function calculateDeliveryFee(
     fee = settings.minimumDeliveryFee;
   }
 
-  if (settings.maximumDeliveryFee != null && fee > settings.maximumDeliveryFee) {
-    fee = settings.maximumDeliveryFee;
+  const effectiveMax =
+    settings.maximumDeliveryFee != null
+      ? settings.maximumDeliveryFee
+      : MVP_SAFETY_MAX_FEE;
+
+  if (fee > effectiveMax) {
+    fee = effectiveMax;
   }
 
   return Math.round(fee * 100) / 100;

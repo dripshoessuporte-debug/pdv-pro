@@ -1,0 +1,281 @@
+Corrija o cálculo automático de taxa de entrega por CEP.
+
+Não refaça o projeto do zero.
+Não altere visual.
+Não mexa em funcionalidades fora do necessário.
+Preserve:
+- pedidos
+- delivery
+- configurações
+- taxa manual
+- pedidos externos
+- integração inbound
+- rotas
+- caixa
+- dashboard
+
+PROBLEMA:
+A taxa de entrega calculada automaticamente está dando valores absurdos, por exemplo R$ 100.
+Isso acontece porque a estimativa atual por diferença numérica de CEP está muito agressiva.
+
+OBJETIVO:
+A taxa precisa ser calculada com base no CEP da loja cadastrado nas Configurações da conta/loja e no CEP do cliente/entrega.
+
+O cálculo precisa ser funcional para MVP, controlado e não gerar valores absurdos.
+
+==================================================
+1. USAR CEP DA LOJA DAS CONFIGURAÇÕES
+==================================================
+
+Garantir que o cálculo sempre use como origem o CEP da loja salvo em Configurações.
+
+Usar estes campos de store_settings ou equivalente:
+- storeCep
+- storeAddress
+- storeNeighborhood
+- storeCity
+
+Regra:
+Se o modo de taxa for per_km, o sistema deve buscar o storeCep salvo nas Configurações.
+
+Se storeCep não estiver preenchido:
+- não calcular automaticamente
+- mostrar aviso:
+"Configure o CEP da loja para calcular a taxa automaticamente."
+
+Não usar CEP fixo no código.
+Não usar CEP vazio.
+Não usar fallback aleatório.
+
+==================================================
+2. NORMALIZAÇÃO DE CEP
+==================================================
+
+Criar/ajustar função:
+
+normalizeCep(cep)
+
+Ela deve:
+- remover hífen
+- remover espaços
+- remover caracteres não numéricos
+- validar se ficou com 8 dígitos
+
+Exemplo:
+"81720-000" → "81720000"
+
+Se o CEP não tiver 8 dígitos:
+- retornar erro/undefined
+- não calcular taxa automaticamente
+
+==================================================
+3. TROCAR FÓRMULA AGRESSIVA POR FÓRMULA CONTROLADA
+==================================================
+
+A fórmula atual está gerando distância muito alta.
+
+Criar uma função mais segura:
+
+estimateDistanceKmFromCep(storeCep, customerCep)
+
+Ela deve comparar CEPs de forma aproximada, mas com limites realistas.
+
+Sugestão para MVP:
+
+- Se CEP igual:
+  distância estimada = 0.5 km
+
+- Se os 5 primeiros dígitos forem iguais:
+  distância estimada = 1.5 km
+
+- Se os 4 primeiros dígitos forem iguais:
+  distância estimada = 3 km
+
+- Se os 3 primeiros dígitos forem iguais:
+  distância estimada = 5 km
+
+- Se os 2 primeiros dígitos forem iguais:
+  distância estimada = 8 km
+
+- Se for muito diferente:
+  distância estimada = 12 km
+
+Depois aplicar limite máximo de distância estimada para MVP:
+- máximo padrão: 15 km
+
+Ou seja:
+Nunca retornar uma distância absurda como 40, 50, 100 km em cálculo por CEP aproximado.
+
+==================================================
+4. CÁLCULO DA TAXA
+==================================================
+
+Criar/ajustar função:
+
+calculateDeliveryFee(distanceKm, settings)
+
+Regra:
+
+taxaBase = distanceKm * deliveryPricePerKm
+
+Aplicar:
+- minimumDeliveryFee, se existir
+- maximumDeliveryFee, se existir
+- arredondar para 2 casas decimais
+
+Exemplo:
+storeCep = 81720-000
+customerCep = 81720-500
+mesmos 5 primeiros dígitos
+distância estimada = 1.5 km
+preço/km = R$ 2,50
+taxa = R$ 3,75
+mínima = R$ 8,00
+taxa final = R$ 8,00
+
+Exemplo 2:
+storeCep = 81720-000
+customerCep = 81650-000
+mesmos 2 ou 3 primeiros dígitos
+distância estimada = 5 ou 8 km
+preço/km = R$ 2,50
+taxa = R$ 12,50 ou R$ 20,00
+
+==================================================
+5. EVITAR TAXA ABSURDA
+==================================================
+
+Adicionar proteção:
+
+Se a taxa calculada ultrapassar maximumDeliveryFee configurado:
+- usar maximumDeliveryFee
+
+Se não houver maximumDeliveryFee:
+- usar teto interno de segurança para MVP, por exemplo R$ 30,00
+
+Então:
+- a taxa automática nunca deve dar R$ 100
+- a menos que o próprio usuário configure maximumDeliveryFee maior e preço/km muito alto
+
+==================================================
+6. CONFIGURAÇÕES
+==================================================
+
+Na página Configurações, garantir campos claros:
+
+- CEP da loja
+- modo da taxa: manual / por km
+- valor por km
+- taxa mínima
+- taxa máxima
+
+Adicionar texto de ajuda pequeno:
+"O cálculo por CEP é uma estimativa aproximada para MVP. Para distância real, integre uma API de mapas futuramente."
+
+Garantir que salvar configurações realmente persiste storeCep.
+
+==================================================
+7. NOVO PEDIDO DELIVERY
+==================================================
+
+Na tela Novo Pedido, quando deliveryFeeMode = per_km:
+
+1. Ao preencher CEP do cliente:
+   - normalizar CEP
+   - buscar CEP da loja das Configurações
+   - calcular distância estimada
+   - calcular taxa
+
+2. Mostrar:
+   - CEP da loja usado
+   - distância estimada
+   - valor por km
+   - taxa final
+
+Exemplo:
+"Origem: 81720-000"
+"Distância estimada: 3 km"
+"Taxa calculada: R$ 8,00"
+
+3. Permitir editar manualmente a taxa depois do cálculo.
+
+4. Se não conseguir calcular:
+   - manter campo manual
+   - mostrar mensagem clara
+
+==================================================
+8. PEDIDOS EXTERNOS / API
+==================================================
+
+Para pedidos externos:
+
+Se a API externa enviar delivery.fee:
+- preservar a taxa enviada pela API
+- deliveryFeeSource = external_api
+- NÃO recalcular
+
+Se a API externa não enviar delivery.fee:
+- calcular usando storeCep + CEP do cliente
+- deliveryFeeSource = automatic
+
+==================================================
+9. TESTES OBRIGATÓRIOS
+==================================================
+
+Teste:
+
+1. Ir em Configurações.
+2. Preencher CEP da loja com um CEP válido, exemplo: 81720-000.
+3. Ativar modo por km.
+4. Definir:
+   - preço/km = 2.50
+   - taxa mínima = 8.00
+   - taxa máxima = 25.00
+
+5. Criar pedido delivery com CEP próximo:
+   - 81720-500
+   Resultado esperado:
+   - taxa final deve ser próxima da mínima, tipo R$ 8,00
+   - não pode dar R$ 100
+
+6. Criar pedido delivery com CEP diferente, exemplo:
+   - 81650-000
+   Resultado esperado:
+   - taxa deve ser maior, mas respeitando máximo configurado
+   - não pode passar de R$ 25,00
+
+7. Criar pedido delivery com CEP inválido.
+   Resultado esperado:
+   - não calcula automaticamente
+   - mostra aviso
+
+8. Remover CEP da loja nas Configurações.
+   Resultado esperado:
+   - não calcula
+   - pede para configurar CEP da loja
+
+9. Testar pedido externo com delivery.fee.
+   Resultado esperado:
+   - preserva taxa externa
+   - não recalcula
+
+10. Testar pedido externo sem delivery.fee.
+   Resultado esperado:
+   - calcula taxa automaticamente se tiver CEP
+
+11. Rodar typecheck sem erros.
+
+==================================================
+10. RESPOSTA FINAL
+==================================================
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Qual era a causa da taxa dar R$ 100.
+3. Como o CEP da loja agora é usado.
+4. Como a nova estimativa de distância por CEP funciona.
+5. Como a taxa mínima e máxima são aplicadas.
+6. Como testar passo a passo.
+7. Limitações restantes.
+8. Como futuramente trocar por API real de mapas.

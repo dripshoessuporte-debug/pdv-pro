@@ -74,6 +74,12 @@ export default function NewOrder() {
   const [deliveryPaymentNotes, setDeliveryPaymentNotes] = useState("");
 
   const [feeAutoCalculated, setFeeAutoCalculated] = useState(false);
+  const [feeCalcInfo, setFeeCalcInfo] = useState<{
+    storeCep: string;
+    distanceKm: number;
+    pricePerKm: number;
+    fee: number;
+  } | null>(null);
   const [storeSettings, setStoreSettings] = useState<{
     deliveryFeeMode: string;
     storeCep: string | null;
@@ -119,32 +125,52 @@ export default function NewOrder() {
   useEffect(() => {
     if (orderType !== "delivery") return;
     if (!storeSettings || storeSettings.deliveryFeeMode !== "per_km") return;
-    if (!storeSettings.storeCep || !storeSettings.deliveryPricePerKm) return;
+    if (!storeSettings.deliveryPricePerKm) return;
 
-    const normalized = (cep: string) => cep.replace(/\D/g, "");
-    const storeCepNum = parseInt(normalized(storeSettings.storeCep), 10);
-    const customerCepNum = parseInt(normalized(deliveryCep), 10);
-
-    if (normalized(deliveryCep).length !== 8 || isNaN(storeCepNum) || isNaN(customerCepNum)) {
-      if (feeAutoCalculated) {
-        setDeliveryFee("");
-        setFeeAutoCalculated(false);
-      }
+    // If store CEP not configured, clear any auto-calculated fee
+    if (!storeSettings.storeCep) {
+      if (feeAutoCalculated) { setDeliveryFee(""); setFeeAutoCalculated(false); setFeeCalcInfo(null); }
       return;
     }
 
-    const diff = Math.abs(storeCepNum - customerCepNum);
-    let distKm = Math.max(0.5, diff / 3000);
-    distKm = Math.min(distKm, 50);
+    const normalizeCep = (cep: string): string | undefined => {
+      const d = cep.replace(/\D/g, "");
+      return d.length === 8 ? d : undefined;
+    };
+
+    const s = normalizeCep(storeSettings.storeCep);
+    const c = normalizeCep(deliveryCep);
+
+    if (!s || !c) {
+      if (feeAutoCalculated) { setDeliveryFee(""); setFeeAutoCalculated(false); setFeeCalcInfo(null); }
+      return;
+    }
+
+    // Prefix-based distance estimation (mirrors backend delivery-fee.ts)
+    let distKm: number;
+    if (s === c)                    distKm = 0.5;
+    else if (s.slice(0,5) === c.slice(0,5)) distKm = 1.5;
+    else if (s.slice(0,4) === c.slice(0,4)) distKm = 3;
+    else if (s.slice(0,3) === c.slice(0,3)) distKm = 5;
+    else if (s.slice(0,2) === c.slice(0,2)) distKm = 8;
+    else                            distKm = 12;
+    distKm = Math.min(distKm, 15); // MVP cap
 
     let fee = distKm * storeSettings.deliveryPricePerKm;
     if (storeSettings.minimumDeliveryFee && fee < storeSettings.minimumDeliveryFee) fee = storeSettings.minimumDeliveryFee;
-    if (storeSettings.maximumDeliveryFee && fee > storeSettings.maximumDeliveryFee) fee = storeSettings.maximumDeliveryFee;
+    const effectiveMax = storeSettings.maximumDeliveryFee ?? 30;
+    if (fee > effectiveMax) fee = effectiveMax;
     fee = Math.round(fee * 100) / 100;
 
     setDeliveryFee(String(fee));
     setFeeAutoCalculated(true);
-  }, [deliveryCep, orderType, storeSettings, feeAutoCalculated]);
+    setFeeCalcInfo({
+      storeCep: storeSettings.storeCep,
+      distanceKm: distKm,
+      pricePerKm: storeSettings.deliveryPricePerKm,
+      fee,
+    });
+  }, [deliveryCep, orderType, storeSettings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addToCart = (product: { id: number; name: string; price: number }) => {
     setCart((prev) => {
@@ -373,7 +399,8 @@ export default function NewOrder() {
                           value={deliveryCep}
                           onChange={(e) => {
                             setDeliveryCep(e.target.value);
-                            if (feeAutoCalculated) setFeeAutoCalculated(false);
+                            setFeeAutoCalculated(false);
+                            setFeeCalcInfo(null);
                           }}
                           data-testid="input-delivery-cep"
                           maxLength={9}
@@ -383,7 +410,7 @@ export default function NewOrder() {
                         <Label className="flex items-center justify-between">
                           <span>Taxa de Entrega (R$)</span>
                           {feeAutoCalculated && (
-                            <span className="text-xs font-normal text-green-600 dark:text-green-400">📍 calculada por CEP</span>
+                            <span className="text-xs font-normal text-green-600 dark:text-green-400">📍 automática</span>
                           )}
                         </Label>
                         <Input
@@ -392,11 +419,35 @@ export default function NewOrder() {
                           min="0"
                           placeholder="0,00"
                           value={deliveryFee}
-                          onChange={(e) => { setDeliveryFee(e.target.value); setFeeAutoCalculated(false); }}
+                          onChange={(e) => { setDeliveryFee(e.target.value); setFeeAutoCalculated(false); setFeeCalcInfo(null); }}
                           data-testid="input-delivery-fee"
                         />
                       </div>
                     </div>
+
+                    {/* Aviso / detalhes do cálculo automático */}
+                    {storeSettings?.deliveryFeeMode === "per_km" && (
+                      <>
+                        {!storeSettings.storeCep && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
+                            ⚠️ Configure o CEP da loja para calcular a taxa automaticamente.
+                          </p>
+                        )}
+                        {storeSettings.storeCep && deliveryCep.replace(/\D/g,"").length > 0 && deliveryCep.replace(/\D/g,"").length < 8 && (
+                          <p className="text-xs text-muted-foreground">
+                            Digite os 8 dígitos do CEP para calcular automaticamente.
+                          </p>
+                        )}
+                        {feeCalcInfo && (
+                          <div className="text-xs bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded px-3 py-2 space-y-0.5 text-green-800 dark:text-green-300">
+                            <p>Origem: <span className="font-mono">{feeCalcInfo.storeCep.replace(/^(\d{5})(\d{3})$/, "$1-$2")}</span></p>
+                            <p>Distância estimada: ~{feeCalcInfo.distanceKm} km</p>
+                            <p>Taxa calculada: R$ {feeCalcInfo.fee.toFixed(2)} (R$ {feeCalcInfo.pricePerKm.toFixed(2)}/km)</p>
+                            <p className="text-green-600 dark:text-green-400 italic">Você pode editar manualmente o valor acima.</p>
+                          </div>
+                        )}
+                      </>
+                    )}
 
                     {/* Endereço */}
                     <div>

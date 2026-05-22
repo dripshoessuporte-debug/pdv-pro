@@ -333,7 +333,10 @@ export default function Settings() {
             {deliveryFeeMode === "per_km" && (
               <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
                 <p className="text-xs text-muted-foreground">
-                  A taxa é estimada pela diferença de CEP entre a loja e o endereço de entrega. Configure o CEP da loja acima para ativar o cálculo automático.
+                  O cálculo compara o prefixo do CEP da loja com o do cliente para estimar a distância. É uma aproximação para MVP — para distância real, integre uma API de mapas futuramente.
+                </p>
+                <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                  ⚠️ Certifique-se de preencher o <strong>CEP da loja</strong> acima para ativar o cálculo automático.
                 </p>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
