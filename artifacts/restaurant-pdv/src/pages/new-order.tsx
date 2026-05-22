@@ -524,7 +524,7 @@ export default function NewOrder() {
                             {feeCalcInfo.mode === "per_km" && feeCalcInfo.pricePerKm != null && (
                               <div className="flex justify-between">
                                 <span className="text-green-600 dark:text-green-400">Regra</span>
-                                <span className="font-semibold">R$ {feeCalcInfo.pricePerKm.toFixed(2)}/km</span>
+                                <span className="font-semibold">R$ {parseFloat(String(feeCalcInfo.pricePerKm)).toFixed(2)}/km</span>
                               </div>
                             )}
                             <div className="flex justify-between border-t border-green-200 dark:border-green-700 pt-1 mt-0.5">
