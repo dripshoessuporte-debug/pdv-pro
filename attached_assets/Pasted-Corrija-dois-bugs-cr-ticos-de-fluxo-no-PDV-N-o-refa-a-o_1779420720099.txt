@@ -1,0 +1,225 @@
+Corrija dois bugs críticos de fluxo no PDV.
+
+Não refaça o projeto do zero.
+Não mexa no visual.
+Não altere cores.
+Não crie funcionalidade nova fora do necessário.
+
+Preserve:
+- pedidos
+- cozinha
+- pagamento
+- caixa
+- delivery
+- rotas
+- baixa financeira
+- dashboard
+- alertas
+
+PROBLEMA 1 — Pedido já pago volta a mostrar botão "Pagar"
+
+Fluxo onde deu bug:
+1. Criei um pedido de balcão manual.
+2. Enviei para cozinha.
+3. Fui em Pedidos e cliquei em Pagar.
+4. O pagamento foi registrado corretamente.
+5. Na tela Pedidos apareceu "Dar baixa", correto.
+6. Depois fui na Cozinha e marquei o pedido como pronto.
+7. Voltei para Pedidos.
+8. O pedido voltou a mostrar "Pagar", mesmo já estando pago.
+
+Isso está errado.
+
+REGRA ABSOLUTA:
+Se o pedido já tem payment registrado, nunca deve aparecer botão "Pagar" de novo.
+
+O botão "Pagar" só pode aparecer se:
+- não existe payment registrado para esse pedido
+- o pedido não está closed/finalizado
+- o pedido não está cancelled
+- o pedido não é delivery com paymentTiming = on_delivery aguardando baixa no Caixa
+
+Se já existe payment:
+- mostrar "Dar baixa" quando ainda faltar encerramento operacional
+- ou mostrar "Finalizado" quando já estiver closed
+- mas nunca mostrar "Pagar" novamente
+
+==================================================
+1. CORRIGIR BACKEND / API DE PEDIDOS
+==================================================
+
+Verifique se a API de pedidos retorna informação suficiente para o frontend saber se o pedido já foi pago.
+
+Cada pedido deve retornar algo como:
+- paid
+- hasPayment
+- paidAt
+- paymentStatus
+- paymentsCount
+- ou qualquer campo equivalente já existente
+
+Se não existir, adicionar de forma segura.
+
+A tela Pedidos não deve decidir apenas pelo order.status.
+Ela precisa considerar se existe pagamento.
+
+IMPORTANTE:
+orders.status pode mudar para ready quando cozinha marca pronto.
+Mas isso não pode apagar/ignorar o fato de que o pedido já foi pago.
+
+==================================================
+2. CORRIGIR AÇÃO DA COZINHA AO MARCAR PRONTO
+==================================================
+
+Quando a cozinha marca um pedido como pronto:
+
+Se o pedido NÃO foi pago:
+- status pode virar ready
+- botão Pagar pode aparecer, se o tipo permitir
+
+Se o pedido JÁ foi pago:
+- não voltar para estado que mostre Pagar
+- manter payment existente
+- deixar pronto para "Dar baixa" ou "Finalizar"
+- se for balcão/takeaway, mostrar "Dar baixa"
+- se for mesa, mostrar "Dar baixa" ou finalizar conforme regra de mesa
+- se for delivery pago antes, seguir fluxo de rota/entrega
+
+A cozinha não pode desfazer estado financeiro.
+
+==================================================
+3. CORRIGIR FRONTEND DA TELA PEDIDOS
+==================================================
+
+Na tela Pedidos, reescrever a lógica dos botões com prioridade correta:
+
+Prioridade:
+
+1. Se status = cancelled:
+   - mostrar Cancelado
+   - não mostrar Pagar
+
+2. Se pedido tem payment registrado:
+   - não mostrar Pagar
+   - se status ainda não é closed:
+      mostrar Dar baixa, quando operacionalmente permitido
+   - se status é closed:
+      mostrar Finalizado
+
+3. Se delivery paymentTiming = on_delivery:
+   - não mostrar Pagar antes da baixa financeira
+   - se deliveryStatus = awaiting_settlement:
+      mostrar "Aguardando baixa financeira"
+      orientar que a baixa é no Caixa
+   - não mostrar Pagar
+
+4. Se não tem payment:
+   - mostrar Pagar apenas para tipos e estados onde pagamento no caixa faz sentido:
+      balcão, mesa, takeaway, delivery paymentTiming=now
+
+5. Se cozinha marcou pronto em pedido já pago:
+   - continuar mostrando Dar baixa
+   - nunca voltar para Pagar
+
+==================================================
+4. PROTEGER BACKEND DE PAGAMENTO DUPLICADO
+==================================================
+
+Confirmar que POST /payments já bloqueia pagamento duplicado.
+
+Se ainda não bloquear por payment existente:
+- antes de criar payment, verificar se já existe payment para orderId
+- se existir, retornar 409:
+"Este pedido já possui pagamento registrado."
+
+Isso protege mesmo se o frontend errar.
+
+==================================================
+5. BUG 2 — Tela voltou para Rotas indevidamente
+==================================================
+
+Também corrigir o bug onde o sistema voltou para a tela de Rotas indevidamente após ação relacionada a rotas.
+
+Verifique na página Rotas e nos handlers:
+- assumir rota
+- concluir rota
+- remover pedido da rota
+- gerar rotas
+- alternar entre Rotas Prontas e Rotas em Andamento
+
+Procurar usos indevidos de:
+- navigate("/routes")
+- redirecionamento automático
+- reset de aba/filtro após mutation
+- refetch que força voltar para aba padrão
+- setActiveTab incorreto
+
+Regra correta:
+Após uma ação, o usuário deve permanecer na aba/tela onde estava, exceto se a ação exigir mudança clara.
+
+Exemplos:
+- se estou em Rotas em Andamento e concluo uma rota:
+   a rota some da lista em andamento
+   continuo na aba Rotas em Andamento
+   não volto para Rotas Prontas automaticamente
+
+- se estou em Pedidos:
+   nenhuma ação de cozinha/pagamento deve me jogar para Rotas
+
+- se estou em Caixa:
+   baixa financeira não deve me jogar para Rotas
+
+==================================================
+6. TESTES OBRIGATÓRIOS — BUG DO PAGAMENTO
+==================================================
+
+Teste exatamente este fluxo:
+
+1. Criar pedido balcão.
+2. Enviar para cozinha.
+3. Ir em Pedidos.
+4. Clicar em Pagar.
+5. Confirmar pagamento.
+6. Verificar que aparece "Dar baixa".
+7. Ir em Cozinha.
+8. Marcar esse pedido como pronto.
+9. Voltar em Pedidos.
+10. Confirmar que NÃO aparece "Pagar".
+11. Confirmar que continua aparecendo "Dar baixa" ou "Finalizado", conforme o status operacional.
+12. Tentar acessar pagamento novamente e confirmar que backend bloqueia duplicidade.
+
+Também testar:
+- pedido mesa pago antes de ficar pronto
+- pedido takeaway pago antes de ficar pronto
+- delivery paymentTiming=now pago antes da entrega
+- delivery paymentTiming=on_delivery aguardando baixa no Caixa
+
+==================================================
+7. TESTES OBRIGATÓRIOS — BUG DA ROTA
+==================================================
+
+Teste:
+
+1. Ir em Rotas.
+2. Entrar em Rotas em Andamento.
+3. Concluir uma rota.
+4. Confirmar que a rota some da aba em andamento.
+5. Confirmar que NÃO volta para Rotas Prontas automaticamente.
+6. Confirmar que rota concluída não aparece em Rotas Prontas.
+7. Confirmar que pedidos on_delivery aparecem apenas como baixa financeira no Caixa/Dashboard.
+8. Confirmar que nenhuma ação em Pedidos/Cozinha/Caixa redireciona indevidamente para Rotas.
+
+==================================================
+8. RESPOSTA FINAL
+==================================================
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Qual era a causa do pedido pago voltar a mostrar Pagar.
+3. Como a lógica dos botões foi corrigida.
+4. Como a cozinha passou a respeitar pedidos já pagos.
+5. Como o backend impede pagamento duplicado.
+6. Qual era a causa do redirecionamento/volta indevida para Rotas.
+7. Como testar passo a passo.
+8. Limitações restantes.

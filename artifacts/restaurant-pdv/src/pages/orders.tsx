@@ -398,7 +398,7 @@ export default function Orders() {
                 </Button>
               )}
 
-              {PAYABLE.includes(order.status) && (
+              {!order.paidAt && PAYABLE.includes(order.status) && (
                 <Button
                   size="sm"
                   onClick={() => setLocation(`/payments/${order.id}`)}
@@ -409,7 +409,7 @@ export default function Orders() {
                 </Button>
               )}
 
-              {PAYABLE.includes(order.status) && (
+              {!order.paidAt && PAYABLE.includes(order.status) && (
                 <Button
                   size="sm"
                   variant="outline"

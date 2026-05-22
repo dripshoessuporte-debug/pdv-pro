@@ -116,19 +116,33 @@ router.post("/kitchen/tickets/:id/ready", async (req, res): Promise<void> => {
     return;
   }
 
-  // Fetch the order to check its type
-  const [order] = await db.select({ type: ordersTable.type })
+  // Fetch the order to check its type AND payment status
+  const [order] = await db.select({
+    type: ordersTable.type,
+    status: ordersTable.status,
+    paidAt: ordersTable.paidAt,
+  })
     .from(ordersTable)
     .where(eq(ordersTable.id, ticket.orderId));
 
-  const orderUpdate: Record<string, string> = { status: "ready" };
+  const orderUpdate: Record<string, string> = {};
 
-  // For delivery orders, advance deliveryStatus to ready (pronto para entrega)
+  // Only advance status to 'ready' if the order has NOT been paid yet.
+  // If paidAt is set or status is already 'closed', the order was paid before the
+  // kitchen finished — preserve the financial state; never revert 'closed' to 'ready'.
+  if (!order?.paidAt && order?.status !== "closed") {
+    orderUpdate.status = "ready";
+  }
+
+  // For delivery orders, advance deliveryStatus to 'ready' (pronto para entrega)
+  // regardless of payment status — needed for route/delivery tracking.
   if (order?.type === "delivery") {
     orderUpdate.deliveryStatus = "ready";
   }
 
-  await db.update(ordersTable).set(orderUpdate).where(eq(ordersTable.id, ticket.orderId));
+  if (Object.keys(orderUpdate).length > 0) {
+    await db.update(ordersTable).set(orderUpdate).where(eq(ordersTable.id, ticket.orderId));
+  }
 
   const full = await getTicketWithItems(ticket.id);
   res.json(MarkTicketReadyResponse.parse(full));

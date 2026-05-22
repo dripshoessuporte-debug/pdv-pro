@@ -126,6 +126,7 @@ router.get("/orders", async (req, res): Promise<void> => {
       deliveryFee: ordersTable.deliveryFee,
       deliveryNotes: ordersTable.deliveryNotes,
       deliveryStatus: ordersTable.deliveryStatus,
+      paidAt: ordersTable.paidAt,
       createdAt: ordersTable.createdAt,
       updatedAt: ordersTable.updatedAt,
     })
@@ -157,6 +158,7 @@ router.get("/orders", async (req, res): Promise<void> => {
       customerName: order.customerName ?? customerNameRegistered ?? null,
       totalAmount: parseFloat(String(order.totalAmount)),
       deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
+      paidAt: order.paidAt ? order.paidAt.toISOString() : null,
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
       items: items.map((item) => ({

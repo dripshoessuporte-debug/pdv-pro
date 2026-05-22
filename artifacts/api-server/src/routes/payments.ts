@@ -42,6 +42,20 @@ router.post("/payments", async (req, res): Promise<void> => {
     return;
   }
 
+  // Guard against duplicate payment even if the order status was incorrectly
+  // reverted (e.g. kitchen marking ready after payment). Check the payments
+  // table directly — this is the authoritative source of truth.
+  const [existingPayment] = await db
+    .select({ id: paymentsTable.id })
+    .from(paymentsTable)
+    .where(eq(paymentsTable.orderId, parsed.data.orderId))
+    .limit(1);
+
+  if (existingPayment) {
+    res.status(409).json({ error: "Este pedido já possui pagamento registrado." });
+    return;
+  }
+
   // Execute every payment step atomically
   let payment;
   try {
@@ -77,10 +91,10 @@ router.post("/payments", async (req, res): Promise<void> => {
         })
         .returning();
 
-      // Step 2: close the order
+      // Step 2: close the order and record when it was paid
       await tx
         .update(ordersTable)
-        .set({ status: "closed" })
+        .set({ status: "closed", paidAt: new Date() })
         .where(eq(ordersTable.id, parsed.data.orderId));
 
       // Step 3: release the table if linked

@@ -344,7 +344,6 @@ export default function Routes() {
       setAssignRoute(null);
       setCourierName("");
       setSelectedCourierId(null);
-      setRouteView("in_progress");
     } catch (e) {
       toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
     } finally {
