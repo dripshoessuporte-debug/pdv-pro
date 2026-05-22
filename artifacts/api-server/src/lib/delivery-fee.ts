@@ -7,7 +7,7 @@
  * All callers are already `async` so no further changes to the rest of the system are needed.
  */
 
-const MVP_MAX_DISTANCE_KM = 12;
+const MVP_MAX_DISTANCE_KM = 8;
 const MVP_SAFETY_MAX_FEE = 30;
 
 /**
@@ -25,15 +25,18 @@ export function normalizeCep(cep: string): string | undefined {
  * Brazilian CEPs share prefixes within geographic regions, so comparing the longest
  * common prefix gives a reasonable proximity estimate without any geocoding API.
  *
- * Distance table:
- *   - same CEP (8 digits equal)   → 0.5 km
- *   - same first 5 digits         → 1.5 km
- *   - same first 4 digits         → 3 km
- *   - same first 3 digits         → 5 km
- *   - same first 2 digits         → 8 km
- *   - completely different prefix → 12 km
+ * Distance table (conservative urban estimates):
+ *   - same CEP (8 digits equal)                        → 0.5 km
+ *   - same first 5 digits                              → 1.5 km
+ *   - same first 4 digits                              → 2.5 km
+ *   - same first 3 digits                              → 4 km
+ *   - same first 2 digits                              → 6 km
+ *   - same first digit + both Curitiba (80x–82x)       → 7 km
+ *   - same first digit, other regions                  → 8 km
+ *   - completely different prefix                      → 8 km
  *
- * Capped at MVP_MAX_DISTANCE_KM (15 km) to prevent absurd values.
+ * Curitiba CEP ranges: 80000-000 to 82999-999 (prefix 80, 81, 82).
+ * Capped at MVP_MAX_DISTANCE_KM (8 km) to prevent overestimates in urban areas.
  *
  * Returns `null` when either CEP is invalid.
  */
@@ -46,6 +49,9 @@ export function estimateDistanceKmFromCep(
 
   if (!s || !c) return null;
 
+  const isCuritiba = (cep: string) =>
+    cep.startsWith("80") || cep.startsWith("81") || cep.startsWith("82");
+
   let distKm: number;
 
   if (s === c) {
@@ -53,13 +59,17 @@ export function estimateDistanceKmFromCep(
   } else if (s.slice(0, 5) === c.slice(0, 5)) {
     distKm = 1.5;
   } else if (s.slice(0, 4) === c.slice(0, 4)) {
-    distKm = 2;
+    distKm = 2.5;
   } else if (s.slice(0, 3) === c.slice(0, 3)) {
     distKm = 4;
   } else if (s.slice(0, 2) === c.slice(0, 2)) {
     distKm = 6;
+  } else if (s[0] === c[0]) {
+    // Same first digit — likely same state/metro region.
+    // For Curitiba CEPs (80x–82x), keep urban estimate low.
+    distKm = isCuritiba(s) && isCuritiba(c) ? 7 : 8;
   } else {
-    distKm = 10;
+    distKm = 8;
   }
 
   return Math.min(distKm, MVP_MAX_DISTANCE_KM);

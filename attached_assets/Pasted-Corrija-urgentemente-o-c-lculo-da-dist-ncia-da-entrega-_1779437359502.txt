@@ -1,0 +1,242 @@
+Corrija urgentemente o cálculo da distância da entrega.
+
+Não refaça o projeto.
+Não mexa no visual geral.
+Não altere funcionalidades fora do necessário.
+
+PROBLEMA:
+No Novo Pedido Delivery, para:
+
+CEP da loja: 82940-010
+CEP do cliente: 80045-030
+
+O sistema está mostrando:
+- Distância: 10 km
+- Fonte: Estimativa por CEP
+- Taxa: R$ 23,00
+
+Isso está alto demais para esse caso. O problema não é a fórmula da taxa. A fórmula está correta:
+R$ 7 até 2 km + R$ 2/km excedente.
+
+O problema é a distância estimada por CEP estar muito imprecisa.
+
+OBJETIVO:
+Fazer o sistema usar OpenRouteService quando a chave estiver configurada.
+Se a chave não estiver configurada, melhorar o fallback por CEP para não superestimar tanto.
+
+==================================================
+1. USAR OPENROUTESERVICE DE VERDADE
+==================================================
+
+Verificar se o backend está lendo corretamente:
+
+process.env.OPENROUTESERVICE_API_KEY
+
+Se a variável existir:
+- a distância deve ser calculada pela OpenRouteService
+- a fonte deve aparecer como "OpenRouteService"
+- NÃO deve aparecer "Estimativa por CEP"
+
+IMPORTANTE:
+A chamada para OpenRouteService deve ser feita no backend, não no frontend.
+
+Criar ou corrigir endpoint:
+
+POST /delivery/calculate-fee
+
+ou endpoint equivalente.
+
+Ele deve receber:
+- storeCep
+- storeAddress
+- storeNeighborhood
+- storeCity
+- customerCep
+- customerAddress
+- customerNeighborhood
+- customerCity
+
+E retornar:
+- distanceKm
+- distanceSource: openrouteservice | approximate_cep
+- deliveryFee
+- feeRuleSummary
+
+==================================================
+2. GEOCODING + ROTA REAL
+==================================================
+
+Com OpenRouteService:
+
+1. Montar endereço da loja:
+storeAddress + storeNeighborhood + storeCity + storeCep + Brasil
+
+2. Montar endereço do cliente:
+customerAddress + customerNeighborhood + customerCity + customerCep + Brasil
+
+3. Geocodificar os dois endereços.
+4. Calcular rota entre os dois pontos.
+5. Converter metros para km.
+6. Usar essa distância real no cálculo da taxa.
+
+Se a API falhar:
+- usar fallback por CEP
+- mostrar fonte como "Estimativa por CEP"
+- não quebrar o formulário
+
+==================================================
+3. CORRIGIR FALLBACK POR CEP
+==================================================
+
+O fallback atual está jogando 10 km para CEPs de Curitiba que não deveriam ser tratados como muito longe.
+
+Ajustar estimateDistanceKmFromCep para ser mais conservador dentro da mesma cidade/região.
+
+Regra sugerida para MVP:
+
+Se CEP igual:
+0.5 km
+
+Se os 5 primeiros dígitos forem iguais:
+1.5 km
+
+Se os 4 primeiros dígitos forem iguais:
+2.5 km
+
+Se os 3 primeiros dígitos forem iguais:
+4 km
+
+Se os 2 primeiros dígitos forem iguais:
+6 km
+
+Se os CEPs forem da mesma cidade e ambos começarem com 80, 81 ou 82:
+usar no máximo 7 km no fallback
+
+Se forem muito diferentes:
+8 km
+
+Teto absoluto do fallback:
+8 km para Curitiba/região urbana
+12 km para casos fora do padrão
+
+O fallback por CEP NÃO deve retornar 10 km para esse caso:
+82940-010 até 80045-030
+
+Para esse par específico, se estiver sem OpenRouteService:
+- fallback esperado: aproximadamente 6 km ou 7 km
+- nunca 10 km
+
+==================================================
+4. REGRA DA TAXA CONTINUA IGUAL
+==================================================
+
+Manter a fórmula configurável:
+
+baseDeliveryFee = 7
+baseDeliveryDistanceKm = 2
+additionalPricePerKm = 2
+
+Se distanceKm <= 2:
+taxa = 7
+
+Se distanceKm > 2:
+taxa = 7 + ((distanceKm - 2) * 2)
+
+Exemplos:
+6 km => R$ 15,00
+7 km => R$ 17,00
+10 km => R$ 23,00
+
+O problema é só não chutar 10 km quando não for o caso.
+
+==================================================
+5. CONFIGURAÇÕES
+==================================================
+
+Na tela Configurações > Serviço de Distância:
+
+Se OPENROUTESERVICE_API_KEY estiver configurada:
+mostrar:
+"OpenRouteService configurado"
+
+Se não estiver configurada:
+mostrar:
+"Usando estimativa por CEP"
+
+Não depender de chave digitada no frontend.
+
+A chave deve vir do Replit Secrets:
+OPENROUTESERVICE_API_KEY
+
+==================================================
+6. NOVO PEDIDO DELIVERY
+==================================================
+
+No Novo Pedido Delivery, após digitar o CEP:
+
+Se OpenRouteService estiver ativo:
+mostrar:
+Fonte: OpenRouteService
+
+Se cair no fallback:
+mostrar:
+Fonte: Estimativa por CEP
+
+Também mostrar:
+- distância usada
+- regra usada
+- taxa calculada
+
+Para o teste:
+Loja: 82940-010
+Cliente: 80045-030
+
+Resultado esperado:
+- com OpenRouteService: distância realista de rota
+- sem OpenRouteService: fallback entre 6 e 7 km
+- taxa esperada no fallback:
+  6 km => R$ 15,00
+  7 km => R$ 17,00
+
+Não deve dar R$ 23,00 nesse caso via fallback.
+
+==================================================
+7. TESTES OBRIGATÓRIOS
+==================================================
+
+Teste 1:
+- configurar OPENROUTESERVICE_API_KEY no Replit Secrets
+- reiniciar servidor
+- criar delivery:
+  storeCep = 82940-010
+  customerCep = 80045-030
+- confirmar que fonte aparece OpenRouteService
+
+Teste 2:
+- sem chave OpenRouteService
+- mesmo par de CEPs
+- confirmar fallback menor, entre 6 e 7 km
+- confirmar taxa entre R$ 15 e R$ 17
+
+Teste 3:
+- CEP próximo da loja
+- confirmar taxa mínima R$ 7
+
+Teste 4:
+- CEP distante
+- confirmar que respeita taxa máxima
+
+Rodar typecheck sem erros.
+
+==================================================
+8. RESPOSTA FINAL
+==================================================
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Por que estava dando 10 km.
+2. Se OpenRouteService está sendo usado ou não.
+3. Onde a API key é lida.
+4. Como o fallback por CEP foi corrigido.
+5. Qual distância/taxa esperada para 82940-010 até 80045-030.
+6. Como testar passo a passo.
