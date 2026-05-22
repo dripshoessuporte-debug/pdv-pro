@@ -7,7 +7,7 @@
  * All callers are already `async` so no further changes to the rest of the system are needed.
  */
 
-const MVP_MAX_DISTANCE_KM = 15;
+const MVP_MAX_DISTANCE_KM = 12;
 const MVP_SAFETY_MAX_FEE = 30;
 
 /**
@@ -53,13 +53,13 @@ export function estimateDistanceKmFromCep(
   } else if (s.slice(0, 5) === c.slice(0, 5)) {
     distKm = 1.5;
   } else if (s.slice(0, 4) === c.slice(0, 4)) {
-    distKm = 3;
+    distKm = 2;
   } else if (s.slice(0, 3) === c.slice(0, 3)) {
-    distKm = 5;
+    distKm = 4;
   } else if (s.slice(0, 2) === c.slice(0, 2)) {
-    distKm = 8;
+    distKm = 6;
   } else {
-    distKm = 12;
+    distKm = 10;
   }
 
   return Math.min(distKm, MVP_MAX_DISTANCE_KM);

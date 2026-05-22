@@ -1,0 +1,331 @@
+Corrija e melhore visualmente a configuração de taxa de entrega por distância.
+
+Não refaça o projeto do zero.
+Não mexa no visual geral fora do necessário.
+Não altere funcionalidades que já funcionam.
+Preserve:
+- pedidos
+- delivery
+- configurações
+- ViaCEP
+- cálculo por CEP
+- pedidos externos
+- rotas
+- caixa
+- dashboard
+- alertas
+
+PROBLEMA:
+As taxas automáticas de entrega estão ficando muito altas.
+Preciso que o sistema tenha uma configuração clara e editável por loja, baseada no CEP da loja e no CEP do cliente.
+
+OBJETIVO:
+Na página Configurações, criar uma área visual clara para o lojista configurar a regra de taxa de entrega.
+
+Regra desejada:
+- taxa mínima/fixa até determinada distância
+- depois disso, cobrar adicional por km excedente
+
+Exemplo:
+- Taxa fixa: R$ 7,00
+- Válida até: 2 km
+- Depois de 2 km: cobrar + R$ 2,00 por km excedente
+- Cálculo automático baseado no CEP da loja e CEP do cliente
+
+==================================================
+1. CONFIGURAÇÕES VISUAIS DA TAXA
+==================================================
+
+Na página Configurações, melhorar a seção de entrega/taxa.
+
+Criar uma área chamada:
+
+"Regra de Taxa de Entrega"
+
+Campos editáveis:
+
+1. Modo de cálculo:
+- Manual
+- Por distância com taxa fixa inicial
+
+2. CEP da loja:
+- usar o CEP já salvo nas informações da loja
+- se o usuário digitar/alterar o CEP da loja, consultar ViaCEP e preencher endereço/bairro/cidade
+
+3. Taxa fixa inicial:
+- exemplo padrão: R$ 7,00
+
+4. Distância incluída na taxa fixa:
+- exemplo padrão: 2 km
+
+5. Valor por km excedente:
+- exemplo padrão: R$ 2,00
+
+6. Taxa máxima opcional:
+- exemplo: R$ 20,00 ou R$ 25,00
+- pode deixar vazio, mas se vazio usar teto interno seguro para não gerar taxa absurda
+
+Texto explicativo visual:
+
+"Exemplo: até 2 km cobra R$ 7,00. Acima disso, soma R$ 2,00 por km excedente."
+
+==================================================
+2. CAMPOS / MODELO
+==================================================
+
+Usar ou criar campos equivalentes em store_settings:
+
+- deliveryFeeMode
+- baseDeliveryFee
+- baseDeliveryDistanceKm
+- additionalPricePerKm
+- maximumDeliveryFee
+- storeCep
+- storeAddress
+- storeNeighborhood
+- storeCity
+
+Se os nomes existentes forem diferentes, adaptar mantendo compatibilidade.
+
+Valores padrão sugeridos:
+- deliveryFeeMode = distance_tier
+- baseDeliveryFee = 7.00
+- baseDeliveryDistanceKm = 2
+- additionalPricePerKm = 2.00
+- maximumDeliveryFee = 25.00
+
+==================================================
+3. CÁLCULO CORRETO DA TAXA
+==================================================
+
+Ajustar a função calculateDeliveryFee para este comportamento:
+
+Se deliveryFeeMode = manual:
+- não calcular automaticamente
+- operador digita a taxa
+
+Se deliveryFeeMode = distance_tier:
+- distanceKm vem da estimativa entre CEP da loja e CEP do cliente
+
+Regra:
+
+Se distanceKm <= baseDeliveryDistanceKm:
+  taxa = baseDeliveryFee
+
+Se distanceKm > baseDeliveryDistanceKm:
+  excedente = distanceKm - baseDeliveryDistanceKm
+  taxa = baseDeliveryFee + (excedente * additionalPricePerKm)
+
+Depois:
+- aplicar maximumDeliveryFee, se configurado
+- se não houver maximumDeliveryFee, aplicar teto interno de segurança: R$ 30,00
+- arredondar para 2 casas decimais
+- nunca gerar taxa absurda tipo R$ 100
+
+Exemplos obrigatórios:
+
+Config:
+baseDeliveryFee = 7
+baseDeliveryDistanceKm = 2
+additionalPricePerKm = 2
+
+Distância 1 km:
+taxa = R$ 7,00
+
+Distância 2 km:
+taxa = R$ 7,00
+
+Distância 3 km:
+taxa = R$ 9,00
+
+Distância 5 km:
+taxa = R$ 13,00
+
+Distância 10 km:
+taxa = R$ 23,00
+
+Se maximumDeliveryFee = 20:
+Distância 10 km:
+taxa final = R$ 20,00
+
+==================================================
+4. USAR CEP DA LOJA COMO ORIGEM
+==================================================
+
+Garantir que a origem sempre seja o CEP da loja salvo em Configurações.
+
+Regra:
+- Não usar CEP fixo no código.
+- Não usar CEP vazio.
+- Não usar fallback aleatório.
+- Se storeCep não estiver preenchido, não calcular automaticamente.
+
+Mostrar aviso em Novo Pedido:
+"Configure o CEP da loja para calcular a taxa automaticamente."
+
+==================================================
+5. VIACEP
+==================================================
+
+Manter/implementar ViaCEP.
+
+Quando preencher CEP da loja:
+- consultar ViaCEP
+- preencher endereço, bairro, cidade/UF
+
+Quando preencher CEP do cliente no Novo Pedido Delivery:
+- consultar ViaCEP
+- preencher endereço, bairro, cidade/UF
+- calcular distância estimada
+- calcular taxa
+
+Se ViaCEP falhar:
+- não travar
+- permitir preenchimento manual
+
+==================================================
+6. DISTÂNCIA ESTIMADA POR CEP
+==================================================
+
+Ajustar a estimativa para não ser agressiva.
+
+Criar/ajustar:
+
+estimateDistanceKmFromCep(storeCep, customerCep)
+
+Regra segura para MVP:
+
+- CEP igual: 0.5 km
+- mesmos 5 primeiros dígitos: 1.5 km
+- mesmos 4 primeiros dígitos: 2 km
+- mesmos 3 primeiros dígitos: 4 km
+- mesmos 2 primeiros dígitos: 6 km
+- muito diferente: 8 km ou 10 km no máximo
+
+Aplicar teto:
+- distância estimada máxima: 12 km ou 15 km
+
+Não usar diferença numérica bruta do CEP para transformar em km.
+Isso está causando taxas altas demais.
+
+==================================================
+7. NOVO PEDIDO DELIVERY
+==================================================
+
+Na tela Novo Pedido > Delivery:
+
+Quando o operador digitar CEP do cliente:
+
+1. Buscar ViaCEP.
+2. Preencher endereço/bairro/cidade.
+3. Calcular distância estimada usando CEP da loja.
+4. Calcular taxa usando a regra configurada.
+
+Mostrar um resumo claro:
+
+"CEP da loja: 81720-000"
+"CEP do cliente: 81650-000"
+"Distância estimada: 4 km"
+"Regra: R$ 7,00 até 2 km + R$ 2,00/km excedente"
+"Taxa calculada: R$ 11,00"
+
+Permitir editar manualmente a taxa depois do cálculo.
+
+==================================================
+8. PEDIDOS EXTERNOS / API
+==================================================
+
+Para pedidos externos:
+
+Se o pedido externo vier com delivery.fee:
+- preservar a taxa enviada
+- deliveryFeeSource = external_api
+- não recalcular
+
+Se o pedido externo não vier com taxa:
+- calcular usando a regra da loja, se tiver CEP da loja e CEP do cliente
+
+==================================================
+9. CORES DAS ROTAS POR DISTÂNCIA
+==================================================
+
+Manter as cores das rotas baseadas na distância estimada, não no valor.
+
+Usar a distância máxima dos pedidos da rota:
+
+routeDistanceKm = maior estimatedDistanceKm dos pedidos da rota
+
+Faixas:
+- até 2 km: azul #3B82F6
+- 2 a 4 km: verde #22C55E
+- 4 a 6 km: rosa #EC4899
+- 6 a 8 km: roxo #8B5CF6
+- acima de 8 km: amarelo #EAB308
+
+A legenda deve mostrar:
+"Cor da rota por distância estimada"
+
+==================================================
+10. TESTES OBRIGATÓRIOS
+==================================================
+
+Teste:
+
+1. Ir em Configurações.
+2. Configurar:
+- CEP da loja = 81720-000
+- modo = Por distância com taxa fixa inicial
+- taxa fixa inicial = 7
+- distância incluída = 2 km
+- valor por km excedente = 2
+- taxa máxima = 25
+
+3. Criar pedido delivery com CEP próximo.
+Resultado esperado:
+- taxa = R$ 7,00
+
+4. Criar pedido com distância estimada 3 km.
+Resultado esperado:
+- taxa = R$ 9,00
+
+5. Criar pedido com distância estimada 5 km.
+Resultado esperado:
+- taxa = R$ 13,00
+
+6. Criar pedido distante.
+Resultado esperado:
+- respeitar taxa máxima
+- nunca dar R$ 100
+
+7. Testar modo manual.
+Resultado esperado:
+- não calcula automático
+
+8. Testar pedido externo com delivery.fee.
+Resultado esperado:
+- preserva taxa externa
+
+9. Testar pedido externo sem delivery.fee.
+Resultado esperado:
+- calcula usando regra da loja
+
+10. Gerar rotas.
+Resultado esperado:
+- cores baseadas na distância estimada
+
+11. Rodar typecheck sem erros.
+
+==================================================
+11. RESPOSTA FINAL
+==================================================
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Como ficou a tela de Configurações da taxa.
+3. Como funciona a regra: até X km taxa fixa, depois adicional por km.
+4. Como o CEP da loja é usado.
+5. Como o ViaCEP entra no fluxo.
+6. Por que a taxa não deve mais dar R$ 100.
+7. Como testar passo a passo.
+8. Limitações atuais.

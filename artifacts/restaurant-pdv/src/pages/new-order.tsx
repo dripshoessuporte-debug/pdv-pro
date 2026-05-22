@@ -179,11 +179,11 @@ export default function NewOrder() {
     let distKm: number;
     if (s === c)                              distKm = 0.5;
     else if (s.slice(0, 5) === c.slice(0, 5)) distKm = 1.5;
-    else if (s.slice(0, 4) === c.slice(0, 4)) distKm = 3;
-    else if (s.slice(0, 3) === c.slice(0, 3)) distKm = 5;
-    else if (s.slice(0, 2) === c.slice(0, 2)) distKm = 8;
-    else                                      distKm = 12;
-    distKm = Math.min(distKm, 15);
+    else if (s.slice(0, 4) === c.slice(0, 4)) distKm = 2;
+    else if (s.slice(0, 3) === c.slice(0, 3)) distKm = 4;
+    else if (s.slice(0, 2) === c.slice(0, 2)) distKm = 6;
+    else                                      distKm = 10;
+    distKm = Math.min(distKm, 12);
 
     let fee: number;
 
@@ -480,14 +480,14 @@ export default function NewOrder() {
                     </div>
 
                     {/* Aviso / detalhes do cálculo automático */}
-                    {storeSettings?.deliveryFeeMode === "per_km" && (
+                    {(storeSettings?.deliveryFeeMode === "per_km" || storeSettings?.deliveryFeeMode === "distance_tier") && (
                       <>
                         {!storeSettings.storeCep && (
                           <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
-                            ⚠️ Configure o CEP da loja para calcular a taxa automaticamente.
+                            ⚠️ Configure o CEP da loja em Configurações para calcular a taxa automaticamente.
                           </p>
                         )}
-                        {storeSettings.storeCep && deliveryCep.replace(/\D/g,"").length > 0 && deliveryCep.replace(/\D/g,"").length < 8 && (
+                        {storeSettings.storeCep && deliveryCep.replace(/\D/g, "").length > 0 && deliveryCep.replace(/\D/g, "").length < 8 && (
                           <p className="text-xs text-muted-foreground">
                             Digite os 8 dígitos do CEP para calcular automaticamente.
                           </p>
@@ -496,24 +496,42 @@ export default function NewOrder() {
                           <p className="text-xs text-muted-foreground animate-pulse">Buscando endereço pelo CEP...</p>
                         )}
                         {cepLookupStatus === "not_found" && (
-                          <p className="text-xs text-red-500">CEP não encontrado no ViaCEP.</p>
+                          <p className="text-xs text-red-500">CEP não encontrado no ViaCEP. Preencha o endereço manualmente.</p>
                         )}
                         {feeCalcInfo && (
-                          <div className="text-xs bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded px-3 py-2 space-y-0.5 text-green-800 dark:text-green-300">
-                            <p>Origem: <span className="font-mono">{feeCalcInfo.storeCep.replace(/^(\d{5})(\d{3})$/, "$1-$2")}</span></p>
-                            <p>Distância estimada: ~{feeCalcInfo.distanceKm} km</p>
-                            {feeCalcInfo.mode === "per_km" && feeCalcInfo.pricePerKm != null && (
-                              <p>Taxa calculada: R$ {feeCalcInfo.fee.toFixed(2)} (R$ {feeCalcInfo.pricePerKm.toFixed(2)}/km)</p>
-                            )}
+                          <div className="text-xs bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded px-3 py-2 space-y-1 text-green-800 dark:text-green-300">
+                            <div className="flex justify-between">
+                              <span className="text-green-600 dark:text-green-400">CEP da loja</span>
+                              <span className="font-mono font-semibold">{feeCalcInfo.storeCep.replace(/^(\d{5})(\d{3})$/, "$1-$2")}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-green-600 dark:text-green-400">CEP do cliente</span>
+                              <span className="font-mono font-semibold">{deliveryCep.replace(/^(\d{5})(\d{3})$/, "$1-$2")}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-green-600 dark:text-green-400">Distância estimada</span>
+                              <span className="font-semibold">~{feeCalcInfo.distanceKm} km</span>
+                            </div>
                             {feeCalcInfo.mode === "distance_tier" && (
-                              <>
-                                {feeCalcInfo.distanceKm <= (feeCalcInfo.baseDistanceKm ?? 0)
-                                  ? <p>Dentro da faixa base ({feeCalcInfo.baseDistanceKm} km): R$ {feeCalcInfo.baseFee?.toFixed(2)}</p>
-                                  : <p>Base R$ {feeCalcInfo.baseFee?.toFixed(2)} + R$ {feeCalcInfo.additionalPricePerKm?.toFixed(2)}/km extra = R$ {feeCalcInfo.fee.toFixed(2)}</p>
-                                }
-                              </>
+                              <div className="flex justify-between">
+                                <span className="text-green-600 dark:text-green-400">Regra</span>
+                                <span className="font-semibold text-right">
+                                  R$ {feeCalcInfo.baseFee?.toFixed(2)} até {feeCalcInfo.baseDistanceKm} km
+                                  {(feeCalcInfo.additionalPricePerKm ?? 0) > 0 && ` + R$ ${feeCalcInfo.additionalPricePerKm?.toFixed(2)}/km excedente`}
+                                </span>
+                              </div>
                             )}
-                            <p className="text-green-600 dark:text-green-400 italic">Você pode editar manualmente o valor acima.</p>
+                            {feeCalcInfo.mode === "per_km" && feeCalcInfo.pricePerKm != null && (
+                              <div className="flex justify-between">
+                                <span className="text-green-600 dark:text-green-400">Regra</span>
+                                <span className="font-semibold">R$ {feeCalcInfo.pricePerKm.toFixed(2)}/km</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between border-t border-green-200 dark:border-green-700 pt-1 mt-0.5">
+                              <span className="font-semibold text-green-700 dark:text-green-200">Taxa calculada</span>
+                              <span className="font-black text-green-700 dark:text-green-200">R$ {feeCalcInfo.fee.toFixed(2)}</span>
+                            </div>
+                            <p className="text-green-600 dark:text-green-400 italic text-[10px]">Você pode editar manualmente o valor acima.</p>
                           </div>
                         )}
                       </>
