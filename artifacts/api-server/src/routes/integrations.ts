@@ -4,6 +4,7 @@ import { db, ordersTable, orderItemsTable, storeSettingsTable, deliveryDistanceC
 import { estimateDistanceKmFromCep, calculateDeliveryFee, normalizeCep } from "../lib/delivery-fee";
 import { calculateRouteDistanceKm, isOrsConfigured, getOrsApiKey } from "../lib/openrouteservice";
 import { getOrCreateSettings } from "./settings";
+import { requireIntegrationKey } from "../middleware/security";
 
 const router: IRouter = Router();
 
@@ -13,18 +14,7 @@ const router: IRouter = Router();
  * Receives an external order from iFood, WhatsApp, site, totem, etc.
  * Protected by x-integration-key header when INTEGRATION_API_KEY env var is set.
  */
-router.post("/integrations/orders/inbound", async (req, res): Promise<void> => {
-  // --- Security: API key check ---
-  const requiredKey = process.env.INTEGRATION_API_KEY;
-  if (requiredKey) {
-    const headerKey = req.headers["x-integration-key"];
-    if (headerKey !== requiredKey) {
-      res.status(401).json({ error: "Chave de integração inválida ou ausente." });
-      return;
-    }
-  } else {
-    req.log.warn("INTEGRATION_API_KEY não definida — endpoint /integrations/orders/inbound aberto sem autenticação.");
-  }
+router.post("/integrations/orders/inbound", requireIntegrationKey, async (req, res): Promise<void> => {
 
   const body = req.body ?? {};
 
@@ -145,9 +135,11 @@ router.post("/integrations/orders/inbound", async (req, res): Promise<void> => {
       // ORS calculation
       if (dist === null && orsReady) {
         const apiKey = getOrsApiKey()!;
-        const storeCity = settings.storeCity ?? settings.storeNeighborhood ?? "Brasil";
-        const storeAddr = [delivery.storeAddress ?? settings.storeAddress, storeCity].filter(Boolean).join(", ");
-        const custAddr = [delivery.address, delivery.city ?? ""].filter(Boolean).join(", ");
+        const storeAddr = [settings.storeAddress, settings.storeNumber, settings.storeNeighborhood, settings.storeCity, settings.storeState, settings.storeCountry].filter(Boolean).join(", ");
+        const customerLocality = [delivery.city, delivery.state].filter(Boolean).join(", ");
+        const fallbackLocality = [settings.storeCity, settings.storeState].filter(Boolean).join(", ");
+        // Fallback local only when customer city/state are missing.
+        const custAddr = [delivery.address, customerLocality || fallbackLocality, delivery.country ?? settings.storeCountry].filter(Boolean).join(", ");
         if (storeAddr && custAddr) {
           dist = await calculateRouteDistanceKm(storeAddr, custAddr, apiKey);
           if (dist !== null) {

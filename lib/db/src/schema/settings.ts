@@ -2,14 +2,19 @@ import { pgTable, serial, integer, text, numeric, timestamp } from "drizzle-orm/
 
 export const storeSettingsTable = pgTable("store_settings", {
   id: serial("id").primaryKey(),
-  storeName: text("store_name").notNull().default("Meu Restaurante"),
+  storeName: text("store_name").notNull().default("Minha Loja"),
   storePhone: text("store_phone"),
+  storeEmail: text("store_email"),
   storeCep: text("store_cep"),
   storeAddress: text("store_address"),
+  storeNumber: text("store_number"),
   storeNeighborhood: text("store_neighborhood"),
-  storeCity: text("store_city"),
+  storeCity: text("store_city").notNull().default(""),
+  storeState: text("store_state").notNull().default(""),
+  storeCountry: text("store_country").notNull().default("Brasil"),
   deliveryDispatchTimeMinutes: integer("delivery_dispatch_time_minutes").notNull().default(20),
   maxOrdersPerRoute: integer("max_orders_per_route").notNull().default(4),
+  routeGroupingMode: text("route_grouping_mode").notNull().default("hybrid"),
   deliveryFeeMode: text("delivery_fee_mode").notNull().default("manual"),
   // per_km mode
   deliveryPricePerKm: numeric("delivery_price_per_km", { precision: 10, scale: 2 }),

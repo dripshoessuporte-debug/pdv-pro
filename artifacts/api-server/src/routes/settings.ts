@@ -21,12 +21,17 @@ router.put("/settings", async (req, res): Promise<void> => {
   const {
     storeName,
     storePhone,
+    storeEmail,
     storeCep,
     storeAddress,
+    storeNumber,
     storeNeighborhood,
     storeCity,
+    storeState,
+    storeCountry,
     deliveryDispatchTimeMinutes,
     maxOrdersPerRoute,
+    routeGroupingMode,
     deliveryFeeMode,
     deliveryPricePerKm,
     baseDeliveryDistanceKm,
@@ -43,10 +48,14 @@ router.put("/settings", async (req, res): Promise<void> => {
   const updates: Record<string, unknown> = {};
   if (storeName !== undefined) updates.storeName = String(storeName);
   if (storePhone !== undefined) updates.storePhone = storePhone ? String(storePhone) : null;
+  if (storeEmail !== undefined) updates.storeEmail = storeEmail ? String(storeEmail) : null;
   if (storeCep !== undefined) updates.storeCep = storeCep ? String(storeCep) : null;
   if (storeAddress !== undefined) updates.storeAddress = storeAddress ? String(storeAddress) : null;
+  if (storeNumber !== undefined) updates.storeNumber = storeNumber ? String(storeNumber) : null;
   if (storeNeighborhood !== undefined) updates.storeNeighborhood = storeNeighborhood ? String(storeNeighborhood) : null;
-  if (storeCity !== undefined) updates.storeCity = storeCity ? String(storeCity) : null;
+  if (storeCity !== undefined) updates.storeCity = storeCity ? String(storeCity) : "";
+  if (storeState !== undefined) updates.storeState = storeState ? String(storeState) : "";
+  if (storeCountry !== undefined) updates.storeCountry = storeCountry ? String(storeCountry) : "Brasil";
   if (deliveryDispatchTimeMinutes !== undefined) {
     const v = parseInt(String(deliveryDispatchTimeMinutes), 10);
     if (!isNaN(v) && v >= 1) updates.deliveryDispatchTimeMinutes = v;
@@ -54,6 +63,9 @@ router.put("/settings", async (req, res): Promise<void> => {
   if (maxOrdersPerRoute !== undefined) {
     const v = parseInt(String(maxOrdersPerRoute), 10);
     if (!isNaN(v) && v >= 1 && v <= 10) updates.maxOrdersPerRoute = v;
+  }
+  if (routeGroupingMode !== undefined && ["neighborhood", "distance", "hybrid"].includes(String(routeGroupingMode))) {
+    updates.routeGroupingMode = String(routeGroupingMode);
   }
   if (deliveryFeeMode !== undefined && ["manual", "per_km", "distance_tier"].includes(String(deliveryFeeMode))) {
     updates.deliveryFeeMode = String(deliveryFeeMode);

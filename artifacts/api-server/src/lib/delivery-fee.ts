@@ -31,11 +31,8 @@ export function normalizeCep(cep: string): string | undefined {
  *   - same first 4 digits                              → 2.5 km
  *   - same first 3 digits                              → 4 km
  *   - same first 2 digits                              → 6 km
- *   - same first digit + both Curitiba (80x–82x)       → 7 km
- *   - same first digit, other regions                  → 8 km
+ *   - same first digit                                 → 7 km
  *   - completely different prefix                      → 8 km
- *
- * Curitiba CEP ranges: 80000-000 to 82999-999 (prefix 80, 81, 82).
  * Capped at MVP_MAX_DISTANCE_KM (8 km) to prevent overestimates in urban areas.
  *
  * Returns `null` when either CEP is invalid.
@@ -49,8 +46,6 @@ export function estimateDistanceKmFromCep(
 
   if (!s || !c) return null;
 
-  const isCuritiba = (cep: string) =>
-    cep.startsWith("80") || cep.startsWith("81") || cep.startsWith("82");
 
   let distKm: number;
 
@@ -65,9 +60,7 @@ export function estimateDistanceKmFromCep(
   } else if (s.slice(0, 2) === c.slice(0, 2)) {
     distKm = 6;
   } else if (s[0] === c[0]) {
-    // Same first digit — likely same state/metro region.
-    // For Curitiba CEPs (80x–82x), keep urban estimate low.
-    distKm = isCuritiba(s) && isCuritiba(c) ? 7 : 8;
+    distKm = 7;
   } else {
     distKm = 8;
   }
