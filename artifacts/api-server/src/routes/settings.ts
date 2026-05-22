@@ -28,6 +28,9 @@ router.put("/settings", async (req, res): Promise<void> => {
     maxOrdersPerRoute,
     deliveryFeeMode,
     deliveryPricePerKm,
+    baseDeliveryDistanceKm,
+    baseDeliveryFee,
+    additionalPricePerKm,
     minimumDeliveryFee,
     maximumDeliveryFee,
   } = req.body ?? {};
@@ -49,12 +52,24 @@ router.put("/settings", async (req, res): Promise<void> => {
     const v = parseInt(String(maxOrdersPerRoute), 10);
     if (!isNaN(v) && v >= 1 && v <= 10) updates.maxOrdersPerRoute = v;
   }
-  if (deliveryFeeMode !== undefined && ["manual", "per_km"].includes(String(deliveryFeeMode))) {
+  if (deliveryFeeMode !== undefined && ["manual", "per_km", "distance_tier"].includes(String(deliveryFeeMode))) {
     updates.deliveryFeeMode = String(deliveryFeeMode);
   }
   if (deliveryPricePerKm !== undefined) {
     const v = parseFloat(String(deliveryPricePerKm));
     updates.deliveryPricePerKm = !isNaN(v) && v >= 0 ? String(v) : null;
+  }
+  if (baseDeliveryDistanceKm !== undefined) {
+    const v = parseFloat(String(baseDeliveryDistanceKm));
+    updates.baseDeliveryDistanceKm = !isNaN(v) && v >= 0 ? String(v) : null;
+  }
+  if (baseDeliveryFee !== undefined) {
+    const v = parseFloat(String(baseDeliveryFee));
+    updates.baseDeliveryFee = !isNaN(v) && v >= 0 ? String(v) : null;
+  }
+  if (additionalPricePerKm !== undefined) {
+    const v = parseFloat(String(additionalPricePerKm));
+    updates.additionalPricePerKm = !isNaN(v) && v >= 0 ? String(v) : null;
   }
   if (minimumDeliveryFee !== undefined) {
     const v = parseFloat(String(minimumDeliveryFee));

@@ -106,13 +106,19 @@ router.post("/integrations/orders/inbound", async (req, res): Promise<void> => {
       resolvedDeliveryFee = providedFee;
       deliveryFeeSource = "external_api";
       estimatedDistanceKm = typeof delivery?.distanceKm === "number" ? delivery.distanceKm : null;
-    } else if (settings.deliveryFeeMode === "per_km" && delivery?.cep && settings.storeCep) {
-      // Calculate fee from CEPs
+    } else if (
+      (settings.deliveryFeeMode === "per_km" || settings.deliveryFeeMode === "distance_tier") &&
+      delivery?.cep && settings.storeCep
+    ) {
       const dist = estimateDistanceKmFromCep(settings.storeCep, delivery.cep);
-      if (dist !== null && settings.deliveryPricePerKm) {
+      if (dist !== null) {
         estimatedDistanceKm = dist;
         resolvedDeliveryFee = calculateDeliveryFee(dist, {
-          deliveryPricePerKm: parseFloat(String(settings.deliveryPricePerKm)),
+          deliveryFeeMode: settings.deliveryFeeMode,
+          deliveryPricePerKm: settings.deliveryPricePerKm ? parseFloat(String(settings.deliveryPricePerKm)) : null,
+          baseDeliveryDistanceKm: settings.baseDeliveryDistanceKm ? parseFloat(String(settings.baseDeliveryDistanceKm)) : null,
+          baseDeliveryFee: settings.baseDeliveryFee ? parseFloat(String(settings.baseDeliveryFee)) : null,
+          additionalPricePerKm: settings.additionalPricePerKm ? parseFloat(String(settings.additionalPricePerKm)) : null,
           minimumDeliveryFee: settings.minimumDeliveryFee ? parseFloat(String(settings.minimumDeliveryFee)) : null,
           maximumDeliveryFee: settings.maximumDeliveryFee ? parseFloat(String(settings.maximumDeliveryFee)) : null,
         });

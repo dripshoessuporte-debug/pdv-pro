@@ -1699,8 +1699,14 @@ components:
           type: integer
         deliveryFeeMode:
           type: string
-          enum: [manual, per_km]
+          enum: [manual, per_km, distance_tier]
         deliveryPricePerKm:
+          type: ["number", "null"]
+        baseDeliveryDistanceKm:
+          type: ["number", "null"]
+        baseDeliveryFee:
+          type: ["number", "null"]
+        additionalPricePerKm:
           type: ["number", "null"]
         minimumDeliveryFee:
           type: ["number", "null"]
@@ -1728,8 +1734,14 @@ components:
           type: integer
         deliveryFeeMode:
           type: string
-          enum: [manual, per_km]
+          enum: [manual, per_km, distance_tier]
         deliveryPricePerKm:
+          type: number
+        baseDeliveryDistanceKm:
+          type: number
+        baseDeliveryFee:
+          type: number
+        additionalPricePerKm:
           type: number
         minimumDeliveryFee:
           type: number

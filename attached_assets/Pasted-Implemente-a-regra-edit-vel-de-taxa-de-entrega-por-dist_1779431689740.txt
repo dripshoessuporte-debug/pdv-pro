@@ -1,0 +1,553 @@
+Implemente a regra editável de taxa de entrega por distância/CEP e ajuste as cores das rotas para serem baseadas na distância estimada, não no valor financeiro.
+
+Não refaça o projeto do zero.
+Não mexa no visual geral fora do necessário.
+Não altere funcionalidades que já funcionam.
+Preserve:
+- pedidos
+- delivery
+- configurações
+- ViaCEP
+- cálculo por CEP
+- pedidos externos
+- rotas
+- QR Code
+- caixa
+- dashboard
+- alertas
+- baixa financeira
+- cardápio
+
+OBJETIVO GERAL:
+1. A taxa de entrega deve ser configurável por faixa de distância.
+2. Exemplo: até 4 km cobra R$ 7,00 fixo; acima de 4 km cobra adicional por km excedente.
+3. O cálculo deve usar o CEP da loja salvo em Configurações como origem.
+4. O CEP do cliente deve ser consultado via ViaCEP para preencher endereço/bairro/cidade.
+5. As cores das rotas devem ser baseadas na distância estimada da rota, e não mais no valor financeiro.
+
+==================================================
+PARTE 1 — CONFIGURAÇÕES DE TAXA POR FAIXA
+==================================================
+
+Na página Configurações, na seção de entrega/taxa, adicionar ou ajustar os campos:
+
+- deliveryFeeMode:
+  - manual
+  - per_km
+  - distance_tier
+
+- baseDeliveryDistanceKm
+  Exemplo: 4
+
+- baseDeliveryFee
+  Exemplo: 7.00
+
+- additionalPricePerKm
+  Exemplo: 2.50
+
+- minimumDeliveryFee
+  Opcional
+
+- maximumDeliveryFee
+  Opcional
+
+Explicação para o usuário:
+"Até X km, cobra taxa fixa. Acima disso, cobra adicional por km excedente."
+
+Exemplo exibido:
+"Até 4 km: R$ 7,00. Acima disso: +R$ 2,50 por km."
+
+==================================================
+PARTE 2 — INTEGRAÇÃO COM VIACEP
+==================================================
+
+Implementar ou manter integração gratuita com ViaCEP.
+
+Endpoint:
+https://viacep.com.br/ws/{cep}/json/
+
+Criar/ajustar função:
+
+fetchAddressByCep(cep)
+
+Ela deve:
+- normalizar CEP
+- remover hífen, espaços e caracteres não numéricos
+- validar se o CEP tem 8 dígitos
+- consultar o ViaCEP
+- tratar CEP inexistente
+- tratar erro de rede
+- retornar:
+  - cep
+  - logradouro
+  - bairro
+  - localidade
+  - uf
+
+Se ViaCEP retornar erro:
+- mostrar mensagem amigável
+- não travar o formulário
+- permitir preenchimento manual
+
+==================================================
+PARTE 3 — CEP DA LOJA NAS CONFIGURAÇÕES
+==================================================
+
+Na página Configurações:
+
+Quando o usuário preencher o CEP da loja:
+- consultar ViaCEP automaticamente
+- preencher:
+  - endereço da loja
+  - bairro da loja
+  - cidade
+  - UF, se existir campo
+
+O CEP da loja salvo nas Configurações será a origem para:
+- cálculo de taxa
+- estimativa de distância
+- classificação visual das rotas por distância
+
+Regra:
+Se storeCep não estiver preenchido:
+- não calcular taxa automaticamente
+- não classificar rota por distância
+- mostrar aviso:
+"Configure o CEP da loja para calcular taxa e classificar rotas por distância."
+
+Não usar CEP fixo no código.
+Não usar fallback aleatório.
+
+==================================================
+PARTE 4 — NOVO PEDIDO DELIVERY COM VIACEP
+==================================================
+
+Na tela Novo Pedido > Delivery:
+
+Ao digitar o CEP do cliente:
+
+1. Se tiver 8 dígitos:
+   - consultar ViaCEP automaticamente
+   - preencher:
+     - endereço
+     - bairro
+     - cidade/UF, se houver campo
+
+2. Mostrar loading pequeno:
+   - "Buscando CEP..."
+
+3. Se encontrar:
+   - mostrar mensagem discreta:
+     "Endereço preenchido pelo CEP"
+
+4. Se não encontrar:
+   - mostrar:
+     "CEP não encontrado. Preencha o endereço manualmente."
+
+5. Mesmo após preencher pelo ViaCEP, permitir edição manual de:
+   - endereço
+   - bairro
+   - complemento
+   - referência
+   - taxa de entrega
+
+==================================================
+PARTE 5 — CÁLCULO DE DISTÂNCIA POR CEP PARA MVP
+==================================================
+
+Usar uma função controlada para estimar distância entre:
+- storeCep
+- customerCep
+
+Criar/ajustar:
+
+normalizeCep(cep)
+estimateDistanceKmFromCep(storeCep, customerCep)
+
+A estimativa deve ser segura e não gerar distância absurda.
+
+Regra sugerida:
+
+- Se CEP igual:
+  distância estimada = 0.5 km
+
+- Se os 5 primeiros dígitos forem iguais:
+  distância estimada = 1.5 km
+
+- Se os 4 primeiros dígitos forem iguais:
+  distância estimada = 3 km
+
+- Se os 3 primeiros dígitos forem iguais:
+  distância estimada = 5 km
+
+- Se os 2 primeiros dígitos forem iguais:
+  distância estimada = 8 km
+
+- Se for muito diferente:
+  distância estimada = 12 km
+
+Aplicar teto de segurança:
+- distância máxima estimada para MVP: 15 km
+
+Não retornar 40, 50 ou 100 km por diferença numérica de CEP.
+
+==================================================
+PARTE 6 — CÁLCULO DA TAXA
+==================================================
+
+Criar/ajustar função:
+
+calculateDeliveryFee(distanceKm, settings)
+
+Ela deve suportar 3 modos:
+
+1. manual:
+- não calcula automaticamente
+- operador preenche taxa manualmente
+
+2. per_km:
+- taxa = distanceKm × deliveryPricePerKm
+- aplicar mínima/máxima
+
+3. distance_tier:
+- se distanceKm <= baseDeliveryDistanceKm:
+    taxa = baseDeliveryFee
+
+- se distanceKm > baseDeliveryDistanceKm:
+    excedente = distanceKm - baseDeliveryDistanceKm
+    taxa = baseDeliveryFee + (excedente × additionalPricePerKm)
+
+Depois:
+- aplicar minimumDeliveryFee, se existir
+- aplicar maximumDeliveryFee, se existir
+- se não houver maximumDeliveryFee, usar teto interno de segurança, por exemplo R$ 30,00
+- arredondar para 2 casas decimais
+
+Exemplo:
+
+Configuração:
+- baseDeliveryDistanceKm = 4
+- baseDeliveryFee = 7
+- additionalPricePerKm = 2.50
+
+Distância 3 km:
+- taxa = R$ 7,00
+
+Distância 4 km:
+- taxa = R$ 7,00
+
+Distância 5 km:
+- taxa = R$ 7,00 + 1 × R$ 2,50 = R$ 9,50
+
+Distância 8 km:
+- taxa = R$ 7,00 + 4 × R$ 2,50 = R$ 17,00
+
+==================================================
+PARTE 7 — RESUMO VISUAL NO NOVO PEDIDO
+==================================================
+
+Na tela Novo Pedido > Delivery, quando a taxa for calculada automaticamente, mostrar um resumo claro:
+
+Exemplo:
+"Origem: 81720-000"
+"Distância estimada: 5 km"
+"Regra: até 4 km = R$ 7,00"
+"Adicional: +R$ 2,50/km após 4 km"
+"Taxa calculada: R$ 9,50"
+
+Permitir editar manualmente a taxa depois do cálculo.
+
+Salvar no pedido:
+- estimatedDistanceKm
+- deliveryFee
+- deliveryFeeCalculated = true/false
+- deliveryFeeSource = manual | automatic | external_api
+- deliveryFeeRuleSummary, se já existir campo ou se for simples adicionar
+
+==================================================
+PARTE 8 — PEDIDOS EXTERNOS / API
+==================================================
+
+Para pedidos externos recebidos por:
+
+POST /integrations/orders/inbound
+
+Regras:
+
+1. Se a API externa enviar delivery.fee:
+- preservar a taxa externa
+- deliveryFeeSource = external_api
+- não recalcular
+
+2. Se a API externa não enviar delivery.fee:
+- se tiver CEP do cliente e CEP da loja configurado:
+   calcular usando a regra atual:
+   manual, per_km ou distance_tier
+- se não conseguir calcular:
+   deliveryFee = 0 ou null conforme estrutura atual
+   deliveryFeeSource = manual/unknown
+   não quebrar o pedido
+
+3. Se o payload externo vier com CEP, mas sem endereço:
+- usar ViaCEP para completar endereço, se for seguro
+
+4. Manter deduplicação por:
+- source + externalOrderId
+
+==================================================
+PARTE 9 — CORES DAS ROTAS BASEADAS NA DISTÂNCIA
+==================================================
+
+Ajustar a lógica de cores das rotas.
+
+Hoje as cores/rarridade da rota estão baseadas no valor financeiro.
+Quero mudar para distância.
+
+A cor da rota deve ser baseada na distância estimada da rota.
+
+Usar como base:
+- estimatedDistanceKm de cada pedido, se já existir
+- ou calcular usando storeCep + deliveryCep
+- ou reaproveitar a mesma função estimateDistanceKmFromCep
+
+Para o MVP, usar esta regra:
+
+routeDistanceKm = maior estimatedDistanceKm entre os pedidos da rota
+
+Motivo:
+Se a rota tem 4 pedidos e um deles é mais longe, a rota inteira deve ser tratada como mais distante/pesada.
+
+Se não existir estimatedDistanceKm:
+- calcular com storeCep + deliveryCep usando a função atual
+- salvar ou usar apenas para visual
+
+==================================================
+PARTE 10 — FAIXAS DE DISTÂNCIA E CORES
+==================================================
+
+Usar estas faixas de cor:
+
+1. Até 2 km:
+- cor: azul
+- hex: #3B82F6
+
+2. De 2,01 km até 4 km:
+- cor: verde
+- hex: #22C55E
+
+3. De 4,01 km até 6 km:
+- cor: rosa
+- hex: #EC4899
+
+4. De 6,01 km até 8 km:
+- cor: roxo
+- hex: #8B5CF6
+
+5. Acima de 8 km:
+- cor: amarelo
+- hex: #EAB308
+
+IMPORTANTE:
+- amarelo representa rota mais distante/pesada
+- não usar vermelho
+- não mostrar textos tipo baixa, média, alta, premium
+- mostrar apenas a distância estimada e os valores normais da rota
+
+==================================================
+PARTE 11 — FUNÇÃO DE COR DA ROTA
+==================================================
+
+Criar ou ajustar função:
+
+getRouteDistanceColor(route)
+
+Ela deve retornar:
+- distanceKm
+- color
+- borderColor
+- glowColor
+
+Não retornar label textual para mostrar no card.
+
+Exemplos:
+
+routeDistanceKm = 1.8
+- cor = azul
+
+routeDistanceKm = 3.5
+- cor = verde
+
+routeDistanceKm = 5.2
+- cor = rosa
+
+routeDistanceKm = 7.4
+- cor = roxo
+
+routeDistanceKm = 9.1
+- cor = amarelo
+
+==================================================
+PARTE 12 — VISUAL DO CARD DA ROTA
+==================================================
+
+Manter o visual clean atual.
+
+O card da rota deve continuar:
+- fundo branco
+- texto escuro
+- layout limpo
+- botão Assumir Rota laranja padrão
+
+A cor por distância deve aparecer somente em:
+- borda do card
+- glow leve ao redor
+- pequenos indicadores, se já existirem
+
+Não pintar o card inteiro.
+Não usar fitinha lateral.
+Não exagerar no glow.
+
+A borda/glow agora usa a cor da distância, não do valor.
+
+==================================================
+PARTE 13 — LEGENDA DAS CORES
+==================================================
+
+Atualizar a legenda abaixo do título Painel de Rotas.
+
+Trocar a legenda antiga de valor por uma legenda de distância:
+
+- azul: até 2 km
+- verde: 2 a 4 km
+- rosa: 4 a 6 km
+- roxo: 6 a 8 km
+- amarelo: acima de 8 km
+
+Texto sugerido:
+"Cor da rota por distância estimada"
+
+A legenda deve continuar:
+- pequena
+- limpa
+- discreta
+- responsiva
+- com bolinhas coloridas
+
+==================================================
+PARTE 14 — MOSTRAR DISTÂNCIA NO CARD DA ROTA
+==================================================
+
+Cada card de rota deve mostrar:
+
+- distância estimada da rota
+- valor da rota
+- taxa total
+- receber na entrega
+- troco necessário
+- quantidade de entregas
+
+Para MVP, mostrar:
+"Distância máx.: X km"
+
+Exemplo:
+"Distância máx.: 6,4 km"
+"Valor da rota: R$ 72,00"
+"Taxas: R$ 24,00"
+
+==================================================
+PARTE 15 — TESTES OBRIGATÓRIOS
+==================================================
+
+Teste Configurações:
+
+1. Ir em Configurações.
+2. Configurar:
+   - CEP da loja = 81720-000
+   - deliveryFeeMode = distance_tier
+   - baseDeliveryDistanceKm = 4
+   - baseDeliveryFee = 7.00
+   - additionalPricePerKm = 2.50
+   - maximumDeliveryFee = 25.00
+
+3. Confirmar que ViaCEP preenche endereço/bairro/cidade da loja.
+
+Teste Novo Pedido Delivery:
+
+4. Criar pedido delivery com CEP próximo.
+   Resultado esperado:
+   - endereço preenchido pelo ViaCEP
+   - distância até 4 km
+   - taxa = R$ 7,00
+
+5. Criar pedido delivery com distância estimada de 5 km.
+   Resultado esperado:
+   - taxa = R$ 9,50
+
+6. Criar pedido delivery com distância estimada de 8 km.
+   Resultado esperado:
+   - taxa = R$ 17,00
+
+7. Criar pedido com CEP distante.
+   Resultado esperado:
+   - taxa respeita maximumDeliveryFee
+   - não dá R$ 100
+
+Teste modos:
+
+8. Testar modo manual:
+   - taxa não calcula automaticamente
+   - operador digita manualmente
+
+9. Testar modo per_km:
+   - continua funcionando como antes
+
+Teste pedidos externos:
+
+10. Enviar pedido externo com delivery.fee.
+   Resultado esperado:
+   - preserva taxa externa
+   - deliveryFeeSource = external_api
+
+11. Enviar pedido externo sem delivery.fee, mas com CEP.
+   Resultado esperado:
+   - calcula usando regra distance_tier, se possível
+
+Teste rotas:
+
+12. Gerar rotas com pedidos de CEPs variados.
+13. Confirmar que a cor da rota depende da distância, não do valor.
+14. Criar rota com distância até 2 km:
+   - deve ficar azul
+15. Criar rota entre 2 e 4 km:
+   - deve ficar verde
+16. Criar rota entre 4 e 6 km:
+   - deve ficar rosa
+17. Criar rota entre 6 e 8 km:
+   - deve ficar roxa
+18. Criar rota acima de 8 km:
+   - deve ficar amarela
+19. Confirmar que a legenda mostra distância, não valor.
+20. Confirmar que o card mostra distância estimada.
+21. Confirmar que botão Assumir Rota continua laranja padrão.
+22. Confirmar que não quebrou geração de rotas.
+
+Rodar typecheck sem erros.
+
+==================================================
+PARTE 16 — RESPOSTA FINAL
+==================================================
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Tabelas/modelos modificados.
+3. Como funciona a consulta ViaCEP.
+4. Como o CEP da loja é usado.
+5. Como ficou a regra editável por faixa.
+6. Como configurar exemplo: até 4 km = R$ 7 e depois +R$ 2,50/km.
+7. Como a distância da rota é calculada.
+8. Como as cores agora são definidas por distância.
+9. Como a legenda foi atualizada.
+10. Como testar passo a passo.
+11. Limitações atuais.
+12. Como futuramente trocar por API real de mapas.

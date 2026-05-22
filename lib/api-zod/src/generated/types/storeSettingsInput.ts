@@ -18,6 +18,9 @@ export interface StoreSettingsInput {
   maxOrdersPerRoute?: number;
   deliveryFeeMode?: StoreSettingsInputDeliveryFeeMode;
   deliveryPricePerKm?: number;
+  baseDeliveryDistanceKm?: number;
+  baseDeliveryFee?: number;
+  additionalPricePerKm?: number;
   minimumDeliveryFee?: number;
   maximumDeliveryFee?: number;
 }

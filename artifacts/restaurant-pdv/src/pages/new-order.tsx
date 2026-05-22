@@ -77,16 +77,24 @@ export default function NewOrder() {
   const [feeCalcInfo, setFeeCalcInfo] = useState<{
     storeCep: string;
     distanceKm: number;
-    pricePerKm: number;
+    mode: string;
+    pricePerKm?: number;
+    baseDistanceKm?: number;
+    baseFee?: number;
+    additionalPricePerKm?: number;
     fee: number;
   } | null>(null);
   const [storeSettings, setStoreSettings] = useState<{
     deliveryFeeMode: string;
     storeCep: string | null;
     deliveryPricePerKm: number | null;
+    baseDeliveryDistanceKm: number | null;
+    baseDeliveryFee: number | null;
+    additionalPricePerKm: number | null;
     minimumDeliveryFee: number | null;
     maximumDeliveryFee: number | null;
   } | null>(null);
+  const [cepLookupStatus, setCepLookupStatus] = useState<"idle" | "loading" | "found" | "not_found">("idle");
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -121,25 +129,46 @@ export default function NewOrder() {
       .catch(() => {/* silent — fee calculation just stays manual */});
   }, []);
 
-  // Auto-calculate delivery fee from CEP when mode is per_km
+  // ViaCEP lookup when customer CEP has 8 digits
+  useEffect(() => {
+    const digits = deliveryCep.replace(/\D/g, "");
+    if (digits.length !== 8) {
+      setCepLookupStatus("idle");
+      return;
+    }
+    let cancelled = false;
+    setCepLookupStatus("loading");
+    fetch(`https://viacep.com.br/ws/${digits}/json/`)
+      .then((r) => r.json())
+      .then((data: { erro?: boolean; logradouro?: string; bairro?: string; localidade?: string; uf?: string }) => {
+        if (cancelled) return;
+        if (data.erro) { setCepLookupStatus("not_found"); return; }
+        setCepLookupStatus("found");
+        if (!deliveryAddress && data.logradouro) setDeliveryAddress(data.logradouro);
+        if (!deliveryNeighborhood && data.bairro) setDeliveryNeighborhood(data.bairro);
+      })
+      .catch(() => { if (!cancelled) setCepLookupStatus("not_found"); });
+    return () => { cancelled = true; };
+  }, [deliveryCep]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-calculate delivery fee from CEP when mode is per_km or distance_tier
   useEffect(() => {
     if (orderType !== "delivery") return;
-    if (!storeSettings || storeSettings.deliveryFeeMode !== "per_km") return;
-    if (!storeSettings.deliveryPricePerKm) return;
+    const mode = storeSettings?.deliveryFeeMode;
+    if (!storeSettings || (mode !== "per_km" && mode !== "distance_tier")) return;
 
-    // If store CEP not configured, clear any auto-calculated fee
     if (!storeSettings.storeCep) {
       if (feeAutoCalculated) { setDeliveryFee(""); setFeeAutoCalculated(false); setFeeCalcInfo(null); }
       return;
     }
 
-    const normalizeCep = (cep: string): string | undefined => {
+    const norm = (cep: string): string | undefined => {
       const d = cep.replace(/\D/g, "");
       return d.length === 8 ? d : undefined;
     };
 
-    const s = normalizeCep(storeSettings.storeCep);
-    const c = normalizeCep(deliveryCep);
+    const s = norm(storeSettings.storeCep);
+    const c = norm(deliveryCep);
 
     if (!s || !c) {
       if (feeAutoCalculated) { setDeliveryFee(""); setFeeAutoCalculated(false); setFeeCalcInfo(null); }
@@ -148,28 +177,53 @@ export default function NewOrder() {
 
     // Prefix-based distance estimation (mirrors backend delivery-fee.ts)
     let distKm: number;
-    if (s === c)                    distKm = 0.5;
-    else if (s.slice(0,5) === c.slice(0,5)) distKm = 1.5;
-    else if (s.slice(0,4) === c.slice(0,4)) distKm = 3;
-    else if (s.slice(0,3) === c.slice(0,3)) distKm = 5;
-    else if (s.slice(0,2) === c.slice(0,2)) distKm = 8;
-    else                            distKm = 12;
-    distKm = Math.min(distKm, 15); // MVP cap
+    if (s === c)                              distKm = 0.5;
+    else if (s.slice(0, 5) === c.slice(0, 5)) distKm = 1.5;
+    else if (s.slice(0, 4) === c.slice(0, 4)) distKm = 3;
+    else if (s.slice(0, 3) === c.slice(0, 3)) distKm = 5;
+    else if (s.slice(0, 2) === c.slice(0, 2)) distKm = 8;
+    else                                      distKm = 12;
+    distKm = Math.min(distKm, 15);
 
-    let fee = distKm * storeSettings.deliveryPricePerKm;
-    if (storeSettings.minimumDeliveryFee && fee < storeSettings.minimumDeliveryFee) fee = storeSettings.minimumDeliveryFee;
-    const effectiveMax = storeSettings.maximumDeliveryFee ?? 30;
-    if (fee > effectiveMax) fee = effectiveMax;
-    fee = Math.round(fee * 100) / 100;
+    let fee: number;
 
-    setDeliveryFee(String(fee));
-    setFeeAutoCalculated(true);
-    setFeeCalcInfo({
-      storeCep: storeSettings.storeCep,
-      distanceKm: distKm,
-      pricePerKm: parseFloat(String(storeSettings.deliveryPricePerKm)),
-      fee,
-    });
+    if (mode === "distance_tier") {
+      const baseDist   = storeSettings.baseDeliveryDistanceKm ?? 4;
+      const baseFee    = storeSettings.baseDeliveryFee ?? 0;
+      const addlPerKm  = storeSettings.additionalPricePerKm ?? 0;
+      fee = distKm <= baseDist ? baseFee : baseFee + (distKm - baseDist) * addlPerKm;
+      if (storeSettings.minimumDeliveryFee && fee < storeSettings.minimumDeliveryFee) fee = storeSettings.minimumDeliveryFee;
+      const effMax = storeSettings.maximumDeliveryFee ?? 30;
+      if (fee > effMax) fee = effMax;
+      fee = Math.round(fee * 100) / 100;
+      setDeliveryFee(String(fee));
+      setFeeAutoCalculated(true);
+      setFeeCalcInfo({
+        storeCep: storeSettings.storeCep,
+        distanceKm: distKm,
+        mode: "distance_tier",
+        baseDistanceKm: baseDist,
+        baseFee,
+        additionalPricePerKm: addlPerKm,
+        fee,
+      });
+    } else {
+      if (!storeSettings.deliveryPricePerKm) return;
+      fee = distKm * storeSettings.deliveryPricePerKm;
+      if (storeSettings.minimumDeliveryFee && fee < storeSettings.minimumDeliveryFee) fee = storeSettings.minimumDeliveryFee;
+      const effMax = storeSettings.maximumDeliveryFee ?? 30;
+      if (fee > effMax) fee = effMax;
+      fee = Math.round(fee * 100) / 100;
+      setDeliveryFee(String(fee));
+      setFeeAutoCalculated(true);
+      setFeeCalcInfo({
+        storeCep: storeSettings.storeCep,
+        distanceKm: distKm,
+        mode: "per_km",
+        pricePerKm: storeSettings.deliveryPricePerKm,
+        fee,
+      });
+    }
   }, [deliveryCep, orderType, storeSettings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addToCart = (product: { id: number; name: string; price: number }) => {
@@ -438,11 +492,27 @@ export default function NewOrder() {
                             Digite os 8 dígitos do CEP para calcular automaticamente.
                           </p>
                         )}
+                        {cepLookupStatus === "loading" && (
+                          <p className="text-xs text-muted-foreground animate-pulse">Buscando endereço pelo CEP...</p>
+                        )}
+                        {cepLookupStatus === "not_found" && (
+                          <p className="text-xs text-red-500">CEP não encontrado no ViaCEP.</p>
+                        )}
                         {feeCalcInfo && (
                           <div className="text-xs bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded px-3 py-2 space-y-0.5 text-green-800 dark:text-green-300">
                             <p>Origem: <span className="font-mono">{feeCalcInfo.storeCep.replace(/^(\d{5})(\d{3})$/, "$1-$2")}</span></p>
                             <p>Distância estimada: ~{feeCalcInfo.distanceKm} km</p>
-                            <p>Taxa calculada: R$ {feeCalcInfo.fee.toFixed(2)} (R$ {feeCalcInfo.pricePerKm.toFixed(2)}/km)</p>
+                            {feeCalcInfo.mode === "per_km" && feeCalcInfo.pricePerKm != null && (
+                              <p>Taxa calculada: R$ {feeCalcInfo.fee.toFixed(2)} (R$ {feeCalcInfo.pricePerKm.toFixed(2)}/km)</p>
+                            )}
+                            {feeCalcInfo.mode === "distance_tier" && (
+                              <>
+                                {feeCalcInfo.distanceKm <= (feeCalcInfo.baseDistanceKm ?? 0)
+                                  ? <p>Dentro da faixa base ({feeCalcInfo.baseDistanceKm} km): R$ {feeCalcInfo.baseFee?.toFixed(2)}</p>
+                                  : <p>Base R$ {feeCalcInfo.baseFee?.toFixed(2)} + R$ {feeCalcInfo.additionalPricePerKm?.toFixed(2)}/km extra = R$ {feeCalcInfo.fee.toFixed(2)}</p>
+                                }
+                              </>
+                            )}
                             <p className="text-green-600 dark:text-green-400 italic">Você pode editar manualmente o valor acima.</p>
                           </div>
                         )}

@@ -43,6 +43,7 @@ interface RouteOrder {
   deliveryNeighborhood: string | null;
   deliveryCep: string | null;
   deliveryFee: number;
+  estimatedDistanceKm: number | null;
   totalAmount: number;
   deliveryStatus: string | null;
   paymentTiming: string | null;
@@ -507,9 +508,9 @@ export default function Routes() {
             <p className="text-sm text-muted-foreground mt-0.5">
               Delivery em tempo real — agrupe pedidos em rotas quando estiver pronto
             </p>
-            {/* ── Legenda de cores por valor ── */}
+            {/* ── Legenda de cores por distância ── */}
             <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-2">
-              {ROUTE_VALUE_LEGEND.map((entry) => (
+              {ROUTE_DISTANCE_LEGEND.map((entry) => (
                 <div key={entry.color} className="flex items-center gap-1.5">
                   <span
                     className="w-2 h-2 rounded-full shrink-0"
@@ -1256,20 +1257,20 @@ function PendingOrderRow({
 
 // ─── Route value color based on total delivery fee ────────────────────────────
 
-function getRouteValueColor(fee: number): { color: string; glow: string } {
-  if (fee > 60) return { color: "#EAB308", glow: "rgba(234,179,8,0.20)"   };
-  if (fee > 45) return { color: "#8B5CF6", glow: "rgba(139,92,246,0.20)"  };
-  if (fee > 30) return { color: "#EC4899", glow: "rgba(236,72,153,0.20)"  };
-  if (fee > 15) return { color: "#22C55E", glow: "rgba(34,197,94,0.20)"   };
-  return        { color: "#3B82F6", glow: "rgba(59,130,246,0.20)"  };
+function getRouteDistanceColor(distKm: number): { color: string; glow: string } {
+  if (distKm > 8) return { color: "#EAB308", glow: "rgba(234,179,8,0.20)"   };
+  if (distKm > 6) return { color: "#8B5CF6", glow: "rgba(139,92,246,0.20)"  };
+  if (distKm > 4) return { color: "#EC4899", glow: "rgba(236,72,153,0.20)"  };
+  if (distKm > 2) return { color: "#22C55E", glow: "rgba(34,197,94,0.20)"   };
+  return          { color: "#3B82F6", glow: "rgba(59,130,246,0.20)"  };
 }
 
-const ROUTE_VALUE_LEGEND = [
-  { color: "#3B82F6", label: "até R$ 15" },
-  { color: "#22C55E", label: "R$ 15–30"  },
-  { color: "#EC4899", label: "R$ 30–45"  },
-  { color: "#8B5CF6", label: "R$ 45–60"  },
-  { color: "#EAB308", label: "acima de R$ 60" },
+const ROUTE_DISTANCE_LEGEND = [
+  { color: "#3B82F6", label: "até 2 km"       },
+  { color: "#22C55E", label: "2–4 km"          },
+  { color: "#EC4899", label: "4–6 km"          },
+  { color: "#8B5CF6", label: "6–8 km"          },
+  { color: "#EAB308", label: "acima de 8 km"   },
 ] as const;
 
 // ─── RouteCard ────────────────────────────────────────────────────────────────
@@ -1326,7 +1327,10 @@ function RouteCard({
   const totalCount = route.orders.length;
   const allOrdersReady = totalCount > 0 && readyCount === totalCount;
 
-  const vc = getRouteValueColor(route.totalDeliveryFee);
+  const maxDistKm = route.orders.length > 0
+    ? Math.max(...route.orders.map((o) => o.estimatedDistanceKm ?? 5))
+    : 5;
+  const vc = getRouteDistanceColor(maxDistKm);
   const readinessPct = totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
   const otherNeighborhoods = route.includedNeighborhoods.filter((n) => n !== route.mainNeighborhood);
 
@@ -1401,6 +1405,10 @@ function RouteCard({
                 <span className="font-medium">{route.courierName}</span>
               </div>
             )}
+            <div className="flex items-center gap-1 mt-0.5 text-xs" style={{ color: vc.color }}>
+              <MapPin className="w-3 h-3 shrink-0" />
+              <span className="font-semibold">~{maxDistKm.toFixed(1)} km (máx.)</span>
+            </div>
           </div>
 
           {/* Time pill */}

@@ -12,4 +12,5 @@ export type StoreSettingsInputDeliveryFeeMode = typeof StoreSettingsInputDeliver
 export const StoreSettingsInputDeliveryFeeMode = {
   manual: 'manual',
   per_km: 'per_km',
+  distance_tier: 'distance_tier',
 } as const;

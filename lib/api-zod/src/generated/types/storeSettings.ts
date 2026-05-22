@@ -26,6 +26,12 @@ export interface StoreSettings {
   /** @nullable */
   deliveryPricePerKm?: number | null;
   /** @nullable */
+  baseDeliveryDistanceKm?: number | null;
+  /** @nullable */
+  baseDeliveryFee?: number | null;
+  /** @nullable */
+  additionalPricePerKm?: number | null;
+  /** @nullable */
   minimumDeliveryFee?: number | null;
   /** @nullable */
   maximumDeliveryFee?: number | null;

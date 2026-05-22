@@ -65,20 +65,53 @@ export function estimateDistanceKmFromCep(
   return Math.min(distKm, MVP_MAX_DISTANCE_KM);
 }
 
+interface FeeSettings {
+  deliveryFeeMode?: string;
+  // per_km mode
+  deliveryPricePerKm?: number | null;
+  // distance_tier mode
+  baseDeliveryDistanceKm?: number | null;
+  baseDeliveryFee?: number | null;
+  additionalPricePerKm?: number | null;
+  // shared
+  minimumDeliveryFee?: number | null;
+  maximumDeliveryFee?: number | null;
+}
+
 /**
- * Applies delivery fee rules (price per km, min, max) to a distance value.
+ * Applies delivery fee rules (price per km, distance tier, min, max) to a distance value.
+ *
+ * Supports three modes:
+ * - per_km:        fee = distanceKm × deliveryPricePerKm
+ * - distance_tier: fee = baseDeliveryFee (if dist <= base); baseDeliveryFee + (dist - base) × additionalPricePerKm (if dist > base)
+ * - manual:        returns 0 (caller should not invoke this in manual mode)
+ *
  * When no maximumDeliveryFee is configured, a safety ceiling of MVP_SAFETY_MAX_FEE
  * is applied to prevent accidentally absurd fees.
  */
 export function calculateDeliveryFee(
   distanceKm: number,
-  settings: {
-    deliveryPricePerKm: number;
-    minimumDeliveryFee?: number | null;
-    maximumDeliveryFee?: number | null;
-  }
+  settings: FeeSettings
 ): number {
-  let fee = distanceKm * settings.deliveryPricePerKm;
+  const mode = settings.deliveryFeeMode ?? "per_km";
+
+  let fee: number;
+
+  if (mode === "distance_tier") {
+    const baseDist = settings.baseDeliveryDistanceKm ?? 4;
+    const baseFee  = settings.baseDeliveryFee ?? 0;
+    const addlPerKm = settings.additionalPricePerKm ?? 0;
+
+    if (distanceKm <= baseDist) {
+      fee = baseFee;
+    } else {
+      const excess = distanceKm - baseDist;
+      fee = baseFee + excess * addlPerKm;
+    }
+  } else {
+    // per_km (default fallback)
+    fee = distanceKm * (settings.deliveryPricePerKm ?? 0);
+  }
 
   if (settings.minimumDeliveryFee != null && fee < settings.minimumDeliveryFee) {
     fee = settings.minimumDeliveryFee;

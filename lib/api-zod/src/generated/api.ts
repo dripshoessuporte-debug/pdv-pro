@@ -1162,8 +1162,11 @@ export const GetStoreSettingsResponse = zod.object({
   "storeCity": zod.string().nullish(),
   "deliveryDispatchTimeMinutes": zod.number(),
   "maxOrdersPerRoute": zod.number(),
-  "deliveryFeeMode": zod.enum(['manual', 'per_km']),
+  "deliveryFeeMode": zod.enum(['manual', 'per_km', 'distance_tier']),
   "deliveryPricePerKm": zod.number().nullish(),
+  "baseDeliveryDistanceKm": zod.number().nullish(),
+  "baseDeliveryFee": zod.number().nullish(),
+  "additionalPricePerKm": zod.number().nullish(),
   "minimumDeliveryFee": zod.number().nullish(),
   "maximumDeliveryFee": zod.number().nullish()
 })
@@ -1181,8 +1184,11 @@ export const UpdateStoreSettingsBody = zod.object({
   "storeCity": zod.string().optional(),
   "deliveryDispatchTimeMinutes": zod.number().optional(),
   "maxOrdersPerRoute": zod.number().optional(),
-  "deliveryFeeMode": zod.enum(['manual', 'per_km']).optional(),
+  "deliveryFeeMode": zod.enum(['manual', 'per_km', 'distance_tier']).optional(),
   "deliveryPricePerKm": zod.number().optional(),
+  "baseDeliveryDistanceKm": zod.number().optional(),
+  "baseDeliveryFee": zod.number().optional(),
+  "additionalPricePerKm": zod.number().optional(),
   "minimumDeliveryFee": zod.number().optional(),
   "maximumDeliveryFee": zod.number().optional()
 })
@@ -1197,8 +1203,11 @@ export const UpdateStoreSettingsResponse = zod.object({
   "storeCity": zod.string().nullish(),
   "deliveryDispatchTimeMinutes": zod.number(),
   "maxOrdersPerRoute": zod.number(),
-  "deliveryFeeMode": zod.enum(['manual', 'per_km']),
+  "deliveryFeeMode": zod.enum(['manual', 'per_km', 'distance_tier']),
   "deliveryPricePerKm": zod.number().nullish(),
+  "baseDeliveryDistanceKm": zod.number().nullish(),
+  "baseDeliveryFee": zod.number().nullish(),
+  "additionalPricePerKm": zod.number().nullish(),
   "minimumDeliveryFee": zod.number().nullish(),
   "maximumDeliveryFee": zod.number().nullish()
 })

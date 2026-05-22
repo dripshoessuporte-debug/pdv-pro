@@ -39,8 +39,30 @@ interface StoreSettings {
   maxOrdersPerRoute: number;
   deliveryFeeMode: string;
   deliveryPricePerKm: number | null;
+  baseDeliveryDistanceKm: number | null;
+  baseDeliveryFee: number | null;
+  additionalPricePerKm: number | null;
   minimumDeliveryFee: number | null;
   maximumDeliveryFee: number | null;
+}
+
+async function lookupCep(cep: string): Promise<{ logradouro: string; bairro: string; localidade: string; uf: string } | null> {
+  const digits = cep.replace(/\D/g, "");
+  if (digits.length !== 8) return null;
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+    if (!res.ok) return null;
+    const data = await res.json() as { erro?: boolean; logradouro?: string; bairro?: string; localidade?: string; uf?: string };
+    if (data.erro) return null;
+    return {
+      logradouro: data.logradouro ?? "",
+      bairro: data.bairro ?? "",
+      localidade: data.localidade ?? "",
+      uf: data.uf ?? "",
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -70,10 +92,14 @@ export default function Settings() {
   const [storeCity, setStoreCity] = useState("");
   const [dispatchTime, setDispatchTime] = useState("20");
   const [maxOrders, setMaxOrders] = useState("4");
-  const [deliveryFeeMode, setDeliveryFeeMode] = useState<"manual" | "per_km">("manual");
+  const [deliveryFeeMode, setDeliveryFeeMode] = useState<"manual" | "per_km" | "distance_tier">("manual");
   const [deliveryPricePerKm, setDeliveryPricePerKm] = useState("");
+  const [baseDeliveryDistanceKm, setBaseDeliveryDistanceKm] = useState("");
+  const [baseDeliveryFee, setBaseDeliveryFee] = useState("");
+  const [additionalPricePerKm, setAdditionalPricePerKm] = useState("");
   const [minimumDeliveryFee, setMinimumDeliveryFee] = useState("");
   const [maximumDeliveryFee, setMaximumDeliveryFee] = useState("");
+  const [cepLookupStatus, setCepLookupStatus] = useState<"idle" | "loading" | "found" | "not_found">("idle");
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -87,8 +113,11 @@ export default function Settings() {
       setStoreCity(s.storeCity ?? "");
       setDispatchTime(String(s.deliveryDispatchTimeMinutes));
       setMaxOrders(String(s.maxOrdersPerRoute));
-      setDeliveryFeeMode((s.deliveryFeeMode as "manual" | "per_km") || "manual");
+      setDeliveryFeeMode((s.deliveryFeeMode as "manual" | "per_km" | "distance_tier") || "manual");
       setDeliveryPricePerKm(s.deliveryPricePerKm != null ? String(s.deliveryPricePerKm) : "");
+      setBaseDeliveryDistanceKm(s.baseDeliveryDistanceKm != null ? String(s.baseDeliveryDistanceKm) : "");
+      setBaseDeliveryFee(s.baseDeliveryFee != null ? String(s.baseDeliveryFee) : "");
+      setAdditionalPricePerKm(s.additionalPricePerKm != null ? String(s.additionalPricePerKm) : "");
       setMinimumDeliveryFee(s.minimumDeliveryFee != null ? String(s.minimumDeliveryFee) : "");
       setMaximumDeliveryFee(s.maximumDeliveryFee != null ? String(s.maximumDeliveryFee) : "");
     } catch {
@@ -135,6 +164,9 @@ export default function Settings() {
           maxOrdersPerRoute: parseInt(maxOrders, 10) || 4,
           deliveryFeeMode,
           deliveryPricePerKm: deliveryPricePerKm.trim() ? parseFloat(deliveryPricePerKm) : null,
+          baseDeliveryDistanceKm: baseDeliveryDistanceKm.trim() ? parseFloat(baseDeliveryDistanceKm) : null,
+          baseDeliveryFee: baseDeliveryFee.trim() ? parseFloat(baseDeliveryFee) : null,
+          additionalPricePerKm: additionalPricePerKm.trim() ? parseFloat(additionalPricePerKm) : null,
           minimumDeliveryFee: minimumDeliveryFee.trim() ? parseFloat(minimumDeliveryFee) : null,
           maximumDeliveryFee: maximumDeliveryFee.trim() ? parseFloat(maximumDeliveryFee) : null,
         }),
@@ -201,13 +233,39 @@ export default function Settings() {
               </div>
               <div>
                 <Label>CEP</Label>
-                <Input
-                  placeholder="80010-010"
-                  value={storeCep}
-                  onChange={(e) => setStoreCep(e.target.value)}
-                  maxLength={9}
-                  data-testid="input-store-cep"
-                />
+                <div className="relative">
+                  <Input
+                    placeholder="80010-010"
+                    value={storeCep}
+                    onChange={(e) => setStoreCep(e.target.value)}
+                    onBlur={async () => {
+                      const digits = storeCep.replace(/\D/g, "");
+                      if (digits.length !== 8) return;
+                      setCepLookupStatus("loading");
+                      const result = await lookupCep(storeCep);
+                      if (result) {
+                        if (!storeAddress) setStoreAddress(result.logradouro);
+                        if (!storeNeighborhood) setStoreNeighborhood(result.bairro);
+                        if (!storeCity) setStoreCity(`${result.localidade}, ${result.uf}`);
+                        setCepLookupStatus("found");
+                      } else {
+                        setCepLookupStatus("not_found");
+                      }
+                    }}
+                    maxLength={9}
+                    data-testid="input-store-cep"
+                  />
+                  {cepLookupStatus === "loading" && (
+                    <span className="absolute right-2.5 top-2.5 text-xs text-muted-foreground animate-pulse">buscando...</span>
+                  )}
+                  {cepLookupStatus === "found" && (
+                    <span className="absolute right-2.5 top-2.5 text-xs text-green-600">✓ endereço preenchido</span>
+                  )}
+                  {cepLookupStatus === "not_found" && (
+                    <span className="absolute right-2.5 top-2.5 text-xs text-red-500">CEP não encontrado</span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Ao sair do campo, preenchemos o endereço automaticamente via ViaCEP.</p>
               </div>
               <div className="col-span-2">
                 <Label>Endereço</Label>
@@ -307,10 +365,11 @@ export default function Settings() {
           <CardContent className="space-y-4">
             <div>
               <Label className="block mb-2">Modo de cálculo</Label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {[
-                  { value: "manual" as const, label: "✋ Manual", desc: "Operador digita a taxa no pedido" },
-                  { value: "per_km" as const, label: "📍 Por km", desc: "Taxa calculada automaticamente pelo CEP" },
+                  { value: "manual" as const,        label: "✋ Manual",      desc: "Operador digita a taxa no pedido" },
+                  { value: "per_km" as const,         label: "📍 Por km",     desc: "Taxa = distância × preço/km" },
+                  { value: "distance_tier" as const,  label: "📏 Faixa",      desc: "Taxa fixa até X km, extra acima" },
                 ].map((opt) => (
                   <button
                     key={opt.value}
@@ -330,13 +389,16 @@ export default function Settings() {
               </div>
             </div>
 
+            {(deliveryFeeMode === "per_km" || deliveryFeeMode === "distance_tier") && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 font-medium -mt-1">
+                ⚠️ Certifique-se de preencher o <strong>CEP da loja</strong> acima para ativar o cálculo automático.
+              </p>
+            )}
+
             {deliveryFeeMode === "per_km" && (
               <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
                 <p className="text-xs text-muted-foreground">
-                  O cálculo compara o prefixo do CEP da loja com o do cliente para estimar a distância. É uma aproximação para MVP — para distância real, integre uma API de mapas futuramente.
-                </p>
-                <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                  ⚠️ Certifique-se de preencher o <strong>CEP da loja</strong> acima para ativar o cálculo automático.
+                  Taxa = distância estimada × preço/km. A estimativa usa o prefixo do CEP — é uma aproximação para MVP.
                 </p>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
@@ -374,6 +436,69 @@ export default function Settings() {
                       onChange={(e) => setMaximumDeliveryFee(e.target.value)}
                       data-testid="input-maximum-delivery-fee"
                     />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {deliveryFeeMode === "distance_tier" && (
+              <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
+                <p className="text-xs text-muted-foreground">
+                  Taxa fixa até a distância-base; acima disso cobra-se um valor adicional por km extra.
+                  <br />Ex.: R$ 5 até 4 km; além de 4 km, mais R$ 2/km → 6 km = R$ 5 + 2×2 = R$ 9.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Distância base (km)</Label>
+                    <Input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      placeholder="4"
+                      value={baseDeliveryDistanceKm}
+                      onChange={(e) => setBaseDeliveryDistanceKm(e.target.value)}
+                      data-testid="input-base-delivery-distance-km"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Taxa fixa até esse raio</p>
+                  </div>
+                  <div>
+                    <Label>Taxa base (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.50"
+                      min="0"
+                      placeholder="5,00"
+                      value={baseDeliveryFee}
+                      onChange={(e) => setBaseDeliveryFee(e.target.value)}
+                      data-testid="input-base-delivery-fee"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Valor cobrado até a distância base</p>
+                  </div>
+                  <div>
+                    <Label>Extra por km além da base (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.50"
+                      min="0"
+                      placeholder="2,00"
+                      value={additionalPricePerKm}
+                      onChange={(e) => setAdditionalPricePerKm(e.target.value)}
+                      data-testid="input-additional-price-per-km"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Cobrado por km excedente</p>
+                  </div>
+                  <div>
+                    <Label>Taxa máxima (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.50"
+                      min="0"
+                      placeholder="20,00"
+                      value={maximumDeliveryFee}
+                      onChange={(e) => setMaximumDeliveryFee(e.target.value)}
+                      data-testid="input-maximum-delivery-fee"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Teto — opcional</p>
                   </div>
                 </div>
               </div>

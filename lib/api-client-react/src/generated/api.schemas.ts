@@ -618,6 +618,7 @@ export type StoreSettingsDeliveryFeeMode = typeof StoreSettingsDeliveryFeeMode[k
 export const StoreSettingsDeliveryFeeMode = {
   manual: 'manual',
   per_km: 'per_km',
+  distance_tier: 'distance_tier',
 } as const;
 
 export interface StoreSettings {
@@ -639,6 +640,12 @@ export interface StoreSettings {
   /** @nullable */
   deliveryPricePerKm?: number | null;
   /** @nullable */
+  baseDeliveryDistanceKm?: number | null;
+  /** @nullable */
+  baseDeliveryFee?: number | null;
+  /** @nullable */
+  additionalPricePerKm?: number | null;
+  /** @nullable */
   minimumDeliveryFee?: number | null;
   /** @nullable */
   maximumDeliveryFee?: number | null;
@@ -650,6 +657,7 @@ export type StoreSettingsInputDeliveryFeeMode = typeof StoreSettingsInputDeliver
 export const StoreSettingsInputDeliveryFeeMode = {
   manual: 'manual',
   per_km: 'per_km',
+  distance_tier: 'distance_tier',
 } as const;
 
 export interface StoreSettingsInput {
@@ -663,6 +671,9 @@ export interface StoreSettingsInput {
   maxOrdersPerRoute?: number;
   deliveryFeeMode?: StoreSettingsInputDeliveryFeeMode;
   deliveryPricePerKm?: number;
+  baseDeliveryDistanceKm?: number;
+  baseDeliveryFee?: number;
+  additionalPricePerKm?: number;
   minimumDeliveryFee?: number;
   maximumDeliveryFee?: number;
 }

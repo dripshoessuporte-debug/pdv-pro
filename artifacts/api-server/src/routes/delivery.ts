@@ -87,6 +87,7 @@ async function getRouteWithOrders(routeId: number) {
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
       deliveryCep: ordersTable.deliveryCep,
       deliveryFee: ordersTable.deliveryFee,
+      estimatedDistanceKm: ordersTable.estimatedDistanceKm,
       deliveryStatus: ordersTable.deliveryStatus,
       totalAmount: ordersTable.totalAmount,
       paymentTiming: ordersTable.paymentTiming,
@@ -149,6 +150,7 @@ async function getRouteWithOrders(routeId: number) {
     orders: routeOrders.map((o) => ({
       ...o,
       deliveryFee: parseFloat(String(o.deliveryFee ?? "0")),
+      estimatedDistanceKm: o.estimatedDistanceKm ? parseFloat(String(o.estimatedDistanceKm)) : null,
       totalAmount: parseFloat(String(o.totalAmount ?? "0")),
       changeFor: o.changeFor ? parseFloat(String(o.changeFor)) : null,
       orderCreatedAt: o.orderCreatedAt?.toISOString() ?? null,
