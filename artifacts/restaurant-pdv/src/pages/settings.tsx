@@ -37,6 +37,10 @@ interface StoreSettings {
   storeCity: string | null;
   deliveryDispatchTimeMinutes: number;
   maxOrdersPerRoute: number;
+  deliveryFeeMode: string;
+  deliveryPricePerKm: number | null;
+  minimumDeliveryFee: number | null;
+  maximumDeliveryFee: number | null;
 }
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -66,6 +70,10 @@ export default function Settings() {
   const [storeCity, setStoreCity] = useState("");
   const [dispatchTime, setDispatchTime] = useState("20");
   const [maxOrders, setMaxOrders] = useState("4");
+  const [deliveryFeeMode, setDeliveryFeeMode] = useState<"manual" | "per_km">("manual");
+  const [deliveryPricePerKm, setDeliveryPricePerKm] = useState("");
+  const [minimumDeliveryFee, setMinimumDeliveryFee] = useState("");
+  const [maximumDeliveryFee, setMaximumDeliveryFee] = useState("");
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -79,6 +87,10 @@ export default function Settings() {
       setStoreCity(s.storeCity ?? "");
       setDispatchTime(String(s.deliveryDispatchTimeMinutes));
       setMaxOrders(String(s.maxOrdersPerRoute));
+      setDeliveryFeeMode((s.deliveryFeeMode as "manual" | "per_km") || "manual");
+      setDeliveryPricePerKm(s.deliveryPricePerKm != null ? String(s.deliveryPricePerKm) : "");
+      setMinimumDeliveryFee(s.minimumDeliveryFee != null ? String(s.minimumDeliveryFee) : "");
+      setMaximumDeliveryFee(s.maximumDeliveryFee != null ? String(s.maximumDeliveryFee) : "");
     } catch {
       toast({ title: "Erro ao carregar configurações", variant: "destructive" });
     } finally {
@@ -121,6 +133,10 @@ export default function Settings() {
           storeCity: storeCity.trim() || null,
           deliveryDispatchTimeMinutes: parseInt(dispatchTime, 10) || 20,
           maxOrdersPerRoute: parseInt(maxOrders, 10) || 4,
+          deliveryFeeMode,
+          deliveryPricePerKm: deliveryPricePerKm.trim() ? parseFloat(deliveryPricePerKm) : null,
+          minimumDeliveryFee: minimumDeliveryFee.trim() ? parseFloat(minimumDeliveryFee) : null,
+          maximumDeliveryFee: maximumDeliveryFee.trim() ? parseFloat(maximumDeliveryFee) : null,
         }),
       });
       toast({ title: "Configurações salvas com sucesso!" });
@@ -277,6 +293,88 @@ export default function Settings() {
               <p>• Origem no Google Maps para todas as rotas geradas</p>
               <p>• Curitiba, PR é usado como fallback se o endereço não estiver cadastrado</p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Delivery Fee Calculation */}
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Truck className="w-5 h-5 text-primary" />
+              Cálculo de Taxa de Entrega
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label className="block mb-2">Modo de cálculo</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: "manual" as const, label: "✋ Manual", desc: "Operador digita a taxa no pedido" },
+                  { value: "per_km" as const, label: "📍 Por km", desc: "Taxa calculada automaticamente pelo CEP" },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setDeliveryFeeMode(opt.value)}
+                    className={`text-left p-3 rounded-lg border text-sm transition-colors ${
+                      deliveryFeeMode === opt.value
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background border-border hover:border-primary/50"
+                    }`}
+                    data-testid={`button-fee-mode-${opt.value}`}
+                  >
+                    <p className="font-medium">{opt.label}</p>
+                    <p className={`text-xs mt-0.5 ${deliveryFeeMode === opt.value ? "text-primary-foreground/80" : "text-muted-foreground"}`}>{opt.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {deliveryFeeMode === "per_km" && (
+              <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
+                <p className="text-xs text-muted-foreground">
+                  A taxa é estimada pela diferença de CEP entre a loja e o endereço de entrega. Configure o CEP da loja acima para ativar o cálculo automático.
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label>Preço por km (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.50"
+                      min="0"
+                      placeholder="2,50"
+                      value={deliveryPricePerKm}
+                      onChange={(e) => setDeliveryPricePerKm(e.target.value)}
+                      data-testid="input-delivery-price-per-km"
+                    />
+                  </div>
+                  <div>
+                    <Label>Taxa mínima (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.50"
+                      min="0"
+                      placeholder="3,00"
+                      value={minimumDeliveryFee}
+                      onChange={(e) => setMinimumDeliveryFee(e.target.value)}
+                      data-testid="input-minimum-delivery-fee"
+                    />
+                  </div>
+                  <div>
+                    <Label>Taxa máxima (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.50"
+                      min="0"
+                      placeholder="15,00"
+                      value={maximumDeliveryFee}
+                      onChange={(e) => setMaximumDeliveryFee(e.target.value)}
+                      data-testid="input-maximum-delivery-fee"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

@@ -26,6 +26,10 @@ router.put("/settings", async (req, res): Promise<void> => {
     storeCity,
     deliveryDispatchTimeMinutes,
     maxOrdersPerRoute,
+    deliveryFeeMode,
+    deliveryPricePerKm,
+    minimumDeliveryFee,
+    maximumDeliveryFee,
   } = req.body ?? {};
 
   const settings = await getOrCreateSettings();
@@ -44,6 +48,21 @@ router.put("/settings", async (req, res): Promise<void> => {
   if (maxOrdersPerRoute !== undefined) {
     const v = parseInt(String(maxOrdersPerRoute), 10);
     if (!isNaN(v) && v >= 1 && v <= 10) updates.maxOrdersPerRoute = v;
+  }
+  if (deliveryFeeMode !== undefined && ["manual", "per_km"].includes(String(deliveryFeeMode))) {
+    updates.deliveryFeeMode = String(deliveryFeeMode);
+  }
+  if (deliveryPricePerKm !== undefined) {
+    const v = parseFloat(String(deliveryPricePerKm));
+    updates.deliveryPricePerKm = !isNaN(v) && v >= 0 ? String(v) : null;
+  }
+  if (minimumDeliveryFee !== undefined) {
+    const v = parseFloat(String(minimumDeliveryFee));
+    updates.minimumDeliveryFee = !isNaN(v) && v >= 0 ? String(v) : null;
+  }
+  if (maximumDeliveryFee !== undefined) {
+    const v = parseFloat(String(maximumDeliveryFee));
+    updates.maximumDeliveryFee = !isNaN(v) && v >= 0 ? String(v) : null;
   }
 
   if (Object.keys(updates).length === 0) {

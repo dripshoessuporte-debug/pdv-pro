@@ -45,6 +45,12 @@ async function getOrderWithItems(orderId: number) {
       deliveryFee: ordersTable.deliveryFee,
       deliveryNotes: ordersTable.deliveryNotes,
       deliveryStatus: ordersTable.deliveryStatus,
+      source: ordersTable.source,
+      externalOrderId: ordersTable.externalOrderId,
+      integrationStatus: ordersTable.integrationStatus,
+      estimatedDistanceKm: ordersTable.estimatedDistanceKm,
+      deliveryFeeCalculated: ordersTable.deliveryFeeCalculated,
+      deliveryFeeSource: ordersTable.deliveryFeeSource,
       createdAt: ordersTable.createdAt,
       updatedAt: ordersTable.updatedAt,
     })
@@ -60,7 +66,7 @@ async function getOrderWithItems(orderId: number) {
       id: orderItemsTable.id,
       orderId: orderItemsTable.orderId,
       productId: orderItemsTable.productId,
-      productName: productsTable.name,
+      productName: sql<string | null>`coalesce(${productsTable.name}, ${orderItemsTable.externalProductName})`,
       quantity: orderItemsTable.quantity,
       unitPrice: orderItemsTable.unitPrice,
       totalPrice: orderItemsTable.totalPrice,
@@ -73,10 +79,11 @@ async function getOrderWithItems(orderId: number) {
   const { customerNameRegistered, ...orderRest } = order;
   return {
     ...orderRest,
-    // prefer the name typed at order creation; fall back to registered customer name
     customerName: order.customerName ?? customerNameRegistered ?? null,
     totalAmount: parseFloat(String(order.totalAmount)),
     deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
+    estimatedDistanceKm: order.estimatedDistanceKm ? parseFloat(String(order.estimatedDistanceKm)) : null,
+    deliveryFeeCalculated: order.deliveryFeeCalculated === "true",
     createdAt: order.createdAt.toISOString(),
     updatedAt: order.updatedAt.toISOString(),
     items: items.map((item) => ({
@@ -127,6 +134,12 @@ router.get("/orders", async (req, res): Promise<void> => {
       deliveryNotes: ordersTable.deliveryNotes,
       deliveryStatus: ordersTable.deliveryStatus,
       paidAt: ordersTable.paidAt,
+      source: ordersTable.source,
+      externalOrderId: ordersTable.externalOrderId,
+      integrationStatus: ordersTable.integrationStatus,
+      estimatedDistanceKm: ordersTable.estimatedDistanceKm,
+      deliveryFeeCalculated: ordersTable.deliveryFeeCalculated,
+      deliveryFeeSource: ordersTable.deliveryFeeSource,
       createdAt: ordersTable.createdAt,
       updatedAt: ordersTable.updatedAt,
     })
@@ -142,7 +155,7 @@ router.get("/orders", async (req, res): Promise<void> => {
         id: orderItemsTable.id,
         orderId: orderItemsTable.orderId,
         productId: orderItemsTable.productId,
-        productName: productsTable.name,
+        productName: sql<string | null>`coalesce(${productsTable.name}, ${orderItemsTable.externalProductName})`,
         quantity: orderItemsTable.quantity,
         unitPrice: orderItemsTable.unitPrice,
         totalPrice: orderItemsTable.totalPrice,
@@ -159,6 +172,8 @@ router.get("/orders", async (req, res): Promise<void> => {
       totalAmount: parseFloat(String(order.totalAmount)),
       deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
       paidAt: order.paidAt ? order.paidAt.toISOString() : null,
+      estimatedDistanceKm: order.estimatedDistanceKm ? parseFloat(String(order.estimatedDistanceKm)) : null,
+      deliveryFeeCalculated: order.deliveryFeeCalculated === "true",
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
       items: items.map((item) => ({

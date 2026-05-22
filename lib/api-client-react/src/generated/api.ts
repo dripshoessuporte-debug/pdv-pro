@@ -39,6 +39,8 @@ import type {
   DeliveryRoute,
   DeliveryStatusUpdate,
   HealthStatus,
+  InboundOrderInput,
+  InboundOrderResponse,
   KitchenTicket,
   ListCustomersParams,
   ListOrdersParams,
@@ -3411,6 +3413,77 @@ export const useUpdateStoreSettings = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateStoreSettingsMutationOptions(options));
+    }
+
+export const getCreateInboundOrderUrl = () => {
+
+
+
+
+  return `/api/integrations/orders/inbound`
+}
+
+/**
+ * @summary Receive external order (iFood, WhatsApp, site, etc.)
+ */
+export const createInboundOrder = async (inboundOrderInput: InboundOrderInput, options?: RequestInit): Promise<InboundOrderResponse> => {
+
+  return customFetch<InboundOrderResponse>(getCreateInboundOrderUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      inboundOrderInput,)
+  }
+);}
+
+
+
+
+export const getCreateInboundOrderMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInboundOrder>>, TError,{data: BodyType<InboundOrderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createInboundOrder>>, TError,{data: BodyType<InboundOrderInput>}, TContext> => {
+
+const mutationKey = ['createInboundOrder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInboundOrder>>, {data: BodyType<InboundOrderInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createInboundOrder(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateInboundOrderMutationResult = NonNullable<Awaited<ReturnType<typeof createInboundOrder>>>
+    export type CreateInboundOrderMutationBody = BodyType<InboundOrderInput>
+    export type CreateInboundOrderMutationError = ErrorType<void>
+
+    /**
+ * @summary Receive external order (iFood, WhatsApp, site, etc.)
+ */
+export const useCreateInboundOrder = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInboundOrder>>, TError,{data: BodyType<InboundOrderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createInboundOrder>>,
+        TError,
+        {data: BodyType<InboundOrderInput>},
+        TContext
+      > => {
+      return useMutation(getCreateInboundOrderMutationOptions(options));
     }
 
 export const getListAwaitingSettlementUrl = () => {

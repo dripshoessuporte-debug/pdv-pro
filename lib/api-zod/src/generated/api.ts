@@ -366,11 +366,17 @@ export const ListOrdersResponseItem = zod.object({
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
+  "source": zod.string().nullish(),
+  "externalOrderId": zod.string().nullish(),
+  "integrationStatus": zod.string().nullish(),
+  "estimatedDistanceKm": zod.number().nullish(),
+  "deliveryFeeCalculated": zod.boolean().nullish(),
+  "deliveryFeeSource": zod.string().nullish(),
   "items": zod.array(zod.object({
   "id": zod.number(),
   "orderId": zod.number(),
-  "productId": zod.number(),
-  "productName": zod.string(),
+  "productId": zod.number().nullish(),
+  "productName": zod.string().nullable(),
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
@@ -438,11 +444,17 @@ export const GetOrderResponse = zod.object({
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
+  "source": zod.string().nullish(),
+  "externalOrderId": zod.string().nullish(),
+  "integrationStatus": zod.string().nullish(),
+  "estimatedDistanceKm": zod.number().nullish(),
+  "deliveryFeeCalculated": zod.boolean().nullish(),
+  "deliveryFeeSource": zod.string().nullish(),
   "items": zod.array(zod.object({
   "id": zod.number(),
   "orderId": zod.number(),
-  "productId": zod.number(),
-  "productName": zod.string(),
+  "productId": zod.number().nullish(),
+  "productName": zod.string().nullable(),
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
@@ -492,11 +504,17 @@ export const UpdateOrderResponse = zod.object({
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
+  "source": zod.string().nullish(),
+  "externalOrderId": zod.string().nullish(),
+  "integrationStatus": zod.string().nullish(),
+  "estimatedDistanceKm": zod.number().nullish(),
+  "deliveryFeeCalculated": zod.boolean().nullish(),
+  "deliveryFeeSource": zod.string().nullish(),
   "items": zod.array(zod.object({
   "id": zod.number(),
   "orderId": zod.number(),
-  "productId": zod.number(),
-  "productName": zod.string(),
+  "productId": zod.number().nullish(),
+  "productName": zod.string().nullable(),
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
@@ -565,11 +583,17 @@ export const SendOrderToKitchenResponse = zod.object({
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
+  "source": zod.string().nullish(),
+  "externalOrderId": zod.string().nullish(),
+  "integrationStatus": zod.string().nullish(),
+  "estimatedDistanceKm": zod.number().nullish(),
+  "deliveryFeeCalculated": zod.boolean().nullish(),
+  "deliveryFeeSource": zod.string().nullish(),
   "items": zod.array(zod.object({
   "id": zod.number(),
   "orderId": zod.number(),
-  "productId": zod.number(),
-  "productName": zod.string(),
+  "productId": zod.number().nullish(),
+  "productName": zod.string().nullable(),
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
@@ -612,11 +636,17 @@ export const CancelOrderResponse = zod.object({
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
+  "source": zod.string().nullish(),
+  "externalOrderId": zod.string().nullish(),
+  "integrationStatus": zod.string().nullish(),
+  "estimatedDistanceKm": zod.number().nullish(),
+  "deliveryFeeCalculated": zod.boolean().nullish(),
+  "deliveryFeeSource": zod.string().nullish(),
   "items": zod.array(zod.object({
   "id": zod.number(),
   "orderId": zod.number(),
-  "productId": zod.number(),
-  "productName": zod.string(),
+  "productId": zod.number().nullish(),
+  "productName": zod.string().nullable(),
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
@@ -663,11 +693,17 @@ export const UpdateDeliveryStatusResponse = zod.object({
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
+  "source": zod.string().nullish(),
+  "externalOrderId": zod.string().nullish(),
+  "integrationStatus": zod.string().nullish(),
+  "estimatedDistanceKm": zod.number().nullish(),
+  "deliveryFeeCalculated": zod.boolean().nullish(),
+  "deliveryFeeSource": zod.string().nullish(),
   "items": zod.array(zod.object({
   "id": zod.number(),
   "orderId": zod.number(),
-  "productId": zod.number(),
-  "productName": zod.string(),
+  "productId": zod.number().nullish(),
+  "productName": zod.string().nullable(),
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
@@ -726,11 +762,17 @@ export const GetReceiptResponse = zod.object({
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
+  "source": zod.string().nullish(),
+  "externalOrderId": zod.string().nullish(),
+  "integrationStatus": zod.string().nullish(),
+  "estimatedDistanceKm": zod.number().nullish(),
+  "deliveryFeeCalculated": zod.boolean().nullish(),
+  "deliveryFeeSource": zod.string().nullish(),
   "items": zod.array(zod.object({
   "id": zod.number(),
   "orderId": zod.number(),
-  "productId": zod.number(),
-  "productName": zod.string(),
+  "productId": zod.number().nullish(),
+  "productName": zod.string().nullable(),
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
@@ -749,8 +791,8 @@ export const GetReceiptResponse = zod.object({
   "items": zod.array(zod.object({
   "id": zod.number(),
   "orderId": zod.number(),
-  "productId": zod.number(),
-  "productName": zod.string(),
+  "productId": zod.number().nullish(),
+  "productName": zod.string().nullable(),
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
@@ -773,8 +815,8 @@ export const GetKitchenQueueResponseItem = zod.object({
   "items": zod.array(zod.object({
   "id": zod.number(),
   "orderId": zod.number(),
-  "productId": zod.number(),
-  "productName": zod.string(),
+  "productId": zod.number().nullish(),
+  "productName": zod.string().nullable(),
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
@@ -802,8 +844,8 @@ export const MarkTicketReadyResponse = zod.object({
   "items": zod.array(zod.object({
   "id": zod.number(),
   "orderId": zod.number(),
-  "productId": zod.number(),
-  "productName": zod.string(),
+  "productId": zod.number().nullish(),
+  "productName": zod.string().nullable(),
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
@@ -869,11 +911,17 @@ export const GetRecentOrdersResponseItem = zod.object({
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
+  "source": zod.string().nullish(),
+  "externalOrderId": zod.string().nullish(),
+  "integrationStatus": zod.string().nullish(),
+  "estimatedDistanceKm": zod.number().nullish(),
+  "deliveryFeeCalculated": zod.boolean().nullish(),
+  "deliveryFeeSource": zod.string().nullish(),
   "items": zod.array(zod.object({
   "id": zod.number(),
   "orderId": zod.number(),
-  "productId": zod.number(),
-  "productName": zod.string(),
+  "productId": zod.number().nullish(),
+  "productName": zod.string().nullable(),
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
@@ -1113,7 +1161,11 @@ export const GetStoreSettingsResponse = zod.object({
   "storeNeighborhood": zod.string().nullish(),
   "storeCity": zod.string().nullish(),
   "deliveryDispatchTimeMinutes": zod.number(),
-  "maxOrdersPerRoute": zod.number()
+  "maxOrdersPerRoute": zod.number(),
+  "deliveryFeeMode": zod.enum(['manual', 'per_km']),
+  "deliveryPricePerKm": zod.number().nullish(),
+  "minimumDeliveryFee": zod.number().nullish(),
+  "maximumDeliveryFee": zod.number().nullish()
 })
 
 
@@ -1128,7 +1180,11 @@ export const UpdateStoreSettingsBody = zod.object({
   "storeNeighborhood": zod.string().optional(),
   "storeCity": zod.string().optional(),
   "deliveryDispatchTimeMinutes": zod.number().optional(),
-  "maxOrdersPerRoute": zod.number().optional()
+  "maxOrdersPerRoute": zod.number().optional(),
+  "deliveryFeeMode": zod.enum(['manual', 'per_km']).optional(),
+  "deliveryPricePerKm": zod.number().optional(),
+  "minimumDeliveryFee": zod.number().optional(),
+  "maximumDeliveryFee": zod.number().optional()
 })
 
 export const UpdateStoreSettingsResponse = zod.object({
@@ -1140,7 +1196,49 @@ export const UpdateStoreSettingsResponse = zod.object({
   "storeNeighborhood": zod.string().nullish(),
   "storeCity": zod.string().nullish(),
   "deliveryDispatchTimeMinutes": zod.number(),
-  "maxOrdersPerRoute": zod.number()
+  "maxOrdersPerRoute": zod.number(),
+  "deliveryFeeMode": zod.enum(['manual', 'per_km']),
+  "deliveryPricePerKm": zod.number().nullish(),
+  "minimumDeliveryFee": zod.number().nullish(),
+  "maximumDeliveryFee": zod.number().nullish()
+})
+
+
+/**
+ * @summary Receive external order (iFood, WhatsApp, site, etc.)
+ */
+export const createInboundOrderBodyTypeDefault = `delivery`;
+
+export const CreateInboundOrderBody = zod.object({
+  "source": zod.enum(['ifood', 'whatsapp', 'site', 'totem', 'garcom', 'api_externa']),
+  "externalOrderId": zod.string().optional(),
+  "type": zod.enum(['delivery', 'takeaway', 'counter', 'table']).default(createInboundOrderBodyTypeDefault),
+  "customer": zod.object({
+  "name": zod.string().optional(),
+  "phone": zod.string().optional()
+}).optional(),
+  "delivery": zod.object({
+  "cep": zod.string().optional(),
+  "address": zod.string().optional(),
+  "neighborhood": zod.string().optional(),
+  "reference": zod.string().optional(),
+  "fee": zod.number().optional(),
+  "distanceKm": zod.number().optional()
+}).optional(),
+  "payment": zod.object({
+  "timing": zod.enum(['now', 'on_delivery']).optional(),
+  "method": zod.string().optional(),
+  "changeFor": zod.number().optional(),
+  "notes": zod.string().optional()
+}).optional(),
+  "items": zod.array(zod.object({
+  "externalItemId": zod.string().optional(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "notes": zod.string().optional()
+})),
+  "notes": zod.string().optional()
 })
 
 

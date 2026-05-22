@@ -73,6 +73,15 @@ export default function NewOrder() {
   const [changeFor, setChangeFor] = useState("");
   const [deliveryPaymentNotes, setDeliveryPaymentNotes] = useState("");
 
+  const [feeAutoCalculated, setFeeAutoCalculated] = useState(false);
+  const [storeSettings, setStoreSettings] = useState<{
+    deliveryFeeMode: string;
+    storeCep: string | null;
+    deliveryPricePerKm: number | null;
+    minimumDeliveryFee: number | null;
+    maximumDeliveryFee: number | null;
+  } | null>(null);
+
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -97,6 +106,45 @@ export default function NewOrder() {
       setTableId(preselectedTableId);
     }
   }, [preselectedTableId]);
+
+  // Load store settings once for delivery fee calculation
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((s) => setStoreSettings(s))
+      .catch(() => {/* silent — fee calculation just stays manual */});
+  }, []);
+
+  // Auto-calculate delivery fee from CEP when mode is per_km
+  useEffect(() => {
+    if (orderType !== "delivery") return;
+    if (!storeSettings || storeSettings.deliveryFeeMode !== "per_km") return;
+    if (!storeSettings.storeCep || !storeSettings.deliveryPricePerKm) return;
+
+    const normalized = (cep: string) => cep.replace(/\D/g, "");
+    const storeCepNum = parseInt(normalized(storeSettings.storeCep), 10);
+    const customerCepNum = parseInt(normalized(deliveryCep), 10);
+
+    if (normalized(deliveryCep).length !== 8 || isNaN(storeCepNum) || isNaN(customerCepNum)) {
+      if (feeAutoCalculated) {
+        setDeliveryFee("");
+        setFeeAutoCalculated(false);
+      }
+      return;
+    }
+
+    const diff = Math.abs(storeCepNum - customerCepNum);
+    let distKm = Math.max(0.5, diff / 3000);
+    distKm = Math.min(distKm, 50);
+
+    let fee = distKm * storeSettings.deliveryPricePerKm;
+    if (storeSettings.minimumDeliveryFee && fee < storeSettings.minimumDeliveryFee) fee = storeSettings.minimumDeliveryFee;
+    if (storeSettings.maximumDeliveryFee && fee > storeSettings.maximumDeliveryFee) fee = storeSettings.maximumDeliveryFee;
+    fee = Math.round(fee * 100) / 100;
+
+    setDeliveryFee(String(fee));
+    setFeeAutoCalculated(true);
+  }, [deliveryCep, orderType, storeSettings, feeAutoCalculated]);
 
   const addToCart = (product: { id: number; name: string; price: number }) => {
     setCart((prev) => {
@@ -323,20 +371,28 @@ export default function NewOrder() {
                         <Input
                           placeholder="00000-000"
                           value={deliveryCep}
-                          onChange={(e) => setDeliveryCep(e.target.value)}
+                          onChange={(e) => {
+                            setDeliveryCep(e.target.value);
+                            if (feeAutoCalculated) setFeeAutoCalculated(false);
+                          }}
                           data-testid="input-delivery-cep"
                           maxLength={9}
                         />
                       </div>
                       <div>
-                        <Label>Taxa de Entrega (R$)</Label>
+                        <Label className="flex items-center justify-between">
+                          <span>Taxa de Entrega (R$)</span>
+                          {feeAutoCalculated && (
+                            <span className="text-xs font-normal text-green-600 dark:text-green-400">📍 calculada por CEP</span>
+                          )}
+                        </Label>
                         <Input
                           type="number"
                           step="0.50"
                           min="0"
                           placeholder="0,00"
                           value={deliveryFee}
-                          onChange={(e) => setDeliveryFee(e.target.value)}
+                          onChange={(e) => { setDeliveryFee(e.target.value); setFeeAutoCalculated(false); }}
                           data-testid="input-delivery-fee"
                         />
                       </div>

@@ -190,8 +190,10 @@ export const OrderPaymentTiming = {
 export interface OrderItem {
   id: number;
   orderId: number;
-  productId: number;
-  productName: string;
+  /** @nullable */
+  productId?: number | null;
+  /** @nullable */
+  productName: string | null;
   quantity: number;
   unitPrice: number;
   totalPrice: number;
@@ -244,6 +246,18 @@ export interface Order {
   closedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
+  /** @nullable */
+  source?: string | null;
+  /** @nullable */
+  externalOrderId?: string | null;
+  /** @nullable */
+  integrationStatus?: string | null;
+  /** @nullable */
+  estimatedDistanceKm?: number | null;
+  /** @nullable */
+  deliveryFeeCalculated?: boolean | null;
+  /** @nullable */
+  deliveryFeeSource?: string | null;
   items: OrderItem[];
 }
 
@@ -598,6 +612,14 @@ export interface GenerateRoutesResponse {
   routes?: DeliveryRoute[];
 }
 
+export type StoreSettingsDeliveryFeeMode = typeof StoreSettingsDeliveryFeeMode[keyof typeof StoreSettingsDeliveryFeeMode];
+
+
+export const StoreSettingsDeliveryFeeMode = {
+  manual: 'manual',
+  per_km: 'per_km',
+} as const;
+
 export interface StoreSettings {
   id: number;
   storeName: string;
@@ -613,7 +635,22 @@ export interface StoreSettings {
   storeCity?: string | null;
   deliveryDispatchTimeMinutes: number;
   maxOrdersPerRoute: number;
+  deliveryFeeMode: StoreSettingsDeliveryFeeMode;
+  /** @nullable */
+  deliveryPricePerKm?: number | null;
+  /** @nullable */
+  minimumDeliveryFee?: number | null;
+  /** @nullable */
+  maximumDeliveryFee?: number | null;
 }
+
+export type StoreSettingsInputDeliveryFeeMode = typeof StoreSettingsInputDeliveryFeeMode[keyof typeof StoreSettingsInputDeliveryFeeMode];
+
+
+export const StoreSettingsInputDeliveryFeeMode = {
+  manual: 'manual',
+  per_km: 'per_km',
+} as const;
 
 export interface StoreSettingsInput {
   storeName?: string;
@@ -624,6 +661,94 @@ export interface StoreSettingsInput {
   storeCity?: string;
   deliveryDispatchTimeMinutes?: number;
   maxOrdersPerRoute?: number;
+  deliveryFeeMode?: StoreSettingsInputDeliveryFeeMode;
+  deliveryPricePerKm?: number;
+  minimumDeliveryFee?: number;
+  maximumDeliveryFee?: number;
+}
+
+export type InboundOrderInputSource = typeof InboundOrderInputSource[keyof typeof InboundOrderInputSource];
+
+
+export const InboundOrderInputSource = {
+  ifood: 'ifood',
+  whatsapp: 'whatsapp',
+  site: 'site',
+  totem: 'totem',
+  garcom: 'garcom',
+  api_externa: 'api_externa',
+} as const;
+
+export type InboundOrderInputType = typeof InboundOrderInputType[keyof typeof InboundOrderInputType];
+
+
+export const InboundOrderInputType = {
+  delivery: 'delivery',
+  takeaway: 'takeaway',
+  counter: 'counter',
+  table: 'table',
+} as const;
+
+export type InboundOrderInputCustomer = {
+  name?: string;
+  phone?: string;
+};
+
+export type InboundOrderInputDelivery = {
+  cep?: string;
+  address?: string;
+  neighborhood?: string;
+  reference?: string;
+  fee?: number;
+  distanceKm?: number;
+};
+
+export type InboundOrderInputPaymentTiming = typeof InboundOrderInputPaymentTiming[keyof typeof InboundOrderInputPaymentTiming];
+
+
+export const InboundOrderInputPaymentTiming = {
+  now: 'now',
+  on_delivery: 'on_delivery',
+} as const;
+
+export type InboundOrderInputPayment = {
+  timing?: InboundOrderInputPaymentTiming;
+  method?: string;
+  changeFor?: number;
+  notes?: string;
+};
+
+export type InboundOrderInputItemsItem = {
+  externalItemId?: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  notes?: string;
+};
+
+export interface InboundOrderInput {
+  source: InboundOrderInputSource;
+  externalOrderId?: string;
+  type?: InboundOrderInputType;
+  customer?: InboundOrderInputCustomer;
+  delivery?: InboundOrderInputDelivery;
+  payment?: InboundOrderInputPayment;
+  items: InboundOrderInputItemsItem[];
+  notes?: string;
+}
+
+export interface InboundOrderResponse {
+  id: number;
+  source: string;
+  /** @nullable */
+  externalOrderId?: string | null;
+  /** @nullable */
+  integrationStatus?: string | null;
+  totalAmount: number;
+  deliveryFeeSource: string;
+  /** @nullable */
+  estimatedDistanceKm?: number | null;
+  message: string;
 }
 
 export interface AdjustRouteTimeInput {

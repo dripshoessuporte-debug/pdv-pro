@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, kitchenTicketsTable, ordersTable, tablesTable, orderItemsTable, productsTable } from "@workspace/db";
 import {
   MarkTicketReadyParams,
@@ -32,7 +32,7 @@ async function getTicketWithItems(ticketId: number) {
       id: orderItemsTable.id,
       orderId: orderItemsTable.orderId,
       productId: orderItemsTable.productId,
-      productName: productsTable.name,
+      productName: sql<string | null>`coalesce(${productsTable.name}, ${orderItemsTable.externalProductName})`,
       quantity: orderItemsTable.quantity,
       unitPrice: orderItemsTable.unitPrice,
       totalPrice: orderItemsTable.totalPrice,

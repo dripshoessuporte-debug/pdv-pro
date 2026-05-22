@@ -55,6 +55,24 @@ const TYPE_LABELS: Record<string, string> = {
   delivery: "Delivery",
 };
 
+const SOURCE_LABELS: Record<string, string> = {
+  ifood: "iFood",
+  whatsapp: "WhatsApp",
+  site: "Site",
+  totem: "Totem",
+  garcom: "Garçom",
+  api_externa: "API",
+};
+
+const SOURCE_COLORS: Record<string, string> = {
+  ifood: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+  whatsapp: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+  site: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  totem: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  garcom: "bg-gray-100 text-gray-700 dark:bg-gray-800/60 dark:text-gray-400",
+  api_externa: "bg-gray-100 text-gray-700 dark:bg-gray-800/60 dark:text-gray-400",
+};
+
 const STATUS_FILTERS = ["all", "open", "preparing", "ready", "closed", "cancelled"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
 
@@ -314,6 +332,11 @@ export default function Orders() {
                 {isDelivery && order.deliveryStatus && (
                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${DELIVERY_STATUS_COLORS[order.deliveryStatus] ?? "bg-gray-100 text-gray-600"}`}>
                     {DELIVERY_STATUS_LABELS[order.deliveryStatus] ?? order.deliveryStatus}
+                  </span>
+                )}
+                {order.source && SOURCE_LABELS[order.source] && (
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${SOURCE_COLORS[order.source] ?? "bg-gray-100 text-gray-600"}`}>
+                    {SOURCE_LABELS[order.source]}
                   </span>
                 )}
               </div>

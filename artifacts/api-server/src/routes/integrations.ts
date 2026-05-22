@@ -1,0 +1,206 @@
+import { Router, type IRouter } from "express";
+import { eq, and } from "drizzle-orm";
+import { db, ordersTable, orderItemsTable, storeSettingsTable } from "@workspace/db";
+import { estimateDistanceKmFromCep, calculateDeliveryFee } from "../lib/delivery-fee";
+import { getOrCreateSettings } from "./settings";
+
+const router: IRouter = Router();
+
+/**
+ * POST /integrations/orders/inbound
+ *
+ * Receives an external order from iFood, WhatsApp, site, totem, etc.
+ * Protected by x-integration-key header when INTEGRATION_API_KEY env var is set.
+ */
+router.post("/integrations/orders/inbound", async (req, res): Promise<void> => {
+  // --- Security: API key check ---
+  const requiredKey = process.env.INTEGRATION_API_KEY;
+  if (requiredKey) {
+    const headerKey = req.headers["x-integration-key"];
+    if (headerKey !== requiredKey) {
+      res.status(401).json({ error: "Chave de integração inválida ou ausente." });
+      return;
+    }
+  } else {
+    req.log.warn("INTEGRATION_API_KEY não definida — endpoint /integrations/orders/inbound aberto sem autenticação.");
+  }
+
+  const body = req.body ?? {};
+
+  // --- Basic validation ---
+  const { source, externalOrderId, type, customer, delivery, payment, items, notes } = body;
+
+  if (!source || typeof source !== "string") {
+    res.status(400).json({ error: "Campo 'source' é obrigatório (ifood, whatsapp, site, totem, garcom, api_externa)." });
+    return;
+  }
+
+  const validSources = ["ifood", "whatsapp", "site", "totem", "garcom", "api_externa"];
+  if (!validSources.includes(source)) {
+    res.status(400).json({ error: `source inválido. Use: ${validSources.join(", ")}.` });
+    return;
+  }
+
+  const validTypes = ["delivery", "takeaway", "counter", "table"];
+  const orderType = type ?? "delivery";
+  if (!validTypes.includes(orderType)) {
+    res.status(400).json({ error: `type inválido. Use: ${validTypes.join(", ")}.` });
+    return;
+  }
+
+  if (!Array.isArray(items) || items.length === 0) {
+    res.status(400).json({ error: "Campo 'items' é obrigatório e deve conter ao menos um item." });
+    return;
+  }
+
+  for (const item of items) {
+    if (!item.name || typeof item.name !== "string") {
+      res.status(400).json({ error: "Cada item deve ter 'name' (string)." });
+      return;
+    }
+    if (typeof item.unitPrice !== "number" || item.unitPrice < 0) {
+      res.status(400).json({ error: "Cada item deve ter 'unitPrice' (number >= 0)." });
+      return;
+    }
+    if (typeof item.quantity !== "number" || item.quantity < 1) {
+      res.status(400).json({ error: "Cada item deve ter 'quantity' (integer >= 1)." });
+      return;
+    }
+  }
+
+  // --- Duplicate check (source + externalOrderId) ---
+  if (externalOrderId) {
+    const [existing] = await db
+      .select({ id: ordersTable.id })
+      .from(ordersTable)
+      .where(
+        and(
+          eq(ordersTable.source, source),
+          eq(ordersTable.externalOrderId, String(externalOrderId))
+        )
+      )
+      .limit(1);
+
+    if (existing) {
+      res.status(409).json({
+        error: "Pedido duplicado: já existe um pedido com esse source + externalOrderId.",
+        existingOrderId: existing.id,
+      });
+      return;
+    }
+  }
+
+  // --- Delivery fee calculation ---
+  const settings = await getOrCreateSettings();
+
+  let resolvedDeliveryFee = 0;
+  let deliveryFeeSource = "manual";
+  let estimatedDistanceKm: number | null = null;
+  let deliveryFeeCalculated = false;
+
+  if (orderType === "delivery") {
+    const providedFee = delivery?.fee;
+
+    if (typeof providedFee === "number" && providedFee >= 0) {
+      // API sent the fee — use it as-is
+      resolvedDeliveryFee = providedFee;
+      deliveryFeeSource = "external_api";
+      estimatedDistanceKm = typeof delivery?.distanceKm === "number" ? delivery.distanceKm : null;
+    } else if (settings.deliveryFeeMode === "per_km" && delivery?.cep && settings.storeCep) {
+      // Calculate fee from CEPs
+      const dist = estimateDistanceKmFromCep(settings.storeCep, delivery.cep);
+      if (dist !== null && settings.deliveryPricePerKm) {
+        estimatedDistanceKm = dist;
+        resolvedDeliveryFee = calculateDeliveryFee(dist, {
+          deliveryPricePerKm: parseFloat(String(settings.deliveryPricePerKm)),
+          minimumDeliveryFee: settings.minimumDeliveryFee ? parseFloat(String(settings.minimumDeliveryFee)) : null,
+          maximumDeliveryFee: settings.maximumDeliveryFee ? parseFloat(String(settings.maximumDeliveryFee)) : null,
+        });
+        deliveryFeeSource = "automatic";
+        deliveryFeeCalculated = true;
+      }
+    }
+  }
+
+  // --- Recalculate subtotal from items ---
+  const subtotal = items.reduce(
+    (sum: number, item: { unitPrice: number; quantity: number }) =>
+      sum + item.unitPrice * item.quantity,
+    0
+  );
+  const totalAmount = subtotal + resolvedDeliveryFee;
+
+  // --- Payment fields ---
+  const paymentTiming = payment?.timing === "on_delivery" ? "on_delivery" : "now";
+  const deliveryPaymentMethod = payment?.method ?? null;
+  const changeFor = typeof payment?.changeFor === "number" ? String(payment.changeFor) : null;
+  const deliveryPaymentNotes = payment?.notes ?? null;
+  const needsChange = changeFor !== null ? "true" : "false";
+
+  // --- Create order ---
+  const [order] = await db
+    .insert(ordersTable)
+    .values({
+      type: orderType,
+      status: "open",
+      customerName: customer?.name ?? null,
+      customerPhone: customer?.phone ?? null,
+      notes: notes ?? null,
+      totalAmount: String(totalAmount),
+      deliveryFee: String(resolvedDeliveryFee),
+      // Delivery address
+      deliveryCep: delivery?.cep ?? null,
+      deliveryAddress: delivery?.address ?? null,
+      deliveryNeighborhood: delivery?.neighborhood ?? null,
+      deliveryReference: delivery?.reference ?? null,
+      // Delivery status
+      deliveryStatus: orderType === "delivery" ? "pending" : null,
+      // Payment fields
+      paymentTiming,
+      deliveryPaymentMethod,
+      needsChange,
+      changeFor,
+      deliveryPaymentNotes,
+      // Integration fields
+      source,
+      externalOrderId: externalOrderId ? String(externalOrderId) : null,
+      rawPayload: JSON.stringify(body),
+      integrationStatus: "received",
+      estimatedDistanceKm: estimatedDistanceKm !== null ? String(estimatedDistanceKm) : null,
+      deliveryFeeCalculated: String(deliveryFeeCalculated),
+      deliveryFeeSource,
+    })
+    .returning();
+
+  // --- Create order items ---
+  for (const item of items) {
+    const qty = Math.round(item.quantity);
+    const unitP = item.unitPrice;
+    const totalP = unitP * qty;
+
+    await db.insert(orderItemsTable).values({
+      orderId: order.id,
+      productId: null,
+      externalProductName: item.name,
+      quantity: qty,
+      unitPrice: String(unitP),
+      totalPrice: String(totalP),
+      notes: item.notes ?? null,
+    });
+  }
+
+  req.log.info({ orderId: order.id, source, externalOrderId }, "Pedido externo recebido");
+
+  res.status(201).json({
+    id: order.id,
+    source,
+    externalOrderId: order.externalOrderId,
+    integrationStatus: order.integrationStatus,
+    totalAmount,
+    deliveryFeeSource,
+    estimatedDistanceKm,
+    message: "Pedido criado com sucesso.",
+  });
+});
+
+export default router;

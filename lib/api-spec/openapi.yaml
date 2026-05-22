@@ -879,6 +879,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/StoreSettings"
 
+  /integrations/orders/inbound:
+    post:
+      operationId: createInboundOrder
+      tags: [integrations]
+      summary: Receive external order (iFood, WhatsApp, site, etc.)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InboundOrderInput"
+      responses:
+        "201":
+          description: Order created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboundOrderResponse"
+        "400":
+          description: Invalid input
+        "401":
+          description: Invalid or missing x-integration-key header
+        "409":
+          description: Duplicate order (same source + externalOrderId)
+
   /delivery/orders/awaiting-settlement:
     get:
       operationId: listAwaitingSettlement
@@ -1200,6 +1225,18 @@ components:
           type: string
         updatedAt:
           type: string
+        source:
+          type: ["string", "null"]
+        externalOrderId:
+          type: ["string", "null"]
+        integrationStatus:
+          type: ["string", "null"]
+        estimatedDistanceKm:
+          type: ["number", "null"]
+        deliveryFeeCalculated:
+          type: ["boolean", "null"]
+        deliveryFeeSource:
+          type: ["string", "null"]
         items:
           type: array
           items:
@@ -1269,16 +1306,16 @@ components:
 
     OrderItem:
       type: object
-      required: [id, orderId, productId, productName, quantity, unitPrice, totalPrice]
+      required: [id, orderId, productName, quantity, unitPrice, totalPrice]
       properties:
         id:
           type: integer
         orderId:
           type: integer
         productId:
-          type: integer
+          type: ["integer", "null"]
         productName:
-          type: string
+          type: ["string", "null"]
         quantity:
           type: integer
         unitPrice:
@@ -1640,7 +1677,7 @@ components:
 
     StoreSettings:
       type: object
-      required: [id, storeName, deliveryDispatchTimeMinutes, maxOrdersPerRoute]
+      required: [id, storeName, deliveryDispatchTimeMinutes, maxOrdersPerRoute, deliveryFeeMode]
       properties:
         id:
           type: integer
@@ -1660,6 +1697,15 @@ components:
           type: integer
         maxOrdersPerRoute:
           type: integer
+        deliveryFeeMode:
+          type: string
+          enum: [manual, per_km]
+        deliveryPricePerKm:
+          type: ["number", "null"]
+        minimumDeliveryFee:
+          type: ["number", "null"]
+        maximumDeliveryFee:
+          type: ["number", "null"]
 
     StoreSettingsInput:
       type: object
@@ -1680,6 +1726,102 @@ components:
           type: integer
         maxOrdersPerRoute:
           type: integer
+        deliveryFeeMode:
+          type: string
+          enum: [manual, per_km]
+        deliveryPricePerKm:
+          type: number
+        minimumDeliveryFee:
+          type: number
+        maximumDeliveryFee:
+          type: number
+
+    InboundOrderInput:
+      type: object
+      required: [source, items]
+      properties:
+        source:
+          type: string
+          enum: [ifood, whatsapp, site, totem, garcom, api_externa]
+        externalOrderId:
+          type: string
+        type:
+          type: string
+          enum: [delivery, takeaway, counter, table]
+          default: delivery
+        customer:
+          type: object
+          properties:
+            name:
+              type: string
+            phone:
+              type: string
+        delivery:
+          type: object
+          properties:
+            cep:
+              type: string
+            address:
+              type: string
+            neighborhood:
+              type: string
+            reference:
+              type: string
+            fee:
+              type: number
+            distanceKm:
+              type: number
+        payment:
+          type: object
+          properties:
+            timing:
+              type: string
+              enum: [now, on_delivery]
+            method:
+              type: string
+            changeFor:
+              type: number
+            notes:
+              type: string
+        items:
+          type: array
+          items:
+            type: object
+            required: [name, quantity, unitPrice]
+            properties:
+              externalItemId:
+                type: string
+              name:
+                type: string
+              quantity:
+                type: integer
+              unitPrice:
+                type: number
+              notes:
+                type: string
+        notes:
+          type: string
+
+    InboundOrderResponse:
+      type: object
+      required: [id, source, totalAmount, deliveryFeeSource, message]
+      properties:
+        id:
+          type: integer
+        source:
+          type: string
+        externalOrderId:
+          type: ["string", "null"]
+        integrationStatus:
+          type: ["string", "null"]
+        totalAmount:
+          type: number
+        deliveryFeeSource:
+          type: string
+        estimatedDistanceKm:
+          type: ["number", "null"]
+        message:
+          type: string
 
     AdjustRouteTimeInput:
       type: object

@@ -52,6 +52,24 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelado",
 };
 
+const SOURCE_LABELS: Record<string, string> = {
+  ifood: "iFood",
+  whatsapp: "WhatsApp",
+  site: "Site",
+  totem: "Totem",
+  garcom: "Garçom",
+  api_externa: "API",
+};
+
+const SOURCE_COLORS: Record<string, string> = {
+  ifood: "bg-red-100 text-red-700",
+  whatsapp: "bg-green-100 text-green-700",
+  site: "bg-blue-100 text-blue-700",
+  totem: "bg-purple-100 text-purple-700",
+  garcom: "bg-gray-100 text-gray-700",
+  api_externa: "bg-gray-100 text-gray-700",
+};
+
 const STATUS_COLORS: Record<string, string> = {
   open: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
   preparing: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
@@ -517,6 +535,34 @@ export default function OrderDetail() {
                           </div>
                         )}
                       </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Origem do Pedido (apenas pedidos externos) */}
+            {order.source && (
+              <Card className="border-muted">
+                <CardContent className="p-4">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-2">Origem do Pedido</p>
+                  <div className="flex flex-wrap items-center gap-3 text-sm">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${SOURCE_COLORS[order.source] ?? "bg-gray-100 text-gray-700"}`}>
+                      {SOURCE_LABELS[order.source] ?? order.source}
+                    </span>
+                    {order.externalOrderId && (
+                      <span className="text-muted-foreground font-mono text-xs">ID externo: {order.externalOrderId}</span>
+                    )}
+                    {order.integrationStatus && (
+                      <span className="text-muted-foreground text-xs">· Status: {order.integrationStatus}</span>
+                    )}
+                    {order.estimatedDistanceKm != null && (
+                      <span className="text-muted-foreground text-xs">· ~{order.estimatedDistanceKm.toFixed(1)} km</span>
+                    )}
+                    {order.deliveryFeeSource && order.deliveryFeeSource !== "manual" && (
+                      <span className="text-muted-foreground text-xs">
+                        · Taxa: {order.deliveryFeeSource === "automatic" ? "calculada automaticamente" : "enviada pelo integrador"}
+                      </span>
                     )}
                   </div>
                 </CardContent>

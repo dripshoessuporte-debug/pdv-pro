@@ -5,6 +5,7 @@
  * Restaurant POS API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { StoreSettingsDeliveryFeeMode } from './storeSettingsDeliveryFeeMode';
 
 export interface StoreSettings {
   id: number;
@@ -21,4 +22,11 @@ export interface StoreSettings {
   storeCity?: string | null;
   deliveryDispatchTimeMinutes: number;
   maxOrdersPerRoute: number;
+  deliveryFeeMode: StoreSettingsDeliveryFeeMode;
+  /** @nullable */
+  deliveryPricePerKm?: number | null;
+  /** @nullable */
+  minimumDeliveryFee?: number | null;
+  /** @nullable */
+  maximumDeliveryFee?: number | null;
 }

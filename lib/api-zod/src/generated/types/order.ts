@@ -56,5 +56,17 @@ export interface Order {
   closedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
+  /** @nullable */
+  source?: string | null;
+  /** @nullable */
+  externalOrderId?: string | null;
+  /** @nullable */
+  integrationStatus?: string | null;
+  /** @nullable */
+  estimatedDistanceKm?: number | null;
+  /** @nullable */
+  deliveryFeeCalculated?: boolean | null;
+  /** @nullable */
+  deliveryFeeSource?: string | null;
   items: OrderItem[];
 }

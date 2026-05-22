@@ -1,0 +1,319 @@
+Implemente a base de cálculo automático de taxa de entrega por distância e a preparação para entrada automática de pedidos externos via API.
+
+Não refaça o projeto do zero.
+Não mexa no visual geral.
+Não altere cores.
+Não implemente integração real com iFood agora.
+Não use API paga de mapas agora.
+Preserve tudo que já funciona:
+- pedidos
+- cozinha
+- pagamento
+- caixa
+- delivery
+- rotas
+- baixa financeira
+- dashboard
+- alertas
+- cardápio
+- configurações
+
+OBJETIVO:
+1. No pedido delivery manual, permitir calcular automaticamente a taxa de entrega com base no CEP/endereço da loja e no CEP/endereço do cliente.
+2. Preparar o sistema para receber pedidos externos de iFood, WhatsApp, site ou outra API, criando o pedido automaticamente no PDV com todos os dados originais.
+
+==================================================
+PARTE 1 — CONFIGURAÇÕES DE ENTREGA
+==================================================
+
+Na página Configurações, adicionar campos para regra de entrega:
+
+- deliveryFeeMode:
+  - manual
+  - per_km
+
+- deliveryPricePerKm:
+  valor cobrado por km
+
+- minimumDeliveryFee:
+  taxa mínima de entrega
+
+- maximumDeliveryFee:
+  taxa máxima opcional
+
+- storeCep:
+  usar o CEP da loja já existente
+
+- storeAddress:
+  usar endereço da loja já existente
+
+Regras:
+
+1. Se deliveryFeeMode = manual:
+   - a taxa de entrega continua sendo preenchida manualmente no Novo Pedido.
+
+2. Se deliveryFeeMode = per_km:
+   - no Novo Pedido delivery, calcular taxa automaticamente com base na distância aproximada.
+
+3. Se houver minimumDeliveryFee:
+   - aplicar taxa mínima.
+
+4. Se houver maximumDeliveryFee:
+   - não ultrapassar taxa máxima.
+
+Exemplo:
+distância = 3 km
+preço por km = R$ 2,50
+taxa calculada = R$ 7,50
+
+Se taxa mínima = R$ 8,00:
+taxa final = R$ 8,00
+
+==================================================
+PARTE 2 — CÁLCULO DE DISTÂNCIA POR CEP PARA MVP
+==================================================
+
+Para o MVP, não usar API paga de geolocalização.
+
+Criar uma função de distância aproximada por CEP.
+
+Sugestão:
+- normalizar CEP removendo traços e espaços
+- usar diferença numérica aproximada entre CEP da loja e CEP do cliente
+- converter para uma distância estimada em km de forma simples
+- deixar claro no código que isso é uma aproximação para MVP
+
+Criar funções como:
+
+normalizeCep(cep)
+estimateDistanceKmFromCep(storeCep, customerCep)
+calculateDeliveryFee(distanceKm, settings)
+
+Importante:
+Essa estimativa não precisa ser perfeita agora.
+Ela serve para dar uma taxa automática inicial.
+
+Se futuramente integrarmos Google Maps, Mapbox ou outra API:
+- substituir apenas essa função de cálculo de distância
+- sem quebrar o resto do sistema
+
+==================================================
+PARTE 3 — NOVO PEDIDO DELIVERY
+==================================================
+
+Na tela Novo Pedido:
+
+Quando tipo = delivery:
+
+1. Mostrar campos:
+- CEP do cliente
+- endereço
+- bairro
+- referência
+- taxa de entrega
+
+2. Se Configurações estiver em deliveryFeeMode = per_km:
+- ao preencher CEP do cliente, calcular distância aproximada
+- mostrar:
+  - distância estimada
+  - preço por km
+  - taxa calculada
+
+3. Permitir editar manualmente a taxa mesmo após cálculo, mas mostrar indicação:
+"Taxa calculada automaticamente"
+
+4. O total do pedido deve continuar:
+subtotal dos itens + taxa de entrega = total final
+
+5. Salvar no pedido:
+- deliveryFee
+- estimatedDistanceKm
+- deliveryFeeCalculated = true/false
+- deliveryFeeSource = manual | automatic | external_api
+
+==================================================
+PARTE 4 — PREPARAR ENTRADA DE PEDIDOS EXTERNOS
+==================================================
+
+Criar ou ajustar endpoint:
+
+POST /integrations/orders/inbound
+
+Esse endpoint será usado futuramente por:
+- iFood
+- WhatsApp
+- site próprio
+- totem
+- app de garçom
+- outras APIs
+
+Ele deve aceitar um pedido externo em formato normalizado.
+
+Exemplo de JSON:
+
+{
+  "source": "ifood",
+  "externalOrderId": "IFOOD-123456",
+  "type": "delivery",
+  "customer": {
+    "name": "João Silva",
+    "phone": "41999999999"
+  },
+  "delivery": {
+    "cep": "81720-000",
+    "address": "Rua Francisco Derosso, 2100",
+    "neighborhood": "Xaxim",
+    "reference": "Casa branca",
+    "fee": 9.50,
+    "distanceKm": 3.8
+  },
+  "payment": {
+    "timing": "on_delivery",
+    "method": "cash",
+    "changeFor": 100,
+    "notes": "Cliente pediu troco"
+  },
+  "items": [
+    {
+      "externalItemId": "ITEM-001",
+      "name": "X-Burger",
+      "quantity": 2,
+      "unitPrice": 28,
+      "notes": "Sem cebola"
+    }
+  ],
+  "notes": "Pedido vindo do iFood"
+}
+
+==================================================
+PARTE 5 — REGRAS PARA PEDIDO EXTERNO
+==================================================
+
+Quando um pedido externo chegar:
+
+1. Criar pedido automaticamente no PDV.
+2. Salvar source:
+- ifood
+- whatsapp
+- site
+- totem
+- garcom
+- api_externa
+
+3. Salvar externalOrderId.
+4. Não criar duplicado se source + externalOrderId já existir.
+5. Salvar rawPayload para auditoria.
+6. Criar os itens do pedido mesmo que não existam no cardápio local.
+7. Salvar nome e preço do item exatamente como veio da API.
+8. Recalcular subtotal pelos itens.
+9. Se a API mandou delivery.fee:
+   - usar essa taxa original
+   - deliveryFeeSource = external_api
+   - não recalcular por km
+10. Se a API não mandou taxa:
+   - calcular com a regra interna, se deliveryFeeMode = per_km
+   - ou deixar manual/zero, conforme configuração
+
+==================================================
+PARTE 6 — STATUS INICIAL DO PEDIDO EXTERNO
+==================================================
+
+Pedido externo deve entrar como:
+
+- status = open
+- type = delivery, takeaway, counter ou table conforme payload
+- deliveryStatus = pending se for delivery
+- source = fonte externa
+- integrationStatus = received
+- paymentTiming conforme payload:
+  - now
+  - on_delivery
+
+Na tela Pedidos, mostrar badge:
+- iFood
+- WhatsApp
+- Site
+- API externa
+- Manual
+
+==================================================
+PARTE 7 — SEGURANÇA DO ENDPOINT EXTERNO
+==================================================
+
+Proteger o endpoint com header:
+
+x-integration-key
+
+Usar variável de ambiente:
+INTEGRATION_API_KEY
+
+Regra:
+- se INTEGRATION_API_KEY estiver definida, exigir header correto
+- se não estiver definida em desenvolvimento, permitir mas registrar aviso no log
+
+==================================================
+PARTE 8 — TELAS
+==================================================
+
+Na tela Pedidos:
+- mostrar origem do pedido
+- mostrar ID externo, se existir
+- mostrar taxa de entrega
+- mostrar se a taxa veio de:
+  - manual
+  - automática
+  - API externa
+
+No Detalhe do Pedido:
+- mostrar seção "Origem do Pedido"
+- source
+- externalOrderId
+- integrationStatus
+- deliveryFeeSource
+- rawPayload em área técnica recolhível, se for simples
+
+==================================================
+PARTE 9 — TESTES OBRIGATÓRIOS
+==================================================
+
+Teste cálculo manual:
+
+1. Ir em Configurações.
+2. Configurar deliveryFeeMode = per_km.
+3. Configurar deliveryPricePerKm = 2.50.
+4. Configurar minimumDeliveryFee = 8.00.
+5. Criar pedido delivery manual.
+6. Informar CEP do cliente.
+7. Confirmar que o sistema calcula distância estimada.
+8. Confirmar que calcula taxa.
+9. Confirmar que taxa entra no total.
+
+Teste pedido externo:
+
+10. Enviar POST para /integrations/orders/inbound com source = ifood.
+11. Confirmar que o pedido aparece automaticamente em Pedidos.
+12. Confirmar que itens foram criados.
+13. Confirmar que cliente/endereço/taxa foram salvos.
+14. Confirmar que taxa enviada pela API foi preservada.
+15. Confirmar que deliveryFeeSource = external_api.
+16. Reenviar o mesmo externalOrderId.
+17. Confirmar que não cria pedido duplicado.
+18. Confirmar que pedido externo pode ser enviado para cozinha, rota, pagamento e baixa normalmente.
+
+Rodar typecheck sem erros.
+
+==================================================
+PARTE 10 — RESPOSTA FINAL
+==================================================
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Tabelas/modelos criados ou modificados.
+3. Endpoints criados ou alterados.
+4. Como funciona o cálculo por km.
+5. Como funciona pedido externo/inbound.
+6. Como evitar duplicidade por source + externalOrderId.
+7. Como testar no Replit.
+8. Limitações atuais.
+9. Como futuramente trocar o cálculo aproximado por API real de mapas.

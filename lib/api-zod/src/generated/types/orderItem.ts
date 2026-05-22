@@ -9,8 +9,10 @@
 export interface OrderItem {
   id: number;
   orderId: number;
-  productId: number;
-  productName: string;
+  /** @nullable */
+  productId?: number | null;
+  /** @nullable */
+  productName: string | null;
   quantity: number;
   unitPrice: number;
   totalPrice: number;

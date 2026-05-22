@@ -33,6 +33,14 @@ export const ordersTable = pgTable("orders", {
   readyAt: timestamp("ready_at", { withTimezone: true }),
   paidAt: timestamp("paid_at", { withTimezone: true }),
   closedAt: timestamp("closed_at", { withTimezone: true }),
+  // External / integration fields
+  source: text("source"), // null=manual | ifood | whatsapp | site | totem | garcom | api_externa
+  externalOrderId: text("external_order_id"),
+  rawPayload: text("raw_payload"), // JSON string for audit
+  integrationStatus: text("integration_status"), // received | processing | completed | failed
+  estimatedDistanceKm: numeric("estimated_distance_km", { precision: 10, scale: 2 }),
+  deliveryFeeCalculated: text("delivery_fee_calculated"), // "true" | "false"
+  deliveryFeeSource: text("delivery_fee_source"), // manual | automatic | external_api
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -40,7 +48,8 @@ export const ordersTable = pgTable("orders", {
 export const orderItemsTable = pgTable("order_items", {
   id: serial("id").primaryKey(),
   orderId: integer("order_id").notNull().references(() => ordersTable.id),
-  productId: integer("product_id").notNull().references(() => productsTable.id),
+  productId: integer("product_id").references(() => productsTable.id),
+  externalProductName: text("external_product_name"), // used when productId is null (external orders)
   quantity: integer("quantity").notNull().default(1),
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
   totalPrice: numeric("total_price", { precision: 10, scale: 2 }).notNull(),
