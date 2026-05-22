@@ -1,0 +1,89 @@
+Corrija a integração com OpenRouteService.
+
+O sistema está mostrando "Chave não configurada — usando estimativa por CEP como fallback", mesmo eu já tendo uma API Key da OpenRouteService.
+
+Não refaça o projeto.
+Não mexa no visual fora do necessário.
+Não altere funcionalidades que já funcionam.
+
+Objetivo:
+Fazer o sistema usar corretamente a variável de ambiente:
+
+OPENROUTESERVICE_API_KEY
+
+Regras:
+
+1. O backend deve ler a chave por:
+process.env.OPENROUTESERVICE_API_KEY
+
+2. A chave não deve ficar salva diretamente no frontend.
+3. A chave não deve aparecer no navegador.
+4. A chamada para OpenRouteService deve acontecer pelo backend, não diretamente pelo frontend.
+5. Se OPENROUTESERVICE_API_KEY existir:
+- usar OpenRouteService para calcular distância real
+- exibir Fonte: OpenRouteService
+- calcular a taxa com base na distância real
+
+6. Se OPENROUTESERVICE_API_KEY não existir:
+- usar fallback por CEP
+- exibir Fonte: Estimativa por CEP
+
+7. Criar ou ajustar endpoint backend, se necessário:
+POST /delivery/calculate-distance
+ou
+POST /delivery/calculate-fee
+
+Esse endpoint deve receber:
+- CEP/endereço da loja
+- CEP/endereço do cliente
+
+E retornar:
+- distanceKm
+- provider
+- deliveryFee
+- deliveryFeeSource
+- routeDistanceSource
+
+8. No Novo Pedido > Delivery:
+Quando preencher o CEP do cliente:
+- consultar ViaCEP
+- montar endereço completo
+- chamar backend para calcular distância/taxa
+- se OpenRouteService estiver configurado, usar distância real
+- mostrar:
+  - Fonte: OpenRouteService
+  - Distância real
+  - Regra da taxa
+  - Taxa calculada
+
+9. Corrigir a tela de Configurações:
+Na seção Serviço de Distância:
+- se a chave estiver configurada no backend, mostrar:
+  "OpenRouteService configurado"
+- se não estiver, mostrar:
+  "Chave não configurada — usando estimativa por CEP"
+
+Não tentar validar a chave no frontend.
+
+10. Testes obrigatórios:
+
+- configurar OPENROUTESERVICE_API_KEY nos Secrets do Replit
+- reiniciar o servidor
+- abrir Configurações
+- confirmar que aparece OpenRouteService configurado
+- criar pedido delivery
+- digitar CEP do cliente
+- confirmar que a fonte mudou de Estimativa por CEP para OpenRouteService
+- confirmar que a distância fica realista
+- confirmar que a taxa segue a regra:
+  até 2 km = R$ 7
+  depois + R$ 2/km excedente
+- confirmar que não aparece taxa absurda
+- rodar typecheck sem erros
+
+Ao finalizar, responda em português brasileiro com:
+1. Onde a chave está sendo lida.
+2. Se o cálculo está sendo feito no backend.
+3. Como saber se OpenRouteService está ativo.
+4. Como testar no Novo Pedido.
+5. Limitações restantes.
