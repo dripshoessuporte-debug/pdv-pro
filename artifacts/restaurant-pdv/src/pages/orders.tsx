@@ -11,7 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, ChevronRight, SendHorizonal, X, CreditCard, CalendarDays, Truck, PackageCheck } from "lucide-react";
+import { Plus, ChevronRight, SendHorizonal, X, CreditCard, CalendarDays, Truck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -142,42 +142,9 @@ export default function Orders() {
   const [typeFilter, setTypeFilter] = useState<"all" | "local" | "delivery">("all");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [completingDelivery, setCompletingDelivery] = useState<number | null>(null);
-  const [finalizingOrder, setFinalizingOrder] = useState<number | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-
-  const markDelivered = async (orderId: number) => {
-    setCompletingDelivery(orderId);
-    try {
-      const res = await fetch(`/api/delivery/orders/${orderId}/delivered`, { method: "POST" });
-      if (!res.ok) throw new Error(await res.text());
-      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-      toast({ title: "Entrega confirmada! Pedido encerrado." });
-    } catch (e) {
-      toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
-    } finally {
-      setCompletingDelivery(null);
-    }
-  };
-
-  const finalizeOrder = async (orderId: number) => {
-    setFinalizingOrder(orderId);
-    try {
-      const res = await fetch(`/api/orders/${orderId}/finalize`, { method: "POST" });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? "Erro ao finalizar");
-      }
-      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-      toast({ title: "Pedido finalizado com sucesso." });
-    } catch (e) {
-      toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
-    } finally {
-      setFinalizingOrder(null);
-    }
-  };
 
   const { data: allOrders, isLoading } = useListOrders(undefined, {
     query: {
@@ -392,35 +359,6 @@ export default function Orders() {
                 </Button>
               )}
 
-              {isDelivery && order.deliveryStatus === "out_for_delivery" && (
-                <Button
-                  size="sm"
-                  className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-                  onClick={() => markDelivered(order.id)}
-                  disabled={completingDelivery === order.id}
-                  title="Confirmar entrega"
-                  data-testid={`button-dar-baixa-${order.id}`}
-                >
-                  <PackageCheck className="w-4 h-4" />
-                  {completingDelivery === order.id ? "..." : "Dar Baixa"}
-                </Button>
-              )}
-
-              {!isDelivery && order.status === "closed" && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5 border-emerald-400 text-emerald-700 hover:bg-emerald-50"
-                  onClick={() => finalizeOrder(order.id)}
-                  disabled={finalizingOrder === order.id}
-                  title="Dar baixa no pedido"
-                  data-testid={`button-finalize-${order.id}`}
-                >
-                  <PackageCheck className="w-4 h-4" />
-                  {finalizingOrder === order.id ? "..." : "Dar Baixa"}
-                </Button>
-              )}
-
               {!order.paidAt && PAYABLE.includes(order.status) && (
                 <Button
                   size="sm"
@@ -480,28 +418,72 @@ export default function Orders() {
           </Button>
         </div>
 
-        {/* ── Tipo de pedido ── */}
-        <div className="flex items-center gap-1 bg-muted/40 rounded-xl p-1 self-start">
-          {(["all", "local", "delivery"] as const).map((key) => {
-            const label = key === "all" ? "Todos" : key === "local" ? "Local" : "Delivery";
-            const count =
-              key === "all"
-                ? periodOrders.length
-                : key === "delivery"
-                ? periodOrders.filter((o) => o.type === "delivery").length
-                : periodOrders.filter((o) => o.type !== "delivery").length;
-            const active = typeFilter === key;
+        {/* ── Tipo + Período ── */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Tipo de pedido */}
+          <div className="flex items-center gap-0.5 bg-muted/40 rounded-xl p-1">
+            {(["all", "local", "delivery"] as const).map((key) => {
+              const label = key === "all" ? "Todos" : key === "local" ? "Local" : "Delivery";
+              const count =
+                key === "all"
+                  ? periodOrders.length
+                  : key === "delivery"
+                  ? periodOrders.filter((o) => o.type === "delivery").length
+                  : periodOrders.filter((o) => o.type !== "delivery").length;
+              const active = typeFilter === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => { setTypeFilter(key); setSelectedIds(new Set()); }}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${active ? "bg-white shadow-sm text-[#0F172A] dark:bg-background dark:text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  data-testid={`tab-type-${key}`}
+                >
+                  {key === "delivery" && <Truck className="w-3 h-3" />}
+                  {label}
+                  {count > 0 && (
+                    <span className={`text-xs font-semibold rounded-full px-1.5 leading-5 min-w-[1.2rem] text-center ${active ? "bg-[#0F172A] text-white dark:bg-foreground dark:text-background" : "bg-muted text-muted-foreground"}`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Separador */}
+          <div className="h-6 w-px bg-border hidden sm:block" />
+
+          {/* Período */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <CalendarDays className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            {(["today", "yesterday", "week", "month", "all"] as PeriodFilter[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`px-2.5 py-1 rounded-md text-sm font-medium transition-colors ${period === p ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+                data-testid={`period-${p}`}
+              >
+                {PERIOD_LABELS[p]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Filtros de status ── */}
+        <div className="flex gap-1.5 flex-wrap items-center">
+          {STATUS_FILTERS.map((f) => {
+            const count = f === "all" ? typeFilteredList.length : (statusCounts[f] ?? 0);
+            const active = statusFilter === f;
             return (
               <button
-                key={key}
-                onClick={() => { setTypeFilter(key); setSelectedIds(new Set()); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${active ? "bg-white shadow-sm text-[#0F172A]" : "text-muted-foreground hover:text-foreground"}`}
-                data-testid={`tab-type-${key}`}
+                key={f}
+                onClick={() => setStatusFilter(f)}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${active ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 bg-background"}`}
+                data-testid={`filter-${f}`}
               >
-                {key === "delivery" && <Truck className="w-3.5 h-3.5" />}
-                {label}
+                {f === "all" ? "Todos" : STATUS_LABELS[f]}
                 {count > 0 && (
-                  <span className={`text-xs font-semibold rounded-full px-1.5 leading-5 min-w-[1.2rem] text-center ${active ? "bg-[#0F172A] text-white" : "bg-muted text-muted-foreground"}`}>
+                  <span className={`text-xs rounded-full px-1.5 leading-5 min-w-[1.2rem] text-center font-semibold ${active ? "bg-white/20" : "bg-muted"}`}>
                     {count}
                   </span>
                 )}
@@ -512,7 +494,7 @@ export default function Orders() {
 
         {/* ── Seleção em massa ── */}
         {displayed.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap -mt-2">
             <button
               onClick={toggleSelectAll}
               className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -545,51 +527,6 @@ export default function Orders() {
             )}
           </div>
         )}
-
-        {/* ── Filtros de período ── */}
-        <div className="flex gap-2 flex-wrap items-center">
-          <CalendarDays className="w-4 h-4 text-muted-foreground" />
-          {(["today", "yesterday", "week", "month", "all"] as PeriodFilter[]).map((p) => (
-            <Button
-              key={p}
-              size="sm"
-              variant={period === p ? "default" : "outline"}
-              onClick={() => setPeriod(p)}
-              className="gap-1.5"
-              data-testid={`period-${p}`}
-            >
-              {PERIOD_LABELS[p]}
-            </Button>
-          ))}
-        </div>
-
-        {/* ── Filtros de status ── */}
-        <div className="flex gap-2 flex-wrap items-center">
-          {STATUS_FILTERS.map((f) => {
-            const count = f === "all" ? typeFilteredList.length : (statusCounts[f] ?? 0);
-            return (
-              <Button
-                key={f}
-                variant={statusFilter === f ? "default" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter(f)}
-                className="gap-1.5"
-                data-testid={`filter-${f}`}
-              >
-                {f === "all" ? "Todos" : STATUS_LABELS[f]}
-                {count > 0 && (
-                  <span
-                    className={`text-xs rounded-full px-1.5 py-0 min-w-[1.2rem] text-center ${
-                      statusFilter === f ? "bg-white/20" : "bg-muted"
-                    }`}
-                  >
-                    {count}
-                  </span>
-                )}
-              </Button>
-            );
-          })}
-        </div>
 
         {isLoading ? (
           <div className="space-y-3">

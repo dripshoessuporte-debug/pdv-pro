@@ -555,34 +555,10 @@ export default function NewOrder() {
                               <span className="text-green-600 dark:text-green-400">Distância</span>
                               <span className="font-semibold">{feeCalcInfo.distanceKm} km</span>
                             </div>
-                            <div className="flex justify-between">
-                              <span className="text-green-600 dark:text-green-400">Fonte</span>
-                              <span className="font-semibold">
-                                {feeCalcInfo.distanceSource === "openrouteservice"
-                                  ? "OpenRouteService"
-                                  : "Estimativa por CEP"}
-                              </span>
-                            </div>
-                            {feeCalcInfo.mode === "distance_tier" && (
-                              <div className="flex justify-between">
-                                <span className="text-green-600 dark:text-green-400">Regra</span>
-                                <span className="font-semibold text-right">
-                                  R$ {feeCalcInfo.baseFee?.toFixed(2)} até {feeCalcInfo.baseDistanceKm} km
-                                  {(feeCalcInfo.additionalPricePerKm ?? 0) > 0 && ` + R$ ${feeCalcInfo.additionalPricePerKm?.toFixed(2)}/km`}
-                                </span>
-                              </div>
-                            )}
-                            {feeCalcInfo.mode === "per_km" && feeCalcInfo.pricePerKm != null && (
-                              <div className="flex justify-between">
-                                <span className="text-green-600 dark:text-green-400">Regra</span>
-                                <span className="font-semibold">R$ {parseFloat(String(feeCalcInfo.pricePerKm)).toFixed(2)}/km</span>
-                              </div>
-                            )}
                             <div className="flex justify-between border-t border-green-200 dark:border-green-700 pt-1 mt-0.5">
                               <span className="font-semibold text-green-700 dark:text-green-200">Taxa calculada</span>
                               <span className="font-black text-green-700 dark:text-green-200">R$ {feeCalcInfo.fee.toFixed(2)}</span>
                             </div>
-                            <p className="text-green-600 dark:text-green-400 italic text-[10px]">Você pode editar manualmente o valor acima.</p>
                           </div>
                         )}
                       </>
