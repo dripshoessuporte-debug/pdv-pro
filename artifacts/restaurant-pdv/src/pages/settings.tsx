@@ -31,12 +31,17 @@ interface StoreSettings {
   id: number;
   storeName: string;
   storePhone: string | null;
+  storeEmail: string | null;
   storeCep: string | null;
   storeAddress: string | null;
+  storeNumber: string | null;
   storeNeighborhood: string | null;
   storeCity: string | null;
+  storeState: string | null;
+  storeCountry: string | null;
   deliveryDispatchTimeMinutes: number;
   maxOrdersPerRoute: number;
+  routeGroupingMode: "neighborhood" | "distance" | "hybrid";
   deliveryFeeMode: string;
   deliveryPricePerKm: number | null;
   baseDeliveryDistanceKm: number | null;
@@ -89,12 +94,17 @@ export default function Settings() {
 
   const [storeName, setStoreName] = useState("");
   const [storePhone, setStorePhone] = useState("");
+  const [storeEmail, setStoreEmail] = useState("");
   const [storeCep, setStoreCep] = useState("");
   const [storeAddress, setStoreAddress] = useState("");
+  const [storeNumber, setStoreNumber] = useState("");
   const [storeNeighborhood, setStoreNeighborhood] = useState("");
   const [storeCity, setStoreCity] = useState("");
+  const [storeState, setStoreState] = useState("");
+  const [storeCountry, setStoreCountry] = useState("Brasil");
   const [dispatchTime, setDispatchTime] = useState("20");
   const [maxOrders, setMaxOrders] = useState("4");
+  const [routeGroupingMode, setRouteGroupingMode] = useState<"neighborhood" | "distance" | "hybrid">("hybrid");
   const [deliveryFeeMode, setDeliveryFeeMode] = useState<"manual" | "per_km" | "distance_tier">("manual");
   const [deliveryPricePerKm, setDeliveryPricePerKm] = useState("");
   const [baseDeliveryDistanceKm, setBaseDeliveryDistanceKm] = useState("");
@@ -113,12 +123,17 @@ export default function Settings() {
       const s = await apiFetch<StoreSettings>("/settings");
       setStoreName(s.storeName ?? "");
       setStorePhone(s.storePhone ?? "");
+      setStoreEmail(s.storeEmail ?? "");
       setStoreCep(s.storeCep ?? "");
       setStoreAddress(s.storeAddress ?? "");
+      setStoreNumber(s.storeNumber ?? "");
       setStoreNeighborhood(s.storeNeighborhood ?? "");
       setStoreCity(s.storeCity ?? "");
+      setStoreState(s.storeState ?? "");
+      setStoreCountry(s.storeCountry ?? "Brasil");
       setDispatchTime(String(s.deliveryDispatchTimeMinutes));
       setMaxOrders(String(s.maxOrdersPerRoute));
+      setRouteGroupingMode((s.routeGroupingMode ?? "hybrid") as "neighborhood" | "distance" | "hybrid");
       // map legacy "per_km" to "distance_tier" — UI only has 2 visible modes
       const rawMode = s.deliveryFeeMode || "manual";
       setDeliveryFeeMode(rawMode === "per_km" ? "distance_tier" : rawMode as "manual" | "distance_tier");
@@ -165,14 +180,19 @@ export default function Settings() {
       await apiFetch("/settings", {
         method: "PUT",
         body: JSON.stringify({
-          storeName: storeName.trim() || "Meu Restaurante",
+          storeName: storeName.trim() || "Minha Loja",
           storePhone: storePhone.trim() || null,
+          storeEmail: storeEmail.trim() || null,
           storeCep: storeCep.trim() || null,
           storeAddress: storeAddress.trim() || null,
+          storeNumber: storeNumber.trim() || null,
           storeNeighborhood: storeNeighborhood.trim() || null,
-          storeCity: storeCity.trim() || null,
+          storeCity: storeCity.trim() || "",
+          storeState: storeState.trim() || "",
+          storeCountry: storeCountry.trim() || "Brasil",
           deliveryDispatchTimeMinutes: parseInt(dispatchTime, 10) || 20,
           maxOrdersPerRoute: parseInt(maxOrders, 10) || 4,
+          routeGroupingMode,
           deliveryFeeMode,
           deliveryPricePerKm: deliveryPricePerKm.trim() ? parseFloat(deliveryPricePerKm) : null,
           baseDeliveryDistanceKm: baseDeliveryDistanceKm.trim() ? parseFloat(baseDeliveryDistanceKm) : null,
@@ -229,7 +249,7 @@ export default function Settings() {
               <div className="col-span-2">
                 <Label>Nome da Loja</Label>
                 <Input
-                  placeholder="Meu Restaurante"
+                  placeholder="Minha Loja"
                   value={storeName}
                   onChange={(e) => setStoreName(e.target.value)}
                   data-testid="input-store-name"
@@ -242,6 +262,15 @@ export default function Settings() {
                   value={storePhone}
                   onChange={(e) => setStorePhone(e.target.value)}
                   data-testid="input-store-phone"
+                />
+              </div>
+
+              <div>
+                <Label>E-mail</Label>
+                <Input
+                  placeholder="contato@minhaloja.com"
+                  value={storeEmail}
+                  onChange={(e) => setStoreEmail(e.target.value)}
                 />
               </div>
               <div>
@@ -280,13 +309,21 @@ export default function Settings() {
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">Ao sair do campo, preenchemos o endereço automaticamente via ViaCEP.</p>
               </div>
-              <div className="col-span-2">
+              <div>
                 <Label>Endereço</Label>
                 <Input
                   placeholder="Rua XV de Novembro, 500"
                   value={storeAddress}
                   onChange={(e) => setStoreAddress(e.target.value)}
                   data-testid="input-store-address"
+                />
+              </div>
+              <div>
+                <Label>Número</Label>
+                <Input
+                  placeholder="123"
+                  value={storeNumber}
+                  onChange={(e) => setStoreNumber(e.target.value)}
                 />
               </div>
               <div>
@@ -301,10 +338,26 @@ export default function Settings() {
               <div>
                 <Label>Cidade</Label>
                 <Input
-                  placeholder="Curitiba, PR"
+                  placeholder="Cidade"
                   value={storeCity}
                   onChange={(e) => setStoreCity(e.target.value)}
                   data-testid="input-store-city"
+                />
+              </div>
+              <div>
+                <Label>Estado</Label>
+                <Input
+                  placeholder="UF"
+                  value={storeState}
+                  onChange={(e) => setStoreState(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>País</Label>
+                <Input
+                  placeholder="Brasil"
+                  value={storeCountry}
+                  onChange={(e) => setStoreCountry(e.target.value)}
                 />
               </div>
             </div>
@@ -357,12 +410,24 @@ export default function Settings() {
                   Máximo de pedidos agrupados por rota
                 </p>
               </div>
+              <div className="col-span-2">
+                <Label>Modo de agrupamento de rotas</Label>
+                <select
+                  className="w-full h-10 rounded-md border bg-background px-3 text-sm"
+                  value={routeGroupingMode}
+                  onChange={(e) => setRouteGroupingMode(e.target.value as "neighborhood" | "distance" | "hybrid")}
+                >
+                  <option value="hybrid">Híbrido (bairro + distância + CEP)</option>
+                  <option value="neighborhood">Priorizar mesmo bairro</option>
+                  <option value="distance">Priorizar distância/CEP</option>
+                </select>
+              </div>
             </div>
 
             <div className="rounded-lg bg-muted/40 p-4 text-sm text-muted-foreground space-y-1.5">
               <p className="font-medium text-foreground">Como o endereço da loja é usado:</p>
               <p>• Origem no Google Maps para todas as rotas geradas</p>
-              <p>• Curitiba, PR é usado como fallback se o endereço não estiver cadastrado</p>
+              <p>• Configure cidade e estado da loja para melhorar cálculo de entrega e rotas</p>
             </div>
           </CardContent>
         </Card>

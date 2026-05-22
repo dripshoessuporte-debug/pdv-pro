@@ -5,30 +5,6 @@ import { getOrCreateSettings } from "./settings";
 
 const router: IRouter = Router();
 
-// ─── Neighborhood proximity map ───────────────────────────────────────────────
-
-const NEIGHBORHOOD_PROXIMITY: Record<string, string[]> = {
-  "Boqueirão":      ["Hauer", "Xaxim", "Alto Boqueirão"],
-  "Xaxim":          ["Boqueirão", "Pinheirinho", "Sítio Cercado"],
-  "Pinheirinho":    ["Xaxim", "Capão Raso", "CIC"],
-  "Centro":         ["Batel", "Rebouças", "Alto da XV"],
-  "Batel":          ["Centro", "Rebouças", "Água Verde"],
-  "Hauer":          ["Boqueirão", "Alto Boqueirão", "Portão"],
-  "Água Verde":     ["Batel", "Portão", "Novo Mundo"],
-  "Portão":         ["Água Verde", "Hauer", "Novo Mundo"],
-  "Novo Mundo":     ["Portão", "Pinheirinho", "Capão Raso"],
-  "Capão Raso":     ["Novo Mundo", "Pinheirinho", "Xaxim"],
-  "CIC":            ["Pinheirinho", "Capão Raso"],
-  "Rebouças":       ["Centro", "Batel", "Alto da XV"],
-  "Alto da XV":     ["Centro", "Rebouças", "Bigorrilho"],
-  "Bigorrilho":     ["Alto da XV", "Batel", "Mercês"],
-  "Mercês":         ["Bigorrilho", "Batel", "São Francisco"],
-  "Alto Boqueirão": ["Boqueirão", "Hauer", "Sítio Cercado"],
-  "Sítio Cercado":  ["Xaxim", "Alto Boqueirão", "Tatuquara"],
-  "Tatuquara":      ["Sítio Cercado", "CIC"],
-  "São Francisco":  ["Mercês", "Centro"],
-};
-
 const ROUTE_COLORS = [
   "#ef4444", "#3b82f6", "#22c55e", "#f97316",
   "#a855f7", "#ec4899", "#14b8a6", "#eab308",
@@ -40,20 +16,16 @@ const ELIGIBLE_DELIVERY_STATUSES = ["preparing", "ready"];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getNeighbors(neighborhood: string): string[] {
-  return NEIGHBORHOOD_PROXIMITY[neighborhood] ?? [];
-}
-
 function buildMapsUrl(
   storeAddress: string,
   orders: Array<{ deliveryAddress: string | null; deliveryNeighborhood: string | null; deliveryCep: string | null; storeCity: string | null }>
 ): string {
   const origin = encodeURIComponent(storeAddress);
   const addresses = orders.map((o) => {
-    const parts = [o.deliveryAddress, o.deliveryNeighborhood, o.storeCity ?? "Curitiba, PR"]
-      .filter(Boolean)
+    const parts = [o.deliveryAddress, o.deliveryNeighborhood, o.storeCity].filter(Boolean)
+      
       .join(", ");
-    return parts;
+    return parts || (o.deliveryCep ?? "");
   });
 
   if (addresses.length === 0) {
@@ -219,12 +191,7 @@ function orderPairScore(a: EligibleOrder, b: EligibleOrder): number {
     if (na === nb) {
       neighborhoodScore = 20; // same neighborhood (case-insensitive)
     } else {
-      // Check adjacency from both sides (case-insensitive keys)
-      const aNeighbors = getNeighbors(a.deliveryNeighborhood ?? "").map((n) => n.toLowerCase());
-      const bNeighbors = getNeighbors(b.deliveryNeighborhood ?? "").map((n) => n.toLowerCase());
-      if (aNeighbors.includes(nb) || bNeighbors.includes(na)) {
-        neighborhoodScore = 8;
-      }
+      neighborhoodScore = 0;
     }
   }
 
@@ -237,7 +204,6 @@ function orderPairScore(a: EligibleOrder, b: EligibleOrder): number {
  * Scoring reference:
  *   - Each shared CEP prefix digit = 10 pts
  *   - Same neighborhood (case-insensitive) = +20 pts
- *   - Adjacent neighborhood = +8 pts
  *
  * Threshold = 18 means an order must share at least:
  *   - 2 CEP prefix digits (= 20 pts), OR
@@ -426,14 +392,11 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
   const maxPerRoute = settings.maxOrdersPerRoute;
 
   // Build store origin string from settings
-  const storeOriginParts = [
-    settings.storeAddress,
-    settings.storeNeighborhood,
-    settings.storeCity ?? "Curitiba, PR",
-  ].filter(Boolean);
-  const storeOrigin = storeOriginParts.length > 0
-    ? storeOriginParts.join(", ")
-    : "Curitiba, PR";
+  const storeOriginParts = [settings.storeAddress, settings.storeNumber, settings.storeNeighborhood, settings.storeCity, settings.storeState, settings.storeCountry].filter(Boolean);
+  const storeOrigin = storeOriginParts.join(", ");
+  if (!settings.storeCity || !settings.storeState) {
+    req.log.warn("Configure cidade e estado da loja para melhorar cálculo de entrega e rotas.");
+  }
 
   // Find orders already in active routes
   const activeRoutes = await db
@@ -653,8 +616,8 @@ router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
   if (!order) { res.status(404).json({ error: "Order not found" }); return; }
 
   const settings = await getOrCreateSettings();
-  const storeOriginParts = [settings.storeAddress, settings.storeNeighborhood, settings.storeCity ?? "Curitiba, PR"].filter(Boolean);
-  const storeOrigin = storeOriginParts.length > 0 ? storeOriginParts.join(", ") : "Curitiba, PR";
+  const storeOriginParts = [settings.storeAddress, settings.storeNumber, settings.storeNeighborhood, settings.storeCity, settings.storeState, settings.storeCountry].filter(Boolean);
+  const storeOrigin = storeOriginParts.join(", ");
 
   // Remove from any existing active route
   const existingAssignments = await db
@@ -871,8 +834,8 @@ router.post("/delivery/routes/:id/add-order", async (req, res): Promise<void> =>
   if (existingAssignment.length > 0) { res.status(400).json({ error: "Order is already in an active route" }); return; }
 
   const settings = await getOrCreateSettings();
-  const storeOriginParts = [settings.storeAddress, settings.storeNeighborhood, settings.storeCity ?? "Curitiba, PR"].filter(Boolean);
-  const storeOrigin = storeOriginParts.length > 0 ? storeOriginParts.join(", ") : "Curitiba, PR";
+  const storeOriginParts = [settings.storeAddress, settings.storeNumber, settings.storeNeighborhood, settings.storeCity, settings.storeState, settings.storeCountry].filter(Boolean);
+  const storeOrigin = storeOriginParts.join(", ");
 
   // Add to end of route
   const currentOrders = await db
@@ -920,8 +883,8 @@ router.post("/delivery/routes/:id/move-order", async (req, res): Promise<void> =
   if (!assignment) { res.status(404).json({ error: "Order not in this route" }); return; }
 
   const settings = await getOrCreateSettings();
-  const storeOriginParts = [settings.storeAddress, settings.storeNeighborhood, settings.storeCity ?? "Curitiba, PR"].filter(Boolean);
-  const storeOrigin = storeOriginParts.length > 0 ? storeOriginParts.join(", ") : "Curitiba, PR";
+  const storeOriginParts = [settings.storeAddress, settings.storeNumber, settings.storeNeighborhood, settings.storeCity, settings.storeState, settings.storeCountry].filter(Boolean);
+  const storeOrigin = storeOriginParts.join(", ");
 
   // Remove from source route
   await db.delete(deliveryRouteOrdersTable).where(eq(deliveryRouteOrdersTable.id, assignment.id));
