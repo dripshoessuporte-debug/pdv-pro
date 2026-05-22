@@ -543,31 +543,27 @@ export default function Settings() {
               </div>
             </div>
 
-            {distanceProvider === "openrouteservice" && (
-              <div className={`rounded-lg border px-4 py-3 text-sm space-y-2 ${
-                orsConfigured
-                  ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20"
-                  : "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20"
-              }`}>
-                {orsConfigured ? (
-                  <p className="font-medium text-green-700 dark:text-green-300">✅ Chave configurada — cálculo real ativo</p>
-                ) : (
-                  <p className="font-medium text-amber-700 dark:text-amber-300">⚠️ Chave não configurada — usando estimativa por CEP como fallback</p>
-                )}
+            {/* Always show ORS key status */}
+            <div className={`rounded-lg border px-4 py-3 text-sm space-y-1.5 ${
+              orsConfigured
+                ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20"
+                : "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20"
+            }`}>
+              {orsConfigured ? (
+                <p className="font-medium text-green-700 dark:text-green-300">✅ OpenRouteService configurado — cálculo de rota real disponível</p>
+              ) : (
+                <p className="font-medium text-amber-700 dark:text-amber-300">⚠️ Chave não configurada — selecionar OpenRouteService usará estimativa por CEP como fallback</p>
+              )}
+              {!orsConfigured && (
                 <p className="text-xs text-muted-foreground">
-                  Para ativar, defina a variável de ambiente <code className="font-mono bg-muted px-1 rounded">OPENROUTESERVICE_API_KEY</code> com sua chave gratuita do{" "}
-                  <a
-                    href="https://openrouteservice.org/dev/#/signup"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline text-primary"
-                  >
+                  Defina <code className="font-mono bg-muted px-1 rounded">OPENROUTESERVICE_API_KEY</code> nos Secrets do Replit com sua chave gratuita do{" "}
+                  <a href="https://openrouteservice.org/dev/#/signup" target="_blank" rel="noopener noreferrer" className="underline text-primary">
                     openrouteservice.org
                   </a>
-                  . Plano gratuito: 2 000 requisições/dia.
+                  {" "}e reinicie o servidor. Plano gratuito: 2 000 requisições/dia.
                 </p>
-              </div>
-            )}
+              )}
+            </div>
 
             <div className="flex items-center justify-between rounded-lg border px-4 py-3">
               <div>
