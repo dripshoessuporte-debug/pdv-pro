@@ -1,0 +1,264 @@
+Corrija o cálculo de distância da entrega usando uma API gratuita/baixo custo de rota real, com fallback seguro por CEP.
+
+Não refaça o projeto do zero.
+Não mexa no visual geral fora do necessário.
+Preserve:
+- pedidos
+- delivery
+- configurações
+- ViaCEP
+- taxa por faixa de km
+- pedidos externos
+- rotas
+- caixa
+- dashboard
+- alertas
+
+PROBLEMA:
+O cálculo atual de distância por CEP está impreciso.
+Preciso que a taxa de entrega seja calculada com base em distância real ou muito mais próxima da realidade.
+
+OBJETIVO:
+Usar o endereço/CEP da loja e o endereço/CEP do cliente para calcular distância de rota real em km, preferencialmente usando OpenRouteService ou outra solução baseada em OpenStreetMap.
+
+Fluxo desejado:
+1. CEP da loja vem das Configurações.
+2. CEP do cliente vem do pedido delivery.
+3. ViaCEP preenche endereço/bairro/cidade.
+4. Sistema monta endereço completo da loja e do cliente.
+5. Sistema consulta serviço de geocoding/rota.
+6. Retorna distância em km.
+7. Aplica regra configurada:
+   - taxa fixa até X km
+   - adicional por km excedente
+8. Se a API falhar, usar fallback aproximado por CEP, mas indicar que foi estimado.
+
+==================================================
+1. CONFIGURAÇÕES
+==================================================
+
+Na página Configurações, adicionar seção:
+
+"Serviço de distância"
+
+Campos:
+- distanceProvider:
+  - approximate_cep
+  - openrouteservice
+
+- openRouteServiceApiKey
+  opcional, salvo em configuração ou variável de ambiente
+
+- useDistanceCache:
+  true/false
+
+Manter campos de regra de taxa:
+- baseDeliveryFee
+- baseDeliveryDistanceKm
+- additionalPricePerKm
+- maximumDeliveryFee
+
+Exemplo:
+Taxa fixa: R$ 7,00
+Até: 2 km
+Depois: +R$ 2,00 por km excedente
+
+==================================================
+2. OPENROUTESERVICE
+==================================================
+
+Implementar suporte a OpenRouteService.
+
+Criar funções:
+
+geocodeAddress(address)
+calculateRouteDistance(originAddress, destinationAddress)
+
+Regras:
+- origem = endereço completo da loja
+- destino = endereço completo do cliente
+- retornar distância em km
+- tratar erro
+- não travar pedido se API falhar
+
+Usar variável de ambiente preferencialmente:
+OPENROUTESERVICE_API_KEY
+
+Se não houver chave:
+- usar fallback approximate_cep
+- mostrar aviso discreto:
+"Distância calculada por estimativa de CEP. Configure OpenRouteService para cálculo mais preciso."
+
+==================================================
+3. CACHE DE DISTÂNCIA
+==================================================
+
+Criar cache simples para evitar consultar a API toda hora.
+
+Pode ser tabela ou armazenamento simples, exemplo:
+
+delivery_distance_cache:
+- id
+- originCep
+- destinationCep
+- originAddress
+- destinationAddress
+- distanceKm
+- provider
+- createdAt
+- updatedAt
+
+Regra:
+- se já existir distância para originCep + destinationCep, reutilizar
+- evitar chamadas repetidas para a API
+- se endereço mudou muito, permitir recalcular futuramente
+
+Se criar tabela for muito trabalhoso, usar cache simples no banco existente ou implementar depois, mas documentar.
+
+==================================================
+4. FALLBACK POR CEP
+==================================================
+
+Manter fallback approximate_cep.
+
+Se OpenRouteService falhar:
+- usar estimateDistanceKmFromCep(storeCep, customerCep)
+- marcar deliveryDistanceSource = approximate_cep
+
+Se OpenRouteService funcionar:
+- marcar deliveryDistanceSource = openrouteservice
+
+Salvar no pedido:
+- estimatedDistanceKm
+- deliveryDistanceSource
+- deliveryFeeSource
+
+==================================================
+5. CÁLCULO DA TAXA
+==================================================
+
+A função calculateDeliveryFee deve usar distanceKm real quando disponível.
+
+Regra:
+
+Se distanceKm <= baseDeliveryDistanceKm:
+  taxa = baseDeliveryFee
+
+Se distanceKm > baseDeliveryDistanceKm:
+  excedente = distanceKm - baseDeliveryDistanceKm
+  taxa = baseDeliveryFee + (excedente * additionalPricePerKm)
+
+Aplicar:
+- maximumDeliveryFee
+- teto interno se necessário
+- arredondamento para 2 casas
+
+Exemplo:
+baseDeliveryFee = 7
+baseDeliveryDistanceKm = 2
+additionalPricePerKm = 2
+
+Distância real 1.8 km:
+taxa = R$ 7
+
+Distância real 3.0 km:
+taxa = R$ 9
+
+Distância real 5.5 km:
+taxa = R$ 14
+
+==================================================
+6. NOVO PEDIDO DELIVERY
+==================================================
+
+Na tela Novo Pedido > Delivery:
+
+Ao preencher CEP do cliente:
+1. ViaCEP preenche endereço.
+2. Sistema monta endereço completo.
+3. Se OpenRouteService estiver configurado:
+   - calcula distância real
+4. Se não estiver:
+   - usa aproximação por CEP
+5. Mostra resumo:
+
+"Distância: 3,2 km"
+"Fonte: OpenRouteService" ou "Estimativa por CEP"
+"Regra: R$ 7 até 2 km + R$ 2/km excedente"
+"Taxa calculada: R$ 9,40"
+
+Permitir editar a taxa manualmente.
+
+==================================================
+7. PEDIDOS EXTERNOS
+==================================================
+
+Para pedidos externos:
+
+Se o pedido já vier com delivery.fee:
+- preservar taxa externa
+- não recalcular
+
+Se vier com delivery.distanceKm:
+- usar essa distância para cor/rota e taxa, se a taxa não veio
+
+Se não vier com taxa nem distância:
+- calcular pelo mesmo fluxo:
+  loja → cliente → OpenRouteService/fallback
+
+==================================================
+8. ROTAS
+==================================================
+
+As cores das rotas devem usar a distância mais real disponível:
+
+Prioridade:
+1. distanceKm vindo de API externa
+2. distanceKm calculado por OpenRouteService
+3. fallback por CEP
+
+routeDistanceKm = maior distanceKm dos pedidos da rota
+
+Cores:
+- até 2 km: azul
+- 2 a 4 km: verde
+- 4 a 6 km: rosa
+- 6 a 8 km: roxo
+- acima de 8 km: amarelo
+
+==================================================
+9. TESTES
+==================================================
+
+Teste:
+
+1. Configurar CEP e endereço da loja.
+2. Configurar taxa:
+   - R$ 7 até 2 km
+   - +R$ 2/km excedente
+3. Criar pedido delivery com CEP próximo.
+4. Confirmar distância/taxa realista.
+5. Criar pedido delivery mais distante.
+6. Confirmar taxa maior, mas não absurda.
+7. Remover chave OpenRouteService.
+8. Confirmar fallback por CEP.
+9. Repetir mesmo CEP.
+10. Confirmar que cache evita nova consulta, se cache for implementado.
+11. Confirmar que pedido externo com taxa preserva taxa original.
+12. Rodar typecheck sem erros.
+
+==================================================
+10. RESPOSTA FINAL
+==================================================
+
+Ao finalizar, responda em português brasileiro com:
+
+1. Arquivos alterados.
+2. Qual provider foi implementado.
+3. Como configurar a chave da API.
+4. Como a distância real é calculada.
+5. Como funciona o fallback por CEP.
+6. Como funciona o cache.
+7. Como a taxa é calculada.
+8. Como testar passo a passo.
+9. Limitações atuais.

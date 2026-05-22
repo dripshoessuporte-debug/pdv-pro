@@ -8,3 +8,4 @@ export * from "./cash";
 export * from "./couriers";
 export * from "./delivery";
 export * from "./settings";
+export * from "./delivery-cache";

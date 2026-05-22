@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
-import { db, ordersTable, orderItemsTable, storeSettingsTable } from "@workspace/db";
-import { estimateDistanceKmFromCep, calculateDeliveryFee } from "../lib/delivery-fee";
+import { db, ordersTable, orderItemsTable, storeSettingsTable, deliveryDistanceCacheTable } from "@workspace/db";
+import { estimateDistanceKmFromCep, calculateDeliveryFee, normalizeCep } from "../lib/delivery-fee";
+import { calculateRouteDistanceKm, isOrsConfigured, getOrsApiKey } from "../lib/openrouteservice";
 import { getOrCreateSettings } from "./settings";
 
 const router: IRouter = Router();
@@ -97,20 +98,88 @@ router.post("/integrations/orders/inbound", async (req, res): Promise<void> => {
   let deliveryFeeSource = "manual";
   let estimatedDistanceKm: number | null = null;
   let deliveryFeeCalculated = false;
+  let deliveryDistanceSource: string | null = null;
 
   if (orderType === "delivery") {
     const providedFee = delivery?.fee;
 
     if (typeof providedFee === "number" && providedFee >= 0) {
-      // API sent the fee — use it as-is
+      // External API sent the fee — preserve it as-is
       resolvedDeliveryFee = providedFee;
       deliveryFeeSource = "external_api";
+      deliveryDistanceSource = "external_api";
       estimatedDistanceKm = typeof delivery?.distanceKm === "number" ? delivery.distanceKm : null;
     } else if (
       (settings.deliveryFeeMode === "per_km" || settings.deliveryFeeMode === "distance_tier") &&
       delivery?.cep && settings.storeCep
     ) {
-      const dist = estimateDistanceKmFromCep(settings.storeCep, delivery.cep);
+      // Calculate distance — try ORS first, fall back to CEP estimation
+      const normStore = normalizeCep(settings.storeCep);
+      const normCustomer = normalizeCep(String(delivery.cep));
+      const providerPref = settings.distanceProvider ?? "approximate_cep";
+      const useCache = settings.useDistanceCache !== "false";
+      const orsReady = providerPref === "openrouteservice" && isOrsConfigured();
+      const activeProvider = orsReady ? "openrouteservice" : "approximate_cep";
+
+      let dist: number | null = null;
+
+      // Check cache first
+      if (useCache && normStore && normCustomer) {
+        const [cached] = await db
+          .select()
+          .from(deliveryDistanceCacheTable)
+          .where(
+            and(
+              eq(deliveryDistanceCacheTable.originCep, normStore),
+              eq(deliveryDistanceCacheTable.destinationCep, normCustomer),
+              eq(deliveryDistanceCacheTable.provider, activeProvider)
+            )
+          )
+          .limit(1);
+        if (cached) {
+          dist = parseFloat(String(cached.distanceKm));
+          deliveryDistanceSource = activeProvider;
+        }
+      }
+
+      // ORS calculation
+      if (dist === null && orsReady) {
+        const apiKey = getOrsApiKey()!;
+        const storeCity = settings.storeCity ?? settings.storeNeighborhood ?? "Brasil";
+        const storeAddr = [delivery.storeAddress ?? settings.storeAddress, storeCity].filter(Boolean).join(", ");
+        const custAddr = [delivery.address, delivery.city ?? ""].filter(Boolean).join(", ");
+        if (storeAddr && custAddr) {
+          dist = await calculateRouteDistanceKm(storeAddr, custAddr, apiKey);
+          if (dist !== null) {
+            deliveryDistanceSource = "openrouteservice";
+            if (useCache && normStore && normCustomer) {
+              await db.insert(deliveryDistanceCacheTable).values({
+                originCep: normStore,
+                destinationCep: normCustomer,
+                distanceKm: String(dist),
+                provider: "openrouteservice",
+              }).onConflictDoNothing();
+            }
+          }
+        }
+      }
+
+      // CEP fallback
+      if (dist === null && normStore && normCustomer) {
+        dist = estimateDistanceKmFromCep(normStore, normCustomer);
+        if (dist !== null) {
+          deliveryDistanceSource = "approximate_cep";
+          if (useCache) {
+            await db.insert(deliveryDistanceCacheTable).values({
+              originCep: normStore!,
+              destinationCep: normCustomer!,
+              distanceKm: String(dist),
+              provider: "approximate_cep",
+            }).onConflictDoNothing();
+          }
+        }
+      }
+
       if (dist !== null) {
         estimatedDistanceKm = dist;
         resolvedDeliveryFee = calculateDeliveryFee(dist, {
@@ -175,6 +244,7 @@ router.post("/integrations/orders/inbound", async (req, res): Promise<void> => {
       estimatedDistanceKm: estimatedDistanceKm !== null ? String(estimatedDistanceKm) : null,
       deliveryFeeCalculated: String(deliveryFeeCalculated),
       deliveryFeeSource,
+      deliveryDistanceSource,
     })
     .returning();
 

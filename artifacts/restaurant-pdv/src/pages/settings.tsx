@@ -44,6 +44,9 @@ interface StoreSettings {
   additionalPricePerKm: number | null;
   minimumDeliveryFee: number | null;
   maximumDeliveryFee: number | null;
+  distanceProvider: string;
+  useDistanceCache: string;
+  orsConfigured: boolean;
 }
 
 async function lookupCep(cep: string): Promise<{ logradouro: string; bairro: string; localidade: string; uf: string } | null> {
@@ -99,6 +102,9 @@ export default function Settings() {
   const [additionalPricePerKm, setAdditionalPricePerKm] = useState("");
   const [minimumDeliveryFee, setMinimumDeliveryFee] = useState("");
   const [maximumDeliveryFee, setMaximumDeliveryFee] = useState("");
+  const [distanceProvider, setDistanceProvider] = useState<"approximate_cep" | "openrouteservice">("approximate_cep");
+  const [useDistanceCache, setUseDistanceCache] = useState(true);
+  const [orsConfigured, setOrsConfigured] = useState(false);
   const [cepLookupStatus, setCepLookupStatus] = useState<"idle" | "loading" | "found" | "not_found">("idle");
 
   const loadSettings = useCallback(async () => {
@@ -120,6 +126,9 @@ export default function Settings() {
       setAdditionalPricePerKm(s.additionalPricePerKm != null ? String(s.additionalPricePerKm) : "");
       setMinimumDeliveryFee(s.minimumDeliveryFee != null ? String(s.minimumDeliveryFee) : "");
       setMaximumDeliveryFee(s.maximumDeliveryFee != null ? String(s.maximumDeliveryFee) : "");
+      setDistanceProvider((s.distanceProvider === "openrouteservice" ? "openrouteservice" : "approximate_cep") as "approximate_cep" | "openrouteservice");
+      setUseDistanceCache(s.useDistanceCache !== "false");
+      setOrsConfigured(Boolean(s.orsConfigured));
     } catch {
       toast({ title: "Erro ao carregar configurações", variant: "destructive" });
     } finally {
@@ -169,6 +178,8 @@ export default function Settings() {
           additionalPricePerKm: additionalPricePerKm.trim() ? parseFloat(additionalPricePerKm) : null,
           minimumDeliveryFee: minimumDeliveryFee.trim() ? parseFloat(minimumDeliveryFee) : null,
           maximumDeliveryFee: maximumDeliveryFee.trim() ? parseFloat(maximumDeliveryFee) : null,
+          distanceProvider,
+          useDistanceCache,
         }),
       });
       toast({ title: "Configurações salvas com sucesso!" });
@@ -491,6 +502,94 @@ export default function Settings() {
                 </div>
               </>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Distance provider */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Truck className="w-4 h-4 text-primary" />
+              Serviço de Distância
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label className="block mb-2">Método de cálculo de distância</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { value: "approximate_cep" as const,  label: "📍 Estimativa por CEP",    desc: "Rápida, sem chave de API. Precisão ≈ 1–3 km." },
+                  { value: "openrouteservice" as const,  label: "🗺️ OpenRouteService",      desc: "Distância de rota real via OpenStreetMap." },
+                ] as const).map((opt) => {
+                  const isActive = distanceProvider === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setDistanceProvider(opt.value)}
+                      className={`text-left p-3 rounded-lg border text-sm transition-colors ${
+                        isActive
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background border-border hover:border-primary/50"
+                      }`}
+                      data-testid={`button-dist-provider-${opt.value}`}
+                    >
+                      <p className="font-medium">{opt.label}</p>
+                      <p className={`text-xs mt-0.5 ${isActive ? "text-primary-foreground/80" : "text-muted-foreground"}`}>{opt.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {distanceProvider === "openrouteservice" && (
+              <div className={`rounded-lg border px-4 py-3 text-sm space-y-2 ${
+                orsConfigured
+                  ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20"
+                  : "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20"
+              }`}>
+                {orsConfigured ? (
+                  <p className="font-medium text-green-700 dark:text-green-300">✅ Chave configurada — cálculo real ativo</p>
+                ) : (
+                  <p className="font-medium text-amber-700 dark:text-amber-300">⚠️ Chave não configurada — usando estimativa por CEP como fallback</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Para ativar, defina a variável de ambiente <code className="font-mono bg-muted px-1 rounded">OPENROUTESERVICE_API_KEY</code> com sua chave gratuita do{" "}
+                  <a
+                    href="https://openrouteservice.org/dev/#/signup"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline text-primary"
+                  >
+                    openrouteservice.org
+                  </a>
+                  . Plano gratuito: 2 000 requisições/dia.
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+              <div>
+                <p className="text-sm font-medium">Cache de distâncias</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Evita consultas repetidas à API para o mesmo par de CEPs</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={useDistanceCache}
+                onClick={() => setUseDistanceCache((v) => !v)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  useDistanceCache ? "bg-primary" : "bg-input"
+                }`}
+                data-testid="toggle-use-distance-cache"
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-background shadow-lg transform transition-transform ${
+                    useDistanceCache ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
           </CardContent>
         </Card>
 

@@ -41,6 +41,7 @@ export const ordersTable = pgTable("orders", {
   estimatedDistanceKm: numeric("estimated_distance_km", { precision: 10, scale: 2 }),
   deliveryFeeCalculated: text("delivery_fee_calculated"), // "true" | "false"
   deliveryFeeSource: text("delivery_fee_source"), // manual | automatic | external_api
+  deliveryDistanceSource: text("delivery_distance_source"), // approximate_cep | openrouteservice | external_api
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

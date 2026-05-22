@@ -20,6 +20,9 @@ export const storeSettingsTable = pgTable("store_settings", {
   // shared
   minimumDeliveryFee: numeric("minimum_delivery_fee", { precision: 10, scale: 2 }),
   maximumDeliveryFee: numeric("maximum_delivery_fee", { precision: 10, scale: 2 }),
+  // distance calculation provider
+  distanceProvider: text("distance_provider").notNull().default("approximate_cep"),
+  useDistanceCache: text("use_distance_cache").notNull().default("true"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

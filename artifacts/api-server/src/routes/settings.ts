@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, storeSettingsTable } from "@workspace/db";
+import { isOrsConfigured } from "../lib/openrouteservice";
 
 const router: IRouter = Router();
 
@@ -13,7 +14,7 @@ async function getOrCreateSettings() {
 
 router.get("/settings", async (_req, res): Promise<void> => {
   const settings = await getOrCreateSettings();
-  res.json(settings);
+  res.json({ ...settings, orsConfigured: isOrsConfigured() });
 });
 
 router.put("/settings", async (req, res): Promise<void> => {
@@ -33,6 +34,8 @@ router.put("/settings", async (req, res): Promise<void> => {
     additionalPricePerKm,
     minimumDeliveryFee,
     maximumDeliveryFee,
+    distanceProvider,
+    useDistanceCache,
   } = req.body ?? {};
 
   const settings = await getOrCreateSettings();
@@ -78,6 +81,13 @@ router.put("/settings", async (req, res): Promise<void> => {
   if (maximumDeliveryFee !== undefined) {
     const v = parseFloat(String(maximumDeliveryFee));
     updates.maximumDeliveryFee = !isNaN(v) && v >= 0 ? String(v) : null;
+  }
+  if (distanceProvider !== undefined) {
+    const valid = ["approximate_cep", "openrouteservice"];
+    if (valid.includes(String(distanceProvider))) updates.distanceProvider = String(distanceProvider);
+  }
+  if (useDistanceCache !== undefined) {
+    updates.useDistanceCache = String(useDistanceCache) === "false" ? "false" : "true";
   }
 
   if (Object.keys(updates).length === 0) {
