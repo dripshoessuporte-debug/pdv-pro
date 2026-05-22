@@ -167,7 +167,7 @@ export default function NewOrder() {
     setFeeCalcInfo({
       storeCep: storeSettings.storeCep,
       distanceKm: distKm,
-      pricePerKm: storeSettings.deliveryPricePerKm,
+      pricePerKm: parseFloat(String(storeSettings.deliveryPricePerKm)),
       fee,
     });
   }, [deliveryCep, orderType, storeSettings]); // eslint-disable-line react-hooks/exhaustive-deps
