@@ -1,13 +1,16 @@
 import { Router, type IRouter } from "express";
 import { db, cashMovementsTable, deliveryRouteOrdersTable, deliveryRoutesTable, kitchenTicketsTable, paymentsTable, orderItemsTable, ordersTable } from "@workspace/db";
+import { requireAdminKey, requireDevRoutesEnabled } from "../middleware/security";
 
 const router: IRouter = Router();
+
+router.use(requireDevRoutesEnabled);
 
 // ─── POST /dev/reset ──────────────────────────────────────────────────────────
 // Apaga todos os pedidos, rotas e dados transacionais.
 // Mantém: clientes, cardápio, mesas, configurações, caixa.
 
-router.post("/dev/reset", async (req, res): Promise<void> => {
+router.post("/dev/reset", requireAdminKey, async (req, res): Promise<void> => {
   const confirm = req.body?.confirm;
   if (confirm !== "ZERAR") {
     res.status(400).json({ error: "Envie { confirm: 'ZERAR' } para confirmar." });
@@ -41,7 +44,7 @@ interface TestOrderSpec {
   total?: number;
 }
 
-router.post("/dev/create-test-orders", async (req, res): Promise<void> => {
+router.post("/dev/create-test-orders", requireAdminKey, async (req, res): Promise<void> => {
   const specs: TestOrderSpec[] = req.body?.orders;
   if (!Array.isArray(specs) || specs.length === 0) {
     res.status(400).json({ error: "Envie { orders: [...] } com ao menos 1 pedido." });
