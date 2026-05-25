@@ -1,31 +1,20 @@
 import { Router, type IRouter } from "express";
-import { eq, and, inArray, notInArray, isNull, lt, gte } from "drizzle-orm";
+import { eq, and, inArray, notInArray, lt, gte, sql, isNull } from "drizzle-orm";
 import {
   db,
   ordersTable,
   deliveryRoutesTable,
   deliveryRouteOrdersTable,
-  cashRegistersTable,
 } from "@workspace/db";
+import { getOperationalSessionStart, getOpenRegisterOpenedAt } from "../lib/operational-session";
 
 const router: IRouter = Router();
 
 router.get("/alerts", async (req, res) => {
   try {
     const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-
-    const [openRegister] = await db
-      .select({ openedAt: cashRegistersTable.openedAt })
-      .from(cashRegistersTable)
-      .where(isNull(cashRegistersTable.closedAt))
-      .orderBy(cashRegistersTable.openedAt)
-      .limit(1);
-
-    const operationalStart = openRegister?.openedAt
-      ? new Date(openRegister.openedAt)
-      : todayStart;
+    const operationalStart = await getOperationalSessionStart();
+    const openRegisterOpenedAt = await getOpenRegisterOpenedAt();
 
     const [
       awaitingSettlementRows,
@@ -75,8 +64,8 @@ router.get("/alerts", async (req, res) => {
         .where(
           and(
             eq(ordersTable.status, "ready"),
-            gte(ordersTable.updatedAt, operationalStart),
-            lt(ordersTable.updatedAt, twentyMinsAgo)
+            gte(ordersTable.createdAt, operationalStart),
+            lt(sql`coalesce(${ordersTable.readyAt}, ${ordersTable.updatedAt})`, twentyMinsAgo)
           )
         ),
 
@@ -107,7 +96,7 @@ router.get("/alerts", async (req, res) => {
           and(
             eq(ordersTable.type, "delivery"),
             inArray(ordersTable.deliveryStatus, ["preparing", "ready"]),
-            gte(ordersTable.updatedAt, operationalStart),
+            gte(ordersTable.createdAt, operationalStart),
             notInArray(ordersTable.id, activeIds)
           )
         );
@@ -120,7 +109,7 @@ router.get("/alerts", async (req, res) => {
           and(
             eq(ordersTable.type, "delivery"),
             inArray(ordersTable.deliveryStatus, ["preparing", "ready"]),
-            gte(ordersTable.updatedAt, operationalStart)
+            gte(ordersTable.createdAt, operationalStart)
           )
         );
       deliveryWithoutRoute = rows.length;
@@ -128,8 +117,8 @@ router.get("/alerts", async (req, res) => {
 
     // 6. cashRegisterOpenHours
     let cashRegisterOpenHours = 0;
-    if (openRegister?.openedAt) {
-      const openedAt = new Date(openRegister.openedAt);
+    if (openRegisterOpenedAt) {
+      const openedAt = new Date(openRegisterOpenedAt);
       cashRegisterOpenHours =
         (Date.now() - openedAt.getTime()) / (1000 * 60 * 60);
     }
