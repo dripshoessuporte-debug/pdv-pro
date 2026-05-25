@@ -398,20 +398,12 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     req.log.warn("Configure cidade e estado da loja para melhorar cálculo de entrega e rotas.");
   }
 
-  // Find orders already in active routes
-  const activeRoutes = await db
-    .select({ id: deliveryRoutesTable.id })
-    .from(deliveryRoutesTable)
-    .where(notInArray(deliveryRoutesTable.status, ["completed"]));
-
-  let alreadyInRouteOrderIds: number[] = [];
-  if (activeRoutes.length > 0) {
-    const existing = await db
-      .select({ orderId: deliveryRouteOrdersTable.orderId })
-      .from(deliveryRouteOrdersTable)
-      .where(inArray(deliveryRouteOrdersTable.routeId, activeRoutes.map((r) => r.id)));
-    alreadyInRouteOrderIds = existing.map((ro) => ro.orderId);
-  }
+  // Find orders already linked to any route (available/in_progress/completed).
+  // This avoids re-routing orders that already went through routing flow.
+  const existingRouteLinks = await db
+    .select({ orderId: deliveryRouteOrdersTable.orderId })
+    .from(deliveryRouteOrdersTable);
+  const alreadyInRouteOrderIds = existingRouteLinks.map((ro) => ro.orderId);
 
   // Eligible orders: delivery, (preparing/ready deliveryStatus) OR (in-kitchen with pending/null deliveryStatus),
   // not cancelled, not already in route.
@@ -519,19 +511,11 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
 router.get("/delivery/orders/pending", async (_req, res): Promise<void> => {
   const settings = await getOrCreateSettings();
 
-  const activeRoutes = await db
-    .select({ id: deliveryRoutesTable.id })
-    .from(deliveryRoutesTable)
-    .where(notInArray(deliveryRoutesTable.status, ["completed"]));
-
-  let inRouteOrderIds: number[] = [];
-  if (activeRoutes.length > 0) {
-    const existing = await db
-      .select({ orderId: deliveryRouteOrdersTable.orderId })
-      .from(deliveryRouteOrdersTable)
-      .where(inArray(deliveryRouteOrdersTable.routeId, activeRoutes.map((r) => r.id)));
-    inRouteOrderIds = existing.map((ro) => ro.orderId);
-  }
+  // Exclude orders already linked to any route (available/in_progress/completed).
+  const existingRouteLinks = await db
+    .select({ orderId: deliveryRouteOrdersTable.orderId })
+    .from(deliveryRouteOrdersTable);
+  const inRouteOrderIds = existingRouteLinks.map((ro) => ro.orderId);
 
   let orders = await db
     .select({

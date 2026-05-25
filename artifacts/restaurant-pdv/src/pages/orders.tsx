@@ -4,6 +4,7 @@ import { Layout } from "@/components/layout";
 import {
   useListOrders,
   getListOrdersQueryKey,
+  getGetAlertsQueryKey,
   useCancelOrder,
   useSendOrderToKitchen,
 } from "@workspace/api-client-react";
@@ -192,6 +193,7 @@ export default function Orders() {
 
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() });
   };
 
   const toggleSelect = (id: number) => {
