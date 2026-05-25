@@ -1,17 +1,21 @@
 # Segurança operacional mínima (P0-Infra)
 
 ## Rotas de desenvolvimento
-- Rotas `/dev/*` ficam **desativadas por padrão**.
-- Para ativar localmente: `ENABLE_DEV_ROUTES=true`.
-- Rotas destrutivas exigem header `x-admin-key`.
-- `x-admin-key` deve corresponder a `ADMIN_RESET_KEY` ou `ADMIN_API_KEY`.
+- Rotas `/dev/*` são protegidas por `ENABLE_DEV_ROUTES=true`.
+- Valor padrão é `false`; em produção devem ficar desativadas.
+- Ações sensíveis exigem `x-admin-key` com `ADMIN_API_KEY` ou `ADMIN_RESET_KEY`.
 
-## Inbound de integrações
-- `POST /integrations/orders/inbound` exige `INTEGRATION_API_KEY` configurada no backend.
-- Header obrigatório: `x-integration-key` com valor idêntico ao secret.
-- Nunca deixar `INTEGRATION_API_KEY` vazia em produção.
+## Inbound obrigatório por chave
+- `POST /integrations/orders/inbound` exige `INTEGRATION_API_KEY` configurada.
+- Header obrigatório: `x-integration-key` igual ao secret.
+- Se `INTEGRATION_API_KEY` ausente/vazia, endpoint responde erro e não processa pedidos.
 
-## Secrets e versionamento
+## Endpoints administrativos
+- `/admin/seed-demo` e `/admin/clear-demo`: apenas ambiente com dev routes habilitadas e admin key.
+- `/admin/reset-production`: destrutivo, requer admin key.
+- `/admin/seed-production`: bloqueado por padrão para evitar carga indevida.
+
+## Segredos e exposição
 - Nunca versionar `.env` com valores reais.
-- Use `.env.example` somente com placeholders.
-- Nunca expor `OPENROUTESERVICE_API_KEY` no frontend.
+- Use apenas placeholders em `.env.example`.
+- Não expor `OPENROUTESERVICE_API_KEY`, `INTEGRATION_API_KEY` ou chaves admin no frontend (Vercel).
