@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, inArray, notInArray, isNull, lt } from "drizzle-orm";
+import { eq, and, inArray, notInArray, isNull, lt, gte } from "drizzle-orm";
 import {
   db,
   ordersTable,
@@ -13,6 +13,19 @@ const router: IRouter = Router();
 router.get("/alerts", async (req, res) => {
   try {
     const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [openRegister] = await db
+      .select({ openedAt: cashRegistersTable.openedAt })
+      .from(cashRegistersTable)
+      .where(isNull(cashRegistersTable.closedAt))
+      .orderBy(cashRegistersTable.openedAt)
+      .limit(1);
+
+    const operationalStart = openRegister?.openedAt
+      ? new Date(openRegister.openedAt)
+      : todayStart;
 
     const [
       awaitingSettlementRows,
@@ -20,7 +33,6 @@ router.get("/alerts", async (req, res) => {
       routesAvailableRows,
       readyNotActionedRows,
       activeRouteOrderRows,
-      openRegisterRows,
     ] = await Promise.all([
       // 1. awaitingSettlement: deliveryStatus=awaiting_settlement AND paymentTiming=on_delivery AND not yet paid
       db
@@ -38,13 +50,23 @@ router.get("/alerts", async (req, res) => {
       db
         .select({ id: deliveryRoutesTable.id })
         .from(deliveryRoutesTable)
-        .where(eq(deliveryRoutesTable.status, "in_progress")),
+        .where(
+          and(
+            eq(deliveryRoutesTable.status, "in_progress"),
+            gte(deliveryRoutesTable.createdAt, operationalStart)
+          )
+        ),
 
       // 3. routesAvailable
       db
         .select({ id: deliveryRoutesTable.id })
         .from(deliveryRoutesTable)
-        .where(eq(deliveryRoutesTable.status, "available")),
+        .where(
+          and(
+            eq(deliveryRoutesTable.status, "available"),
+            gte(deliveryRoutesTable.createdAt, operationalStart)
+          )
+        ),
 
       // 4. readyNotActioned: orders still in "ready" status, last updated > 20 min ago
       db
@@ -53,6 +75,7 @@ router.get("/alerts", async (req, res) => {
         .where(
           and(
             eq(ordersTable.status, "ready"),
+            gte(ordersTable.updatedAt, operationalStart),
             lt(ordersTable.updatedAt, twentyMinsAgo)
           )
         ),
@@ -65,14 +88,12 @@ router.get("/alerts", async (req, res) => {
           deliveryRoutesTable,
           eq(deliveryRouteOrdersTable.routeId, deliveryRoutesTable.id)
         )
-        .where(inArray(deliveryRoutesTable.status, ["available", "in_progress"])),
-
-      // 6. open cash register
-      db
-        .select({ openedAt: cashRegistersTable.openedAt })
-        .from(cashRegistersTable)
-        .where(isNull(cashRegistersTable.closedAt))
-        .limit(1),
+        .where(
+          and(
+            inArray(deliveryRoutesTable.status, ["available", "in_progress"]),
+            gte(deliveryRoutesTable.createdAt, operationalStart)
+          )
+        ),
     ]);
 
     // 5. deliveryWithoutRoute: delivery orders preparing/ready but not in any active route
@@ -86,6 +107,7 @@ router.get("/alerts", async (req, res) => {
           and(
             eq(ordersTable.type, "delivery"),
             inArray(ordersTable.deliveryStatus, ["preparing", "ready"]),
+            gte(ordersTable.updatedAt, operationalStart),
             notInArray(ordersTable.id, activeIds)
           )
         );
@@ -97,7 +119,8 @@ router.get("/alerts", async (req, res) => {
         .where(
           and(
             eq(ordersTable.type, "delivery"),
-            inArray(ordersTable.deliveryStatus, ["preparing", "ready"])
+            inArray(ordersTable.deliveryStatus, ["preparing", "ready"]),
+            gte(ordersTable.updatedAt, operationalStart)
           )
         );
       deliveryWithoutRoute = rows.length;
@@ -105,8 +128,8 @@ router.get("/alerts", async (req, res) => {
 
     // 6. cashRegisterOpenHours
     let cashRegisterOpenHours = 0;
-    if (openRegisterRows.length > 0) {
-      const openedAt = new Date(openRegisterRows[0].openedAt);
+    if (openRegister?.openedAt) {
+      const openedAt = new Date(openRegister.openedAt);
       cashRegisterOpenHours =
         (Date.now() - openedAt.getTime()) / (1000 * 60 * 60);
     }
