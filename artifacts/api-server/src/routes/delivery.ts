@@ -559,7 +559,7 @@ router.get("/delivery/orders/pending", async (_req, res): Promise<void> => {
         notInArray(ordersTable.status, ["cancelled", "closed"]),
         or(
           isNull(ordersTable.deliveryStatus),
-          notInArray(ordersTable.deliveryStatus, ["out_for_delivery", "delivered"])
+          notInArray(ordersTable.deliveryStatus, ["out_for_delivery", "delivered", "awaiting_settlement"])
         )
       )
     )
@@ -737,8 +737,10 @@ router.post("/delivery/routes/:id/complete", async (req, res): Promise<void> => 
     res.status(400).json({ error: `Cannot complete route in status '${route.status}'` }); return;
   }
 
+  const now = new Date();
+
   await db.update(deliveryRoutesTable)
-    .set({ status: "completed", completedAt: new Date() })
+    .set({ status: "completed", completedAt: now })
     .where(eq(deliveryRoutesTable.id, routeId));
 
   const routeOrders = await db
@@ -749,8 +751,6 @@ router.post("/delivery/routes/:id/complete", async (req, res): Promise<void> => 
     .from(deliveryRouteOrdersTable)
     .leftJoin(ordersTable, eq(deliveryRouteOrdersTable.orderId, ordersTable.id))
     .where(eq(deliveryRouteOrdersTable.routeId, routeId));
-
-  const now = new Date();
 
   // Orders already paid (paymentTiming=now): close them out immediately
   const nowOrderIds = routeOrders
