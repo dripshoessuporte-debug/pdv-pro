@@ -743,7 +743,7 @@ router.post("/delivery/routes/:id/complete", async (req, res): Promise<void> => 
 
   if (onDeliveryOrderIds.length > 0) {
     await db.update(ordersTable)
-      .set({ deliveryStatus: "awaiting_settlement" })
+      .set({ deliveryStatus: "awaiting_settlement", paidAt: null })
       .where(inArray(ordersTable.id, onDeliveryOrderIds));
   }
 
@@ -921,7 +921,8 @@ router.get("/delivery/orders/awaiting-settlement", async (_req, res): Promise<vo
       and(
         eq(ordersTable.type, "delivery"),
         eq(ordersTable.deliveryStatus, "awaiting_settlement"),
-        eq(ordersTable.paymentTiming, "on_delivery")
+        eq(ordersTable.paymentTiming, "on_delivery"),
+        isNull(ordersTable.paidAt)
       )
     )
     .orderBy(sql`${ordersTable.createdAt} ASC`);
