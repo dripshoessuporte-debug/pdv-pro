@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, inArray, notInArray, sql, or, isNull } from "drizzle-orm";
+import { eq, and, inArray, notInArray, sql, or, isNull, notExists } from "drizzle-orm";
 import { db, deliveryRoutesTable, deliveryRouteOrdersTable, ordersTable, customersTable, couriersTable, orderItemsTable, productsTable, paymentsTable, cashRegistersTable, cashMovementsTable } from "@workspace/db";
 import { getOrCreateSettings } from "./settings";
 
@@ -14,11 +14,17 @@ const ROUTE_COLORS = [
 
 const LOGISTICALLY_ELIGIBLE_DELIVERY_STATUSES = ["pending", "preparing", "ready"] as const;
 
-function deliveryOrderLogisticallyEligibleWhereClause() {
+function deliveryOrderCanEnterRouteWhereClause() {
   return and(
     eq(ordersTable.type, "delivery"),
     notInArray(ordersTable.status, ["cancelled", "closed"]),
-    inArray(ordersTable.deliveryStatus, [...LOGISTICALLY_ELIGIBLE_DELIVERY_STATUSES])
+    inArray(ordersTable.deliveryStatus, [...LOGISTICALLY_ELIGIBLE_DELIVERY_STATUSES]),
+    notExists(
+      db
+        .select({ id: deliveryRouteOrdersTable.id })
+        .from(deliveryRouteOrdersTable)
+        .where(eq(deliveryRouteOrdersTable.orderId, ordersTable.id))
+    )
   );
 }
 
@@ -406,16 +412,9 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     req.log.warn("Configure cidade e estado da loja para melhorar cálculo de entrega e rotas.");
   }
 
-  // Find orders already linked to any route (available/in_progress/completed).
-  // This avoids re-routing orders that already went through routing flow.
-  const existingRouteLinks = await db
-    .select({ orderId: deliveryRouteOrdersTable.orderId })
-    .from(deliveryRouteOrdersTable);
-  const alreadyInRouteOrderIds = existingRouteLinks.map((ro) => ro.orderId);
-
   // Eligible orders: only logistic whitelist deliveryStatus values.
   // Any missing/invalid deliveryStatus is treated as NOT eligible.
-  let eligibleOrders = await db
+  const eligibleOrders = await db
     .select({
       id: ordersTable.id,
       deliveryAddress: ordersTable.deliveryAddress,
@@ -427,12 +426,8 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     })
     .from(ordersTable)
     .where(
-      deliveryOrderLogisticallyEligibleWhereClause()
+      deliveryOrderCanEnterRouteWhereClause()
     );
-
-  if (alreadyInRouteOrderIds.length > 0) {
-    eligibleOrders = eligibleOrders.filter((o) => !alreadyInRouteOrderIds.includes(o.id));
-  }
 
   if (eligibleOrders.length === 0) {
     res.json({ created: 0, routes: [] });
@@ -507,13 +502,7 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
 router.get("/delivery/orders/pending", async (_req, res): Promise<void> => {
   const settings = await getOrCreateSettings();
 
-  // Exclude orders already linked to any route (available/in_progress/completed).
-  const existingRouteLinks = await db
-    .select({ orderId: deliveryRouteOrdersTable.orderId })
-    .from(deliveryRouteOrdersTable);
-  const inRouteOrderIds = existingRouteLinks.map((ro) => ro.orderId);
-
-  let orders = await db
+  const orders = await db
     .select({
       id: ordersTable.id,
       customerName: customersTable.name,
@@ -534,13 +523,9 @@ router.get("/delivery/orders/pending", async (_req, res): Promise<void> => {
     .from(ordersTable)
     .leftJoin(customersTable, eq(ordersTable.customerId, customersTable.id))
     .where(
-      deliveryOrderLogisticallyEligibleWhereClause()
+      deliveryOrderCanEnterRouteWhereClause()
     )
     .orderBy(sql`${ordersTable.createdAt} ASC`);
-
-  if (inRouteOrderIds.length > 0) {
-    orders = orders.filter((o) => !inRouteOrderIds.includes(o.id));
-  }
 
   const dp = settings.deliveryDispatchTimeMinutes;
   const result = orders.map((o) => ({
@@ -674,25 +659,24 @@ router.post("/delivery/routes/:id/assign", async (req, res): Promise<void> => {
     .set({ status: "in_progress", courierId, courierName, startedAt: new Date() })
     .where(eq(deliveryRoutesTable.id, routeId));
 
-  // Fetch each order's current deliveryStatus so we only advance 'ready' ones.
-  // Orders still 'preparing' stay as 'preparing' — the kitchen will mark them ready.
+  // Ao assumir rota, todos os pedidos vinculados saem do fluxo pré-rota.
   const routeOrders = await db
     .select({
       orderId: deliveryRouteOrdersTable.orderId,
-      deliveryStatus: ordersTable.deliveryStatus,
+      status: ordersTable.status,
     })
     .from(deliveryRouteOrdersTable)
     .leftJoin(ordersTable, eq(deliveryRouteOrdersTable.orderId, ordersTable.id))
     .where(eq(deliveryRouteOrdersTable.routeId, routeId));
 
-  const readyOrderIds = routeOrders
-    .filter((ro) => ro.deliveryStatus === "ready")
+  const routableOrderIds = routeOrders
+    .filter((ro) => ro.status !== "closed" && ro.status !== "cancelled")
     .map((ro) => ro.orderId);
 
-  if (readyOrderIds.length > 0) {
+  if (routableOrderIds.length > 0) {
     await db.update(ordersTable)
       .set({ deliveryStatus: "out_for_delivery" })
-      .where(inArray(ordersTable.id, readyOrderIds));
+      .where(inArray(ordersTable.id, routableOrderIds));
   }
 
   res.json(await getRouteWithOrders(routeId));

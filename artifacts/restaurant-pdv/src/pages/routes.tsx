@@ -291,7 +291,7 @@ export default function Routes() {
         "/delivery/routes/generate",
         { method: "POST" }
       );
-      await Promise.all([fetchRoutes(), fetchPendingOrders()]);
+      await refreshDeliveryAndFinanceViews();
       toast({
         title:
           created === 0
@@ -347,7 +347,7 @@ export default function Routes() {
         method: "POST",
         body: JSON.stringify(body),
       });
-      await fetchRoutes();
+      await refreshDeliveryAndFinanceViews();
       const name = couriers.find((c) => c.id === selectedCourierId)?.name ?? courierName.trim();
       toast({ title: `Rota assumida por ${name}!` });
       setAssignRoute(null);
@@ -364,14 +364,7 @@ export default function Routes() {
     setCompleting(route.id);
     try {
       await apiFetch(`/delivery/routes/${route.id}/complete`, { method: "POST" });
-      await Promise.all([
-        fetchRoutes(),
-        fetchPendingOrders(),
-        queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() }),
-        queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }),
-        queryClient.invalidateQueries({ queryKey: getGetCurrentCashRegisterQueryKey() }),
-        queryClient.invalidateQueries({ queryKey: getListAwaitingSettlementQueryKey() }),
-      ]);
+      await refreshDeliveryAndFinanceViews();
       toast({ title: "Rota concluída! Pedidos marcados como entregues." });
     } catch (e) {
       toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
@@ -466,6 +459,22 @@ export default function Routes() {
   };
 
   const [pendingSelected, setPendingSelected] = useState<Set<number>>(new Set());
+  const refreshDeliveryAndFinanceViews = useCallback(async () => {
+    await Promise.all([
+      fetchRoutes(),
+      fetchPendingOrders(),
+      queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getGetCurrentCashRegisterQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getListAwaitingSettlementQueryKey() }),
+    ]);
+  }, [fetchPendingOrders, fetchRoutes, queryClient]);
+
+  const pendingOrdersRenderable = pendingOrders.filter((order) => {
+    const isEligibleDeliveryStatus = ["pending", "preparing", "ready"].includes(order.deliveryStatus ?? "");
+    const hasRouteLink = (order as { routeId?: number | null }).routeId != null;
+    return isEligibleDeliveryStatus && !hasRouteLink;
+  });
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [bulkAdding, setBulkAdding] = useState(false);
 
@@ -479,7 +488,7 @@ export default function Routes() {
 
   const toggleSelectAllPending = () => {
     if (pendingSelected.size > 0) setPendingSelected(new Set());
-    else setPendingSelected(new Set(pendingOrders.map((o) => o.id)));
+    else setPendingSelected(new Set(pendingOrdersRenderable.map((o) => o.id)));
   };
 
   const handleBulkAddToRoute = async (routeId: number) => {
@@ -567,10 +576,10 @@ export default function Routes() {
         </div>
 
         {/* ── Stats strip ── */}
-        {(routes.length > 0 || pendingOrders.length > 0) && (
+        {(routes.length > 0 || pendingOrdersRenderable.length > 0) && (
           <div className="flex items-center gap-3 flex-wrap">
             {[
-              { label: "Aguardando rota", count: pendingOrders.length },
+              { label: "Aguardando rota", count: pendingOrdersRenderable.length },
               { label: "Disponíveis", count: activeRoutes.filter((r) => r.status === "available").length },
               { label: "Em andamento", count: activeRoutes.filter((r) => r.status === "in_progress").length },
               { label: "Concluídas hoje", count: completedRoutes.length },
@@ -594,7 +603,7 @@ export default function Routes() {
         )}
 
         {/* ── Empty ── */}
-        {!loading && routes.length === 0 && pendingOrders.length === 0 && (
+        {!loading && routes.length === 0 && pendingOrdersRenderable.length === 0 && (
           <div className="text-center py-16 border-2 border-dashed rounded-xl text-muted-foreground">
             <Truck className="w-12 h-12 mx-auto mb-3 opacity-20" />
             <p className="text-lg font-semibold mb-1">Nenhum pedido delivery</p>
@@ -606,12 +615,12 @@ export default function Routes() {
         )}
 
         {/* ── Pending orders (compact list) ── */}
-        {!loading && pendingOrders.length > 0 && (
+        {!loading && pendingOrdersRenderable.length > 0 && (
           <section>
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <h2 className="text-base font-semibold">Aguardando Rota</h2>
               <Badge variant="secondary" className="bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
-                {pendingOrders.length}
+                {pendingOrdersRenderable.length}
               </Badge>
               <div className="flex items-center gap-2 ml-auto flex-wrap">
                 {/* Select all toggle */}
@@ -620,9 +629,9 @@ export default function Routes() {
                   className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                   data-testid="btn-select-all-pending"
                 >
-                  <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors ${pendingSelected.size === pendingOrders.length && pendingOrders.length > 0 ? "bg-primary border-primary" : pendingSelected.size > 0 ? "bg-primary/40 border-primary" : "border-[#CBD5E1] hover:border-primary"}`}>
+                  <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors ${pendingSelected.size === pendingOrdersRenderable.length && pendingOrdersRenderable.length > 0 ? "bg-primary border-primary" : pendingSelected.size > 0 ? "bg-primary/40 border-primary" : "border-[#CBD5E1] hover:border-primary"}`}>
                     {pendingSelected.size > 0 && (
-                      <div className={`${pendingSelected.size === pendingOrders.length ? "w-2 h-1.5" : "w-1.5 h-0.5"} bg-white rounded`} />
+                      <div className={`${pendingSelected.size === pendingOrdersRenderable.length ? "w-2 h-1.5" : "w-1.5 h-0.5"} bg-white rounded`} />
                     )}
                   </div>
                   {pendingSelected.size === 0 ? "Selecionar todos" : `${pendingSelected.size} selecionado${pendingSelected.size !== 1 ? "s" : ""}`}
@@ -650,13 +659,13 @@ export default function Routes() {
             </div>
 
             <div className="rounded-xl border border-border overflow-hidden bg-card">
-              {pendingOrders.map((order, idx) => (
+              {pendingOrdersRenderable.map((order, idx) => (
                 <PendingOrderRow
                   key={order.id}
                   order={order}
                   dispatchMinutes={dispatchMinutes}
                   activeRoutes={activeRoutes}
-                  isLast={idx === pendingOrders.length - 1}
+                  isLast={idx === pendingOrdersRenderable.length - 1}
                   selected={pendingSelected.has(order.id)}
                   onToggle={() => togglePending(order.id)}
                   onAddToRoute={() => setAddPendingState({ orderId: order.id, customerName: order.customerName })}
