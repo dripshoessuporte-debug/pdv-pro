@@ -31,7 +31,7 @@ Configure no provedor (Render/Railway/Fly/Vercel/Replit):
 
 ## Segurança operacional
 - Rotas `/dev/*` ficam desativadas por padrão (`ENABLE_DEV_ROUTES=false`).
-- Inbound externo exige `x-integration-key` válido.
+- Inbound externo exige `INTEGRATION_API_KEY` configurada e `x-integration-key` válido.
 - Nunca versionar `.env` com valores reais.
 
 

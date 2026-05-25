@@ -15,6 +15,8 @@
 - Nunca versionar `.env` com valores reais.
 - Use `.env.example` somente com placeholders.
 - Nunca expor `OPENROUTESERVICE_API_KEY` no frontend.
+- `ADMIN_API_KEY`, `ADMIN_RESET_KEY` e `INTEGRATION_API_KEY` são chaves **somente de backend**.
+- Frontend deve usar apenas variáveis públicas não sensíveis (ex.: `BASE_PATH`), nunca chaves administrativas/internas.
 
 
 ## Endpoints administrativos (base/demo)
