@@ -15,6 +15,7 @@ import alertsRouter from "./alerts";
 import integrationsRouter from "./integrations";
 import deliveryDistanceRouter from "./delivery-distance";
 import devRouter from "./dev";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(alertsRouter);
 router.use(integrationsRouter);
 router.use(deliveryDistanceRouter);
 router.use(devRouter);
+router.use(adminRouter);
 
 export default router;
