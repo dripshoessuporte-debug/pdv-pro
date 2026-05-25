@@ -406,10 +406,10 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
   const maxPerRoute = settings.maxOrdersPerRoute;
 
   // Build store origin string from settings
-  const storeOriginParts = [settings.storeAddress, settings.storeNeighborhood, settings.storeCity].filter(Boolean);
+  const storeOriginParts = [settings.storeAddress, settings.storeNumber, settings.storeNeighborhood, settings.storeCity, settings.storeState, settings.storeCountry].filter(Boolean);
   const storeOrigin = storeOriginParts.join(", ");
-  if (!settings.storeCity) {
-    req.log.warn("Configure a cidade da loja para melhorar cálculo de entrega e rotas.");
+  if (!settings.storeCity || !settings.storeState) {
+    req.log.warn("Configure cidade e estado da loja para melhorar cálculo de entrega e rotas.");
   }
 
   // Eligible orders: only logistic whitelist deliveryStatus values.
@@ -574,7 +574,7 @@ router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
   if (!order) { res.status(404).json({ error: "Order not found" }); return; }
 
   const settings = await getOrCreateSettings();
-  const storeOriginParts = [settings.storeAddress, settings.storeNeighborhood, settings.storeCity].filter(Boolean);
+  const storeOriginParts = [settings.storeAddress, settings.storeNumber, settings.storeNeighborhood, settings.storeCity, settings.storeState, settings.storeCountry].filter(Boolean);
   const storeOrigin = storeOriginParts.join(", ");
 
   // Remove from any existing active route
@@ -791,7 +791,7 @@ router.post("/delivery/routes/:id/add-order", async (req, res): Promise<void> =>
   if (existingAssignment.length > 0) { res.status(400).json({ error: "Order is already in an active route" }); return; }
 
   const settings = await getOrCreateSettings();
-  const storeOriginParts = [settings.storeAddress, settings.storeNeighborhood, settings.storeCity].filter(Boolean);
+  const storeOriginParts = [settings.storeAddress, settings.storeNumber, settings.storeNeighborhood, settings.storeCity, settings.storeState, settings.storeCountry].filter(Boolean);
   const storeOrigin = storeOriginParts.join(", ");
 
   // Add to end of route
@@ -840,7 +840,7 @@ router.post("/delivery/routes/:id/move-order", async (req, res): Promise<void> =
   if (!assignment) { res.status(404).json({ error: "Order not in this route" }); return; }
 
   const settings = await getOrCreateSettings();
-  const storeOriginParts = [settings.storeAddress, settings.storeNeighborhood, settings.storeCity].filter(Boolean);
+  const storeOriginParts = [settings.storeAddress, settings.storeNumber, settings.storeNeighborhood, settings.storeCity, settings.storeState, settings.storeCountry].filter(Boolean);
   const storeOrigin = storeOriginParts.join(", ");
 
   // Remove from source route
