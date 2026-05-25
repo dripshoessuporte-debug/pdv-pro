@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, and, sql, gte } from "drizzle-orm";
-import { db, ordersTable, tablesTable, kitchenTicketsTable, orderItemsTable, productsTable, categoriesTable, customersTable, paymentsTable } from "@workspace/db";
+import { eq, and, sql, gte, isNull } from "drizzle-orm";
+import { db, ordersTable, tablesTable, kitchenTicketsTable, orderItemsTable, productsTable, categoriesTable, customersTable, paymentsTable, cashRegistersTable } from "@workspace/db";
 
 import {
   GetDashboardSummaryResponse,
@@ -13,6 +13,17 @@ const router: IRouter = Router();
 router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  const [openRegister] = await db
+    .select({ openedAt: cashRegistersTable.openedAt })
+    .from(cashRegistersTable)
+    .where(isNull(cashRegistersTable.closedAt))
+    .orderBy(cashRegistersTable.openedAt)
+    .limit(1);
+
+  const operationalStart = openRegister?.openedAt
+    ? new Date(openRegister.openedAt)
+    : today;
 
   const [revenueToday] = await db
     .select({ total: sql<string>`coalesce(sum(${paymentsTable.amount}), 0)` })
@@ -27,7 +38,12 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   const [openOrders] = await db
     .select({ count: sql<number>`count(*)` })
     .from(ordersTable)
-    .where(sql`${ordersTable.status} in ('open', 'preparing', 'ready') OR ${ordersTable.deliveryStatus} = 'awaiting_settlement'`);
+    .where(
+      and(
+        gte(ordersTable.updatedAt, operationalStart),
+        sql`${ordersTable.status} in ('open', 'preparing', 'ready')`
+      )
+    );
 
   const [awaitingSettlement] = await db
     .select({ count: sql<number>`count(*)` })
@@ -47,7 +63,13 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   const [pendingTickets] = await db
     .select({ count: sql<number>`count(*)` })
     .from(kitchenTicketsTable)
-    .where(eq(kitchenTicketsTable.status, "pending"));
+    .innerJoin(ordersTable, eq(kitchenTicketsTable.orderId, ordersTable.id))
+    .where(
+      and(
+        eq(kitchenTicketsTable.status, "pending"),
+        gte(ordersTable.updatedAt, operationalStart)
+      )
+    );
 
   const summary = {
     totalOrdersToday: Number(countToday?.count ?? 0),
