@@ -14,6 +14,7 @@ import {
   useListCategories,
   getListCategoriesQueryKey,
   getListOrdersQueryKey,
+  getGetAlertsQueryKey,
   getListTablesQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -121,6 +122,7 @@ export default function OrderDetail() {
   const invalidateOrder = () => {
     queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderId) });
     queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() });
   };
 
   const { data: order, isLoading } = useGetOrder(orderId, {
@@ -174,6 +176,7 @@ export default function OrderDetail() {
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListTablesQueryKey() });
         toast({ title: "Pedido cancelado" });
         setLocation("/orders");
