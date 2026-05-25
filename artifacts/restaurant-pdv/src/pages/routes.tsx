@@ -19,6 +19,13 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Layout } from "@/components/layout";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  getGetAlertsQueryKey,
+  getGetCurrentCashRegisterQueryKey,
+  getGetDashboardSummaryQueryKey,
+  getListAwaitingSettlementQueryKey,
+} from "@workspace/api-client-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -197,6 +204,7 @@ const URGENCY_ICON: Record<TimeUrgency, typeof Clock> = {
 
 export default function Routes() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [routes, setRoutes] = useState<DeliveryRoute[]>([]);
   const [pendingOrders, setPendingOrders] = useState<PendingDeliveryOrder[]>([]);
   const [dispatchMinutes, setDispatchMinutes] = useState(20);
@@ -356,7 +364,14 @@ export default function Routes() {
     setCompleting(route.id);
     try {
       await apiFetch(`/delivery/routes/${route.id}/complete`, { method: "POST" });
-      await fetchRoutes();
+      await Promise.all([
+        fetchRoutes(),
+        fetchPendingOrders(),
+        queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getGetCurrentCashRegisterQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getListAwaitingSettlementQueryKey() }),
+      ]);
       toast({ title: "Rota concluída! Pedidos marcados como entregues." });
     } catch (e) {
       toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });

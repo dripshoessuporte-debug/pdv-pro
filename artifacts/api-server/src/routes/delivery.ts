@@ -12,7 +12,15 @@ const ROUTE_COLORS = [
 
 // ─── Eligible delivery statuses for routing ───────────────────────────────────
 
-const ELIGIBLE_DELIVERY_STATUSES = ["preparing", "ready"];
+const LOGISTICALLY_ELIGIBLE_DELIVERY_STATUSES = ["pending", "preparing", "ready"] as const;
+
+function deliveryOrderLogisticallyEligibleWhereClause() {
+  return and(
+    eq(ordersTable.type, "delivery"),
+    notInArray(ordersTable.status, ["cancelled", "closed"]),
+    inArray(ordersTable.deliveryStatus, [...LOGISTICALLY_ELIGIBLE_DELIVERY_STATUSES])
+  );
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -405,10 +413,8 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     .from(deliveryRouteOrdersTable);
   const alreadyInRouteOrderIds = existingRouteLinks.map((ro) => ro.orderId);
 
-  // Eligible orders: delivery, (preparing/ready deliveryStatus) OR (in-kitchen with pending/null deliveryStatus),
-  // not cancelled, not already in route.
-  // The fallback `status = 'preparing'` covers orders sent to kitchen whose deliveryStatus
-  // may not have been updated (e.g. older records or edge-cases in the transition logic).
+  // Eligible orders: only logistic whitelist deliveryStatus values.
+  // Any missing/invalid deliveryStatus is treated as NOT eligible.
   let eligibleOrders = await db
     .select({
       id: ordersTable.id,
@@ -421,17 +427,7 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     })
     .from(ordersTable)
     .where(
-      and(
-        eq(ordersTable.type, "delivery"),
-        notInArray(ordersTable.status, ["cancelled"]),
-        or(
-          inArray(ordersTable.deliveryStatus, ELIGIBLE_DELIVERY_STATUSES),
-          and(
-            eq(ordersTable.status, "preparing"),
-            or(isNull(ordersTable.deliveryStatus), eq(ordersTable.deliveryStatus, "pending"))
-          )
-        )
-      )
+      deliveryOrderLogisticallyEligibleWhereClause()
     );
 
   if (alreadyInRouteOrderIds.length > 0) {
@@ -538,14 +534,7 @@ router.get("/delivery/orders/pending", async (_req, res): Promise<void> => {
     .from(ordersTable)
     .leftJoin(customersTable, eq(ordersTable.customerId, customersTable.id))
     .where(
-      and(
-        eq(ordersTable.type, "delivery"),
-        notInArray(ordersTable.status, ["cancelled", "closed"]),
-        or(
-          isNull(ordersTable.deliveryStatus),
-          notInArray(ordersTable.deliveryStatus, ["out_for_delivery", "delivered", "awaiting_settlement"])
-        )
-      )
+      deliveryOrderLogisticallyEligibleWhereClause()
     )
     .orderBy(sql`${ordersTable.createdAt} ASC`);
 
