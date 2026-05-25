@@ -862,6 +862,8 @@ export const GetAlertsResponse = zod.object({
   "routesInProgress": zod.number(),
   "routesAvailable": zod.number(),
   "readyNotActioned": zod.number(),
+  "activeOrdersCount": zod.number(),
+  "pendingKitchenCount": zod.number(),
   "deliveryWithoutRoute": zod.number(),
   "cashRegisterOpenHours": zod.number()
 })
@@ -1333,5 +1335,4 @@ export const AdjustRouteTimeResponse = zod.object({
   "deliveryStatus": zod.string().nullish()
 }))
 })
-
 

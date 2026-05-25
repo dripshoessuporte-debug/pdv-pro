@@ -62,6 +62,7 @@ export function Layout({ children }: { children: ReactNode }) {
       queryKey: getGetAlertsQueryKey(),
       refetchInterval: 30_000,
       staleTime: 20_000,
+      refetchOnWindowFocus: true,
       retry: false,
     },
   });
@@ -74,8 +75,8 @@ export function Layout({ children }: { children: ReactNode }) {
     (alerts?.routesInProgress ?? 0) +
     (alerts?.routesAvailable ?? 0) +
     (alerts?.deliveryWithoutRoute ?? 0);
-  const kitchenBadge = alerts?.readyNotActioned ?? 0;
-  const ordersBadge = alerts?.readyNotActioned ?? 0;
+  const kitchenBadge = alerts?.pendingKitchenCount ?? 0;
+  const ordersBadge = alerts?.activeOrdersCount ?? 0;
 
   function getBadge(href: string): number {
     if (href === "/cash") return cashBadge;

@@ -21,6 +21,8 @@ router.get("/alerts", async (req, res) => {
       routesInProgressRows,
       routesAvailableRows,
       readyNotActionedRows,
+      activeOrdersRows,
+      pendingKitchenRows,
       activeRouteOrderRows,
     ] = await Promise.all([
       // 1. awaitingSettlement: deliveryStatus=awaiting_settlement AND paymentTiming=on_delivery AND not yet paid
@@ -69,7 +71,29 @@ router.get("/alerts", async (req, res) => {
           )
         ),
 
-      // 5. active route order IDs (for deliveryWithoutRoute calc)
+      // 5. activeOrdersCount: operational orders pending action in current session
+      db
+        .select({ id: ordersTable.id })
+        .from(ordersTable)
+        .where(
+          and(
+            gte(ordersTable.createdAt, operationalStart),
+            inArray(ordersTable.status, ["open", "preparing", "ready"])
+          )
+        ),
+
+      // 6. pendingKitchenCount: orders from current session still pending in kitchen
+      db
+        .select({ id: ordersTable.id })
+        .from(ordersTable)
+        .where(
+          and(
+            gte(ordersTable.createdAt, operationalStart),
+            eq(ordersTable.status, "preparing")
+          )
+        ),
+
+      // 7. active route order IDs (for deliveryWithoutRoute calc)
       db
         .select({ orderId: deliveryRouteOrdersTable.orderId })
         .from(deliveryRouteOrdersTable)
@@ -85,7 +109,7 @@ router.get("/alerts", async (req, res) => {
         ),
     ]);
 
-    // 5. deliveryWithoutRoute: delivery orders preparing/ready but not in any active route
+    // 8. deliveryWithoutRoute: delivery orders preparing/ready but not in any active route
     const activeIds = activeRouteOrderRows.map((r) => r.orderId);
     let deliveryWithoutRoute = 0;
     if (activeIds.length > 0) {
@@ -115,7 +139,7 @@ router.get("/alerts", async (req, res) => {
       deliveryWithoutRoute = rows.length;
     }
 
-    // 6. cashRegisterOpenHours
+    // 9. cashRegisterOpenHours
     let cashRegisterOpenHours = 0;
     if (openRegisterOpenedAt) {
       const openedAt = new Date(openRegisterOpenedAt);
@@ -128,6 +152,8 @@ router.get("/alerts", async (req, res) => {
       routesInProgress: routesInProgressRows.length,
       routesAvailable: routesAvailableRows.length,
       readyNotActioned: readyNotActionedRows.length,
+      activeOrdersCount: activeOrdersRows.length,
+      pendingKitchenCount: pendingKitchenRows.length,
       deliveryWithoutRoute,
       cashRegisterOpenHours,
     });
