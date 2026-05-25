@@ -1,34 +1,25 @@
 import { Router, type IRouter } from "express";
-import { eq, and, sql, gte, isNull } from "drizzle-orm";
-import { db, ordersTable, tablesTable, kitchenTicketsTable, orderItemsTable, productsTable, categoriesTable, customersTable, paymentsTable, cashRegistersTable } from "@workspace/db";
+import { eq, and, sql, gte } from "drizzle-orm";
+import { db, ordersTable, tablesTable, kitchenTicketsTable, orderItemsTable, productsTable, categoriesTable, customersTable, paymentsTable } from "@workspace/db";
 
 import {
   GetDashboardSummaryResponse,
   GetRecentOrdersResponse,
   GetSalesByCategoryResponse,
 } from "@workspace/api-zod";
+import { getOperationalSessionStart } from "../lib/operational-session";
 
 const router: IRouter = Router();
 
 router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-
-  const [openRegister] = await db
-    .select({ openedAt: cashRegistersTable.openedAt })
-    .from(cashRegistersTable)
-    .where(isNull(cashRegistersTable.closedAt))
-    .orderBy(cashRegistersTable.openedAt)
-    .limit(1);
-
-  const operationalStart = openRegister?.openedAt
-    ? new Date(openRegister.openedAt)
-    : today;
+  const operationalStart = await getOperationalSessionStart();
 
   const [revenueToday] = await db
     .select({ total: sql<string>`coalesce(sum(${paymentsTable.amount}), 0)` })
     .from(paymentsTable)
-    .where(and(gte(paymentsTable.createdAt, today), eq(paymentsTable.status, "approved")));
+    .where(and(gte(paymentsTable.createdAt, operationalStart), eq(paymentsTable.status, "approved")));
 
   const [countToday] = await db
     .select({ count: sql<number>`count(*)` })
@@ -40,7 +31,7 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
     .from(ordersTable)
     .where(
       and(
-        gte(ordersTable.updatedAt, operationalStart),
+        gte(ordersTable.createdAt, operationalStart),
         sql`${ordersTable.status} in ('open', 'preparing', 'ready')`
       )
     );
@@ -67,7 +58,7 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
     .where(
       and(
         eq(kitchenTicketsTable.status, "pending"),
-        gte(ordersTable.updatedAt, operationalStart)
+        gte(ordersTable.createdAt, operationalStart)
       )
     );
 
@@ -140,6 +131,8 @@ router.get("/dashboard/recent-orders", async (_req, res): Promise<void> => {
 });
 
 router.get("/dashboard/sales-by-category", async (_req, res): Promise<void> => {
+  const operationalStart = await getOperationalSessionStart();
+
   const rows = await db
     .select({
       categoryId: categoriesTable.id,
@@ -150,6 +143,15 @@ router.get("/dashboard/sales-by-category", async (_req, res): Promise<void> => {
     .from(categoriesTable)
     .leftJoin(productsTable, eq(productsTable.categoryId, categoriesTable.id))
     .leftJoin(orderItemsTable, eq(orderItemsTable.productId, productsTable.id))
+    .leftJoin(ordersTable, eq(orderItemsTable.orderId, ordersTable.id))
+    .leftJoin(paymentsTable, eq(paymentsTable.orderId, ordersTable.id))
+    .where(
+      and(
+        gte(ordersTable.createdAt, operationalStart),
+        gte(paymentsTable.createdAt, operationalStart),
+        eq(paymentsTable.status, "approved")
+      )
+    )
     .groupBy(categoriesTable.id, categoriesTable.name)
     .orderBy(sql`sum(${orderItemsTable.totalPrice}) DESC NULLS LAST`);
 

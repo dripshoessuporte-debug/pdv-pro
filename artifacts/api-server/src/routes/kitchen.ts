@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, gte } from "drizzle-orm";
 import { db, kitchenTicketsTable, ordersTable, tablesTable, orderItemsTable, productsTable } from "@workspace/db";
 import {
   MarkTicketReadyParams,
   GetKitchenQueueResponse,
   MarkTicketReadyResponse,
 } from "@workspace/api-zod";
+import { getOperationalSessionStart } from "../lib/operational-session";
 
 const router: IRouter = Router();
 
@@ -54,6 +55,8 @@ async function getTicketWithItems(ticketId: number) {
 }
 
 router.get("/kitchen/queue", async (_req, res): Promise<void> => {
+  const operationalStart = await getOperationalSessionStart();
+
   const tickets = await db
     .select({
       id: kitchenTicketsTable.id,
@@ -67,7 +70,12 @@ router.get("/kitchen/queue", async (_req, res): Promise<void> => {
     .from(kitchenTicketsTable)
     .leftJoin(ordersTable, eq(kitchenTicketsTable.orderId, ordersTable.id))
     .leftJoin(tablesTable, eq(ordersTable.tableId, tablesTable.id))
-    .where(eq(kitchenTicketsTable.status, "pending"));
+        .where(
+      and(
+        eq(kitchenTicketsTable.status, "pending"),
+        gte(ordersTable.createdAt, operationalStart)
+      )
+    );
 
   const ticketsWithItems = await Promise.all(tickets.map(async (ticket) => {
     const items = await db
