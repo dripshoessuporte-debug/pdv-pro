@@ -433,6 +433,8 @@ export interface AlertsSummary {
   routesInProgress: number;
   routesAvailable: number;
   readyNotActioned: number;
+  activeOrdersCount: number;
+  pendingKitchenCount: number;
   deliveryWithoutRoute: number;
   cashRegisterOpenHours: number;
 }
@@ -849,4 +851,3 @@ export const ListOrdersStatus = {
   closed: 'closed',
   cancelled: 'cancelled',
 } as const;
-

@@ -8,6 +8,8 @@ import {
   useListCashRegisters,
   useListAwaitingSettlement,
   useSettleDeliveryOrder,
+  getGetAlertsQueryKey,
+  getGetDashboardSummaryQueryKey,
   getGetCurrentCashRegisterQueryKey,
   getListCashRegistersQueryKey,
   getListAwaitingSettlementQueryKey,
@@ -112,6 +114,8 @@ export default function Cash() {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: getGetCurrentCashRegisterQueryKey() });
     queryClient.invalidateQueries({ queryKey: getListCashRegistersQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
   };
 
   return (
@@ -502,6 +506,8 @@ function PendingSettlementsPanel() {
         setSettleAmountReceived("");
         queryClient.invalidateQueries({ queryKey: getListAwaitingSettlementQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetCurrentCashRegisterQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
       },
       onError: (err) => {
         const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Erro ao registrar recebimento";
