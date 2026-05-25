@@ -1,0 +1,213 @@
+HOTFIX — Corrigir alertas operacionais, dashboard e badge da cozinha de forma definitiva.
+
+Contexto:
+Mesmo sem ter nada pendente de verdade, o Dashboard ainda mostra:
+- “5 pedidos prontos há mais de 20 min sem ação”
+- Pedidos Hoje: 5
+- Pedidos Ativos: 5
+- Vendas por categoria com valor
+Mas a operação atual não tem pedido pendente.
+
+Além disso:
+Quando crio um pedido e envio para cozinha, o ícone vermelho ao lado de “Cozinha” não aparece como antes.
+
+Não mexer em visual, deploy, docs, base demo ou storeId.
+Corrigir somente backend de alertas/dashboard/cozinha e invalidação frontend se necessário.
+
+==================================================
+1. PROBLEMA 1 — ALERTAS CONTANDO PEDIDO QUE NÃO É MAIS OPERACIONAL
+==================================================
+
+Hoje o endpoint /alerts ainda usa orders.status para contar:
+- readyNotActioned
+- activeOrdersCount
+- pendingKitchenCount
+
+Isso é insuficiente.
+
+Um pedido delivery pode continuar com status = ready/preparing, mas logisticamente já estar:
+- out_for_delivery
+- delivered
+- awaiting_settlement
+- closed
+
+Esses pedidos NÃO devem contar como alerta operacional de Pedidos/Cozinha.
+
+Corrigir /alerts para aplicar regras mais específicas.
+
+==================================================
+2. REGRA CORRETA PARA activeOrdersCount
+==================================================
+
+activeOrdersCount deve contar apenas pedidos realmente operacionais da sessão atual.
+
+Contar se:
+- orders.createdAt >= operationalStart
+- orders.status em open/preparing/ready
+- orders.status não é closed/cancelled
+
+Mas excluir delivery quando deliveryStatus estiver em:
+- out_for_delivery
+- delivered
+- awaiting_settlement
+- closed
+- cancelled
+
+Ou seja:
+Pedido aguardando baixa financeira NÃO é pedido ativo operacional.
+
+==================================================
+3. REGRA CORRETA PARA readyNotActioned
+==================================================
+
+readyNotActioned deve contar apenas pedidos que realmente precisam de ação operacional.
+
+Contar se:
+- orders.createdAt >= operationalStart
+- orders.status = ready
+- coalesce(readyAt, updatedAt) < agora - 20min
+
+Mas excluir se:
+- deliveryStatus = out_for_delivery
+- deliveryStatus = delivered
+- deliveryStatus = awaiting_settlement
+- deliveryStatus = closed
+- status = closed/cancelled
+
+Pedido aguardando baixa financeira nunca pode aparecer como “pronto sem ação”.
+
+==================================================
+4. REGRA CORRETA PARA pendingKitchenCount
+==================================================
+
+pendingKitchenCount deve contar a fila real da cozinha, não apenas orders.status.
+
+Usar kitchenTickets como fonte principal.
+
+Contar tickets pendentes se:
+- kitchenTickets.status = pending
+- pedido relacionado foi criado na sessão atual
+- pedido não está closed/cancelled
+- pedido não está entregue
+- pedido não está awaiting_settlement
+- pedido ainda precisa de preparo
+
+Fazer join:
+kitchenTickets -> orders
+
+Se um pedido aparece na tela Cozinha como pendente, o badge Cozinha deve aparecer.
+
+Se o pedido foi enviado para cozinha, o badge Cozinha deve subir imediatamente.
+
+==================================================
+5. DASHBOARD SUMMARY
+==================================================
+
+Corrigir /dashboard/summary.
+
+Pedidos Hoje:
+- pode continuar sendo pedidos criados hoje, mas precisa excluir cancelados.
+- porém, se a intenção visual for operação do caixa atual, usar operationalStart para ficar coerente com o caixa atual.
+
+Pedidos Ativos:
+- mesma regra do activeOrdersCount.
+- excluir deliveryStatus out_for_delivery/delivered/awaiting_settlement/closed.
+
+Fila da Cozinha:
+- usar kitchenTickets pendentes + orders da sessão atual.
+- não usar pedidos antigos ou já finalizados.
+
+Faturamento e vendas por categoria:
+- devem vir de payments approved da sessão atual/caixa atual.
+- se caixa novo não tem venda, gráfico deve zerar.
+
+==================================================
+6. BADGE DA COZINHA
+==================================================
+
+Verificar frontend:
+
+- Layout usa alerts.pendingKitchenCount.
+- Depois de enviar pedido para cozinha, invalidar/refetch:
+  - getGetAlertsQueryKey()
+  - dashboard summary
+  - kitchen queue
+  - orders
+
+Verificar em:
+- orders.tsx
+- order-detail.tsx
+- qualquer componente que chama send-to-kitchen
+
+Se já invalida em alguns lugares, procurar outro fluxo onde o botão de enviar para cozinha não invalida.
+
+==================================================
+7. TESTE OBRIGATÓRIO — ALERTAS ZERADOS
+==================================================
+
+Cenário:
+1. Fechar caixa anterior.
+2. Abrir caixa novo.
+3. Não criar pedido novo.
+
+Esperado:
+- Alerta “pedidos prontos há +20 min” não aparece.
+- Pedidos Ativos = 0.
+- Fila da Cozinha = 0.
+- Badge Pedidos oculto.
+- Badge Cozinha oculto.
+- Vendas por categoria zerada se não houver pagamento no caixa atual.
+
+==================================================
+8. TESTE OBRIGATÓRIO — COZINHA
+==================================================
+
+1. Criar pedido novo.
+2. Enviar para cozinha.
+
+Esperado:
+- kitchenTicket pending criado.
+- /alerts retorna pendingKitchenCount = 1.
+- Badge vermelho em Cozinha aparece.
+- Tela Cozinha mostra o pedido.
+
+3. Marcar pedido como pronto.
+
+Esperado:
+- pendingKitchenCount diminui/some.
+- Badge Cozinha some se não houver outro pedido pendente.
+
+==================================================
+9. TESTE OBRIGATÓRIO — DELIVERY COM BAIXA FINANCEIRA
+==================================================
+
+1. Criar delivery pagar na entrega.
+2. Enviar para cozinha.
+3. Gerar rota.
+4. Assumir rota.
+5. Concluir rota.
+
+Esperado:
+- pedido vira deliveryStatus = awaiting_settlement.
+- aparece no Caixa/Dashboard como baixa financeira.
+- NÃO aparece em Pedidos Ativos.
+- NÃO aparece em Cozinha.
+- NÃO aparece em readyNotActioned.
+- NÃO aparece em Rotas/Aguardando Rota.
+
+==================================================
+10. VALIDAÇÕES
+==================================================
+
+Rodar:
+pnpm -w typecheck
+rg -n '<<<<<<<|=======|>>>>>>>' artifacts lib scripts
+
+Ao finalizar, responda:
+1. Arquivos alterados.
+2. Por que pedidos em awaiting_settlement ainda estavam entrando nos alertas.
+3. Como activeOrdersCount ficou.
+4. Como readyNotActioned ficou.
+5. Como pendingKitchenCount ficou.
+6. Se o badge da Cozinha agora sobe ao enviar pedido para cozinha.
+7. Como testar no Replit.

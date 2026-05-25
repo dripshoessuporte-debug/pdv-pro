@@ -135,11 +135,11 @@ router.post("/integrations/orders/inbound", requireIntegrationKey, async (req, r
       // ORS calculation
       if (dist === null && orsReady) {
         const apiKey = getOrsApiKey()!;
-        const storeAddr = [settings.storeAddress, settings.storeNumber, settings.storeNeighborhood, settings.storeCity, settings.storeState, settings.storeCountry].filter(Boolean).join(", ");
+        const storeAddr = [settings.storeAddress, settings.storeNeighborhood, settings.storeCity].filter(Boolean).join(", ");
         const customerLocality = [delivery.city, delivery.state].filter(Boolean).join(", ");
-        const fallbackLocality = [settings.storeCity, settings.storeState].filter(Boolean).join(", ");
+        const fallbackLocality = settings.storeCity ?? "";
         // Fallback local only when customer city/state are missing.
-        const custAddr = [delivery.address, customerLocality || fallbackLocality, delivery.country ?? settings.storeCountry].filter(Boolean).join(", ");
+        const custAddr = [delivery.address, customerLocality || fallbackLocality, delivery.country].filter(Boolean).join(", ");
         if (storeAddr && custAddr) {
           dist = await calculateRouteDistanceKm(storeAddr, custAddr, apiKey);
           if (dist !== null) {

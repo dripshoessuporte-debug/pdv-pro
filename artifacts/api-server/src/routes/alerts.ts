@@ -5,10 +5,36 @@ import {
   ordersTable,
   deliveryRoutesTable,
   deliveryRouteOrdersTable,
+  kitchenTicketsTable,
 } from "@workspace/db";
 import { getOperationalSessionStart, getOpenRegisterOpenedAt } from "../lib/operational-session";
 
 const router: IRouter = Router();
+
+/**
+ * Delivery orders whose logistics are finished should NOT count as
+ * operationally active regardless of orders.status.
+ */
+const LOGISTICALLY_DONE_STATUSES = [
+  "out_for_delivery",
+  "delivered",
+  "awaiting_settlement",
+  "closed",
+  "cancelled",
+] as const;
+
+/**
+ * SQL fragment that returns TRUE when a delivery order is logistically done
+ * (i.e. it must be excluded from operational counts).
+ */
+const isLogisticallyDone = sql`(
+  ${ordersTable.type} = 'delivery'
+  AND ${ordersTable.deliveryStatus} IN (
+    'out_for_delivery', 'delivered', 'awaiting_settlement', 'closed', 'cancelled'
+  )
+)`;
+
+const isNotLogisticallyDone = sql`NOT ${isLogisticallyDone}`;
 
 router.get("/alerts", async (req, res) => {
   try {
@@ -60,6 +86,7 @@ router.get("/alerts", async (req, res) => {
         ),
 
       // 4. readyNotActioned: orders still in "ready" status, last updated > 20 min ago
+      //    Excludes delivery orders that are logistically done (out_for_delivery, delivered, etc.)
       db
         .select({ id: ordersTable.id })
         .from(ordersTable)
@@ -67,29 +94,37 @@ router.get("/alerts", async (req, res) => {
           and(
             eq(ordersTable.status, "ready"),
             gte(ordersTable.createdAt, operationalStart),
-            lt(sql`coalesce(${ordersTable.readyAt}, ${ordersTable.updatedAt})`, twentyMinsAgo)
+            lt(sql`coalesce(${ordersTable.readyAt}, ${ordersTable.updatedAt})`, twentyMinsAgo),
+            isNotLogisticallyDone
           )
         ),
 
       // 5. activeOrdersCount: operational orders pending action in current session
+      //    Excludes delivery orders that are logistically done
       db
         .select({ id: ordersTable.id })
         .from(ordersTable)
         .where(
           and(
             gte(ordersTable.createdAt, operationalStart),
-            inArray(ordersTable.status, ["open", "preparing", "ready"])
+            inArray(ordersTable.status, ["open", "preparing", "ready"]),
+            isNotLogisticallyDone
           )
         ),
 
-      // 6. pendingKitchenCount: orders from current session still pending in kitchen
+      // 6. pendingKitchenCount: kitchen tickets still pending in the current session
+      //    Uses kitchenTickets as source of truth (not orders.status).
+      //    Excludes closed/cancelled orders and logistically-done deliveries.
       db
         .select({ id: ordersTable.id })
-        .from(ordersTable)
+        .from(kitchenTicketsTable)
+        .innerJoin(ordersTable, eq(kitchenTicketsTable.orderId, ordersTable.id))
         .where(
           and(
+            eq(kitchenTicketsTable.status, "pending"),
             gte(ordersTable.createdAt, operationalStart),
-            eq(ordersTable.status, "preparing")
+            notInArray(ordersTable.status, ["closed", "cancelled"]),
+            isNotLogisticallyDone
           )
         ),
 

@@ -32,7 +32,13 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
     .where(
       and(
         gte(ordersTable.createdAt, operationalStart),
-        sql`${ordersTable.status} in ('open', 'preparing', 'ready')`
+        sql`${ordersTable.status} in ('open', 'preparing', 'ready')`,
+        sql`NOT (
+          ${ordersTable.type} = 'delivery'
+          AND ${ordersTable.deliveryStatus} IN (
+            'out_for_delivery', 'delivered', 'awaiting_settlement', 'closed', 'cancelled'
+          )
+        )`
       )
     );
 
