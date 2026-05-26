@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, ilike, and, ne } from "drizzle-orm";
-import { db, categoriesTable, productsTable, orderItemsTable } from "@workspace/db";
+import { db, categoriesTable, productsTable, productVariantsTable, orderItemsTable } from "@workspace/db";
 import {
   CreateCategoryBody,
   UpdateCategoryParams,
@@ -368,6 +368,48 @@ router.delete("/menu/products/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  res.sendStatus(204);
+});
+
+router.get("/menu/products/:id/variants", async (req, res): Promise<void> => {
+  const params = GetProductParams.safeParse(req.params);
+  if (!params.success) return void res.status(400).json({ error: params.error.message });
+  const rows = await db.select().from(productVariantsTable).where(eq(productVariantsTable.productId, params.data.id)).orderBy(productVariantsTable.sortOrder, productVariantsTable.id);
+  res.json(rows.map((r) => ({ ...r, price: parseFloat(r.price) })));
+});
+
+router.post("/menu/products/:id/variants", async (req, res): Promise<void> => {
+  const params = GetProductParams.safeParse(req.params);
+  if (!params.success) return void res.status(400).json({ error: params.error.message });
+  const body = req.body as { name?: string; price?: number; active?: boolean; available?: boolean; sortOrder?: number };
+  if (!body?.name?.trim() || typeof body.price !== "number" || body.price < 0) return void res.status(400).json({ error: "Dados da variação inválidos." });
+  const [product] = await db.select({ id: productsTable.id, storeId: productsTable.storeId }).from(productsTable).where(eq(productsTable.id, params.data.id)).limit(1);
+  if (!product) return void res.status(404).json({ error: "Produto não encontrado." });
+  const [created] = await db.insert(productVariantsTable).values({
+    productId: product.id, storeId: product.storeId, name: body.name.trim(), price: String(body.price),
+    active: body.active ?? true, available: body.available ?? true, sortOrder: body.sortOrder ?? 0,
+  }).returning();
+  res.status(201).json({ ...created, price: parseFloat(created.price) });
+});
+
+router.patch("/menu/product-variants/:id", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return void res.status(400).json({ error: "ID inválido." });
+  const parsed = req.body as { name?: string; price?: number; active?: boolean; available?: boolean; sortOrder?: number };
+  const data: Record<string, unknown> = { ...parsed };
+  if (parsed.name !== undefined) data.name = parsed.name.trim();
+  if (parsed.price !== undefined) data.price = String(parsed.price);
+  data.updatedAt = new Date();
+  const [updated] = await db.update(productVariantsTable).set(data).where(eq(productVariantsTable.id, id)).returning();
+  if (!updated) return void res.status(404).json({ error: "Variação não encontrada." });
+  res.json({ ...updated, price: parseFloat(updated.price) });
+});
+
+router.delete("/menu/product-variants/:id", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return void res.status(400).json({ error: "ID inválido." });
+  const [deleted] = await db.delete(productVariantsTable).where(eq(productVariantsTable.id, id)).returning();
+  if (!deleted) return void res.status(404).json({ error: "Variação não encontrada." });
   res.sendStatus(204);
 });
 

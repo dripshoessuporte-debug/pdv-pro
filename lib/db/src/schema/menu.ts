@@ -48,6 +48,26 @@ export const productsTable = pgTable(
   ]
 );
 
+export const productVariantsTable = pgTable(
+  "product_variants",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().default(1).references(() => storesTable.id),
+    productId: integer("product_id").notNull().references(() => productsTable.id),
+    name: text("name").notNull(),
+    price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+    active: boolean("active").notNull().default(true),
+    available: boolean("available").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("product_variants_store_id_idx").on(table.storeId),
+    index("product_variants_product_id_idx").on(table.productId),
+  ]
+);
+
 export const insertCategorySchema = createInsertSchema(categoriesTable).omit({ id: true });
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type Category = typeof categoriesTable.$inferSelect;
@@ -55,3 +75,7 @@ export type Category = typeof categoriesTable.$inferSelect;
 export const insertProductSchema = createInsertSchema(productsTable).omit({ id: true, createdAt: true });
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof productsTable.$inferSelect;
+
+export const insertProductVariantSchema = createInsertSchema(productVariantsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertProductVariant = z.infer<typeof insertProductVariantSchema>;
+export type ProductVariant = typeof productVariantsTable.$inferSelect;
