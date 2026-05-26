@@ -11,6 +11,11 @@ import {
   useCreateCategory,
   useUpdateCategory,
   useDeleteCategory,
+  useListProductVariants,
+  getListProductVariantsQueryKey,
+  useCreateProductVariant,
+  useUpdateProductVariant,
+  useDeleteProductVariant,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -54,7 +59,6 @@ type ProductForm = {
   price: string;
   categoryId: string;
   available: boolean;
-  active: boolean;
   sku: string;
   barcode: string;
   costPrice: string;
@@ -74,7 +78,6 @@ const emptyProduct: ProductForm = {
   price: "",
   categoryId: "",
   available: true,
-  active: true,
   sku: "",
   barcode: "",
   costPrice: "",
@@ -92,6 +95,11 @@ type CategoryForm = {
   name: string;
   description: string;
 };
+type VariantForm = {
+  name: string;
+  price: string;
+  available: boolean;
+};
 
 export default function Menu() {
   const [search, setSearch] = useState("");
@@ -105,6 +113,8 @@ export default function Menu() {
   const [categoryForm, setCategoryForm] = useState<CategoryForm>({ name: "", description: "" });
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
   const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<{ id: number; name: string } | null>(null);
+  const [variantForm, setVariantForm] = useState<VariantForm>({ name: "", price: "", available: true });
+  const [editingVariantId, setEditingVariantId] = useState<number | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -120,9 +130,17 @@ export default function Menu() {
   const { data: categories } = useListCategories({
     query: { queryKey: getListCategoriesQueryKey() },
   });
+  const { data: variants, isLoading: loadingVariants } = useListProductVariants(editingId ?? 0, {
+    query: { enabled: editingId !== null, queryKey: getListProductVariantsQueryKey(editingId ?? 0) },
+  });
 
   const invalidateProducts = () => {
     queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+  };
+  const invalidateVariants = () => {
+    if (editingId !== null) {
+      queryClient.invalidateQueries({ queryKey: getListProductVariantsQueryKey(editingId) });
+    }
   };
 
   const createProduct = useCreateProduct({
@@ -220,6 +238,36 @@ export default function Menu() {
       },
     },
   });
+  const createVariant = useCreateProductVariant({
+    mutation: {
+      onSuccess: () => {
+        invalidateVariants();
+        setVariantForm({ name: "", price: "", available: true });
+        toast({ title: "Variação adicionada." });
+      },
+      onError: () => toast({ title: "Erro ao adicionar variação.", variant: "destructive" }),
+    },
+  });
+  const updateVariant = useUpdateProductVariant({
+    mutation: {
+      onSuccess: () => {
+        invalidateVariants();
+        setEditingVariantId(null);
+        setVariantForm({ name: "", price: "", available: true });
+        toast({ title: "Variação atualizada." });
+      },
+      onError: () => toast({ title: "Erro ao atualizar variação.", variant: "destructive" }),
+    },
+  });
+  const deleteVariant = useDeleteProductVariant({
+    mutation: {
+      onSuccess: () => {
+        invalidateVariants();
+        toast({ title: "Variação removida." });
+      },
+      onError: () => toast({ title: "Erro ao remover variação.", variant: "destructive" }),
+    },
+  });
 
   const openEdit = (p: NonNullable<typeof products>[number]) => {
     setEditingId(p.id);
@@ -229,7 +277,6 @@ export default function Menu() {
       price: String(p.price),
       categoryId: String(p.categoryId),
       available: p.available,
-      active: p.active,
       sku: p.sku ?? "",
       barcode: p.barcode ?? "",
       costPrice: p.costPrice != null ? String(p.costPrice) : "",
@@ -253,7 +300,6 @@ export default function Menu() {
       price: parseFloat(form.price),
       categoryId: parseInt(form.categoryId),
       available: form.available,
-      active: form.active,
       sku: form.sku.trim() || undefined,
       barcode: form.barcode.trim() || undefined,
       costPrice: form.costPrice ? parseFloat(form.costPrice) : undefined,
@@ -285,6 +331,17 @@ export default function Menu() {
 
   const isPending = createProduct.isPending || updateProduct.isPending;
   const isCatPending = createCategory.isPending || updateCategory.isPending;
+  const isVariantPending = createVariant.isPending || updateVariant.isPending;
+  const handleVariantSubmit = () => {
+    if (!editingId || !variantForm.name.trim() || !variantForm.price) return;
+    const data = { name: variantForm.name.trim(), price: parseFloat(variantForm.price), available: variantForm.available };
+    if (editingVariantId) {
+      updateVariant.mutate({ id: editingVariantId, data });
+      return;
+    }
+    const sortOrder = variants?.length ?? 0;
+    createVariant.mutate({ id: editingId, data: { ...data, sortOrder, active: true } });
+  };
 
   return (
     <Layout>
@@ -513,18 +570,18 @@ export default function Menu() {
                     id="available"
                     data-testid="switch-product-available"
                   />
-                  <Label htmlFor="available">Disponível</Label>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={form.active}
-                    onCheckedChange={(v) => setForm({ ...form, active: v })}
-                    id="active"
-                    data-testid="switch-product-active"
-                  />
-                  <Label htmlFor="active">Ativo</Label>
+                  <Label htmlFor="available">Disponível para venda</Label>
+                  <p className="text-xs text-muted-foreground">Quando desligado, este produto não aparece para venda.</p>
                 </div>
               </div>
+            </div>
+
+            <div className="space-y-4 rounded-lg border p-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Imagem do produto</h3>
+              <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">Upload de imagem será habilitado em uma próxima etapa.</div>
+              <div><Label>URL da imagem (opcional avançado)</Label><Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="https://..." /></div>
+              {form.imageUrl ? <img src={form.imageUrl} alt={form.imageAlt || form.name || "Prévia"} className="h-24 w-24 rounded object-cover border" /> : null}
+              <div><Label>Texto alternativo</Label><Input value={form.imageAlt} onChange={(e) => setForm({ ...form, imageAlt: e.target.value })} /></div>
             </div>
 
             <div className="space-y-4 rounded-lg border p-3">
@@ -560,10 +617,56 @@ export default function Menu() {
               )}
             </div>
 
-            <div className="space-y-4 rounded-lg border p-3">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Imagem</h3>
-              <div><Label>URL da imagem</Label><Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="https://..." /></div>
-              <div><Label>Texto alternativo</Label><Input value={form.imageAlt} onChange={(e) => setForm({ ...form, imageAlt: e.target.value })} /></div>
+            <div className="space-y-3 rounded-lg border p-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Variações do produto</h3>
+              {editingId === null ? (
+                <p className="text-sm text-muted-foreground">Salve o produto primeiro para adicionar variações.</p>
+              ) : (
+                <div className="space-y-3">
+                  {loadingVariants ? (
+                    <Skeleton className="h-16 w-full" />
+                  ) : variants && variants.length > 0 ? (
+                    <div className="space-y-2">
+                      {variants.map((variant) => (
+                        <div key={variant.id} className="flex items-center justify-between rounded border p-2">
+                          <div>
+                            <p className="text-sm font-medium">{variant.name}</p>
+                            <p className="text-xs text-muted-foreground">R$ {variant.price.toFixed(2)} • {variant.available ? "Disponível" : "Indisponível"}</p>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="outline" onClick={() => { setEditingVariantId(variant.id); setVariantForm({ name: variant.name, price: String(variant.price), available: variant.available }); }}>
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => deleteVariant.mutate({ id: variant.id })}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Nenhuma variação cadastrada ainda.</p>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <Input placeholder="Nome da variação" value={variantForm.name} onChange={(e) => setVariantForm({ ...variantForm, name: e.target.value })} />
+                    <Input type="number" step="0.01" min="0" placeholder="Preço" value={variantForm.price} onChange={(e) => setVariantForm({ ...variantForm, price: e.target.value })} />
+                    <div className="flex items-center gap-2 rounded border px-2">
+                      <Switch checked={variantForm.available} onCheckedChange={(v) => setVariantForm({ ...variantForm, available: v })} id="variant-available" />
+                      <Label htmlFor="variant-available">Disponível para venda</Label>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" onClick={handleVariantSubmit} disabled={isVariantPending || !variantForm.name.trim() || !variantForm.price}>
+                      {editingVariantId ? "Salvar variação" : "Adicionar variação"}
+                    </Button>
+                    {editingVariantId && (
+                      <Button type="button" variant="outline" onClick={() => { setEditingVariantId(null); setVariantForm({ name: "", price: "", available: true }); }}>
+                        Cancelar edição
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {categories?.length === 0 && (

@@ -202,6 +202,39 @@ export interface ProductUpdate {
   categoryId?: number;
 }
 
+export interface ProductVariant {
+  id: number;
+  storeId: number;
+  productId: number;
+  name: string;
+  price: number;
+  active: boolean;
+  available: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductVariantInput {
+  /** @minLength 1 */
+  name: string;
+  /** @minimum 0 */
+  price: number;
+  active?: boolean;
+  available?: boolean;
+  sortOrder?: number;
+}
+
+export interface ProductVariantUpdate {
+  /** @minLength 1 */
+  name?: string;
+  /** @minimum 0 */
+  price?: number;
+  active?: boolean;
+  available?: boolean;
+  sortOrder?: number;
+}
+
 export type OrderStatus = typeof OrderStatus[keyof typeof OrderStatus];
 
 

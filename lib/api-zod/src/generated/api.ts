@@ -415,6 +415,91 @@ export const DeleteProductParams = zod.object({
 
 
 /**
+ * @summary List product variants
+ */
+export const ListProductVariantsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListProductVariantsResponseItem = zod.object({
+  "id": zod.number(),
+  "storeId": zod.number(),
+  "productId": zod.number(),
+  "name": zod.string(),
+  "price": zod.number(),
+  "active": zod.boolean(),
+  "available": zod.boolean(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListProductVariantsResponse = zod.array(ListProductVariantsResponseItem)
+
+
+/**
+ * @summary Create a product variant
+ */
+export const CreateProductVariantParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+export const createProductVariantBodyPriceMin = 0;
+
+
+
+export const CreateProductVariantBody = zod.object({
+  "name": zod.string().min(1),
+  "price": zod.number().min(createProductVariantBodyPriceMin),
+  "active": zod.boolean().optional(),
+  "available": zod.boolean().optional(),
+  "sortOrder": zod.number().optional()
+})
+
+
+/**
+ * @summary Update a product variant
+ */
+export const UpdateProductVariantParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+export const updateProductVariantBodyPriceMin = 0;
+
+
+
+export const UpdateProductVariantBody = zod.object({
+  "name": zod.string().min(1).optional(),
+  "price": zod.number().min(updateProductVariantBodyPriceMin).optional(),
+  "active": zod.boolean().optional(),
+  "available": zod.boolean().optional(),
+  "sortOrder": zod.number().optional()
+})
+
+export const UpdateProductVariantResponse = zod.object({
+  "id": zod.number(),
+  "storeId": zod.number(),
+  "productId": zod.number(),
+  "name": zod.string(),
+  "price": zod.number(),
+  "active": zod.boolean(),
+  "available": zod.boolean(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a product variant
+ */
+export const DeleteProductVariantParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
  * @summary List orders
  */
 export const ListOrdersQueryParams = zod.object({
