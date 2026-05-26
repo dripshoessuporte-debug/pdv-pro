@@ -578,6 +578,14 @@ export default function Menu() {
 
             <div className="space-y-4 rounded-lg border p-3">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Imagem do produto</h3>
+              <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">Upload de imagem será habilitado em uma próxima etapa.</div>
+              <div><Label>URL da imagem (opcional avançado)</Label><Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="https://..." /></div>
+              {form.imageUrl ? <img src={form.imageUrl} alt={form.imageAlt || form.name || "Prévia"} className="h-24 w-24 rounded object-cover border" /> : null}
+              <div><Label>Texto alternativo</Label><Input value={form.imageAlt} onChange={(e) => setForm({ ...form, imageAlt: e.target.value })} /></div>
+            </div>
+
+            <div className="space-y-4 rounded-lg border p-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Comercial</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>SKU</Label><Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></div>
                 <div><Label>Código de barras</Label><Input value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} /></div>
@@ -590,8 +598,6 @@ export default function Menu() {
             </div>
 
             <div className="space-y-4 rounded-lg border p-3">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Comercial</h3>
-              <div><Label>SKU</Label><Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></div>
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Estoque opcional</h3>
               <div className="flex items-center gap-3">
                 <Switch checked={form.trackStock} onCheckedChange={(v) => setForm({ ...form, trackStock: v })} id="trackStock" />
@@ -611,13 +617,6 @@ export default function Menu() {
               )}
             </div>
 
-            <div className="space-y-4 rounded-lg border p-3">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Imagem do produto</h3>
-              <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">Upload de imagem será habilitado em uma próxima etapa.</div>
-              <div><Label>URL da imagem (opcional avançado)</Label><Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="https://..." /></div>
-              {form.imageUrl ? <img src={form.imageUrl} alt={form.imageAlt || form.name || "Prévia"} className="h-24 w-24 rounded object-cover border" /> : null}
-              <div><Label>Texto alternativo</Label><Input value={form.imageAlt} onChange={(e) => setForm({ ...form, imageAlt: e.target.value })} /></div>
-            </div>
             <div className="space-y-3 rounded-lg border p-3">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Variações do produto</h3>
               {editingId === null ? (
