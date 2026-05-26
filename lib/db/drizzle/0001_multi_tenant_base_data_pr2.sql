@@ -92,9 +92,9 @@ EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
-DROP INDEX IF EXISTS "tables_number_unique";
---> statement-breakpoint
 ALTER TABLE "tables" DROP CONSTRAINT IF EXISTS "tables_number_unique";
+--> statement-breakpoint
+DROP INDEX IF EXISTS "tables_number_unique";
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "store_settings_store_id_unique" ON "store_settings" USING btree ("store_id");
 --> statement-breakpoint
