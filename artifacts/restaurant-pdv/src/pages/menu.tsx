@@ -54,6 +54,18 @@ type ProductForm = {
   price: string;
   categoryId: string;
   available: boolean;
+  active: boolean;
+  sku: string;
+  barcode: string;
+  costPrice: string;
+  unit: string;
+  preparationTimeMinutes: string;
+  trackStock: boolean;
+  stockQty: string;
+  stockMinQty: string;
+  allowSaleWithoutStock: boolean;
+  imageUrl: string;
+  imageAlt: string;
 };
 
 const emptyProduct: ProductForm = {
@@ -62,6 +74,18 @@ const emptyProduct: ProductForm = {
   price: "",
   categoryId: "",
   available: true,
+  active: true,
+  sku: "",
+  barcode: "",
+  costPrice: "",
+  unit: "unidade",
+  preparationTimeMinutes: "",
+  trackStock: false,
+  stockQty: "",
+  stockMinQty: "",
+  allowSaleWithoutStock: false,
+  imageUrl: "",
+  imageAlt: "",
 };
 
 type CategoryForm = {
@@ -205,6 +229,18 @@ export default function Menu() {
       price: String(p.price),
       categoryId: String(p.categoryId),
       available: p.available,
+      active: p.active,
+      sku: p.sku ?? "",
+      barcode: p.barcode ?? "",
+      costPrice: p.costPrice != null ? String(p.costPrice) : "",
+      unit: p.unit ?? "unidade",
+      preparationTimeMinutes: p.preparationTimeMinutes != null ? String(p.preparationTimeMinutes) : "",
+      trackStock: p.trackStock ?? false,
+      stockQty: p.stockQty != null ? String(p.stockQty) : "",
+      stockMinQty: p.stockMinQty != null ? String(p.stockMinQty) : "",
+      allowSaleWithoutStock: p.allowSaleWithoutStock ?? false,
+      imageUrl: p.imageUrl ?? "",
+      imageAlt: p.imageAlt ?? "",
     });
     setProductDialog(true);
   };
@@ -217,6 +253,18 @@ export default function Menu() {
       price: parseFloat(form.price),
       categoryId: parseInt(form.categoryId),
       available: form.available,
+      active: form.active,
+      sku: form.sku.trim() || undefined,
+      barcode: form.barcode.trim() || undefined,
+      costPrice: form.costPrice ? parseFloat(form.costPrice) : undefined,
+      unit: form.unit.trim() || undefined,
+      preparationTimeMinutes: form.preparationTimeMinutes ? parseInt(form.preparationTimeMinutes) : undefined,
+      trackStock: form.trackStock,
+      stockQty: form.trackStock && form.stockQty ? parseFloat(form.stockQty) : undefined,
+      stockMinQty: form.trackStock && form.stockMinQty ? parseFloat(form.stockMinQty) : undefined,
+      allowSaleWithoutStock: form.trackStock ? form.allowSaleWithoutStock : false,
+      imageUrl: form.imageUrl.trim() || undefined,
+      imageAlt: form.imageAlt.trim() || undefined,
     };
     if (editingId !== null) {
       updateProduct.mutate({ id: editingId, data });
@@ -408,62 +456,116 @@ export default function Menu() {
             <DialogTitle>{editingId ? "Editar Produto" : "Novo Produto"}</DialogTitle>
             <DialogDescription>Preencha os dados do produto.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div>
-              <Label>Nome *</Label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Ex: X-Burger"
-                data-testid="input-product-name"
-              />
-            </div>
-            <div>
-              <Label>Descrição</Label>
-              <Textarea
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Ingredientes, tamanho, etc."
-                rows={2}
-                data-testid="input-product-description"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-6 pt-2">
+            <div className="space-y-4 rounded-lg border p-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Produto</h3>
               <div>
-                <Label>Preço (R$) *</Label>
+                <Label>Nome *</Label>
                 <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={form.price}
-                  onChange={(e) => setForm({ ...form, price: e.target.value })}
-                  placeholder="0,00"
-                  data-testid="input-product-price"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="Ex: X-Burger"
+                  data-testid="input-product-name"
                 />
               </div>
               <div>
-                <Label>Categoria *</Label>
-                <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v })}>
-                  <SelectTrigger data-testid="select-product-category">
-                    <SelectValue placeholder="Selecionar" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories?.map((cat) => (
-                      <SelectItem key={cat.id} value={String(cat.id)}>{cat.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Descrição</Label>
+                <Textarea
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  placeholder="Ingredientes, tamanho, etc."
+                  rows={2}
+                  data-testid="input-product-description"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Preço de venda (R$) *</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.price}
+                    onChange={(e) => setForm({ ...form, price: e.target.value })}
+                    placeholder="0,00"
+                    data-testid="input-product-price"
+                  />
+                </div>
+                <div>
+                  <Label>Categoria *</Label>
+                  <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v })}>
+                    <SelectTrigger data-testid="select-product-category">
+                      <SelectValue placeholder="Selecionar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories?.map((cat) => (
+                        <SelectItem key={cat.id} value={String(cat.id)}>{cat.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex items-center gap-3">
+                  <Switch
+                    checked={form.available}
+                    onCheckedChange={(v) => setForm({ ...form, available: v })}
+                    id="available"
+                    data-testid="switch-product-available"
+                  />
+                  <Label htmlFor="available">Disponível</Label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Switch
+                    checked={form.active}
+                    onCheckedChange={(v) => setForm({ ...form, active: v })}
+                    id="active"
+                    data-testid="switch-product-active"
+                  />
+                  <Label htmlFor="active">Ativo</Label>
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <Switch
-                checked={form.available}
-                onCheckedChange={(v) => setForm({ ...form, available: v })}
-                id="available"
-                data-testid="switch-product-available"
-              />
-              <Label htmlFor="available">Disponível no cardápio</Label>
+
+            <div className="space-y-4 rounded-lg border p-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Comercial</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>SKU</Label><Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></div>
+                <div><Label>Código de barras</Label><Input value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} /></div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div><Label>Custo (R$)</Label><Input type="number" min="0" step="0.01" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} /></div>
+                <div><Label>Unidade</Label><Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="unidade" /></div>
+                <div><Label>Preparo (min)</Label><Input type="number" min="0" step="1" value={form.preparationTimeMinutes} onChange={(e) => setForm({ ...form, preparationTimeMinutes: e.target.value })} /></div>
+              </div>
             </div>
+
+            <div className="space-y-4 rounded-lg border p-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Estoque opcional</h3>
+              <div className="flex items-center gap-3">
+                <Switch checked={form.trackStock} onCheckedChange={(v) => setForm({ ...form, trackStock: v })} id="trackStock" />
+                <Label htmlFor="trackStock">Controlar estoque</Label>
+              </div>
+              {form.trackStock && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label>Quantidade em estoque</Label><Input type="number" min="0" step="0.01" value={form.stockQty} onChange={(e) => setForm({ ...form, stockQty: e.target.value })} /></div>
+                    <div><Label>Estoque mínimo</Label><Input type="number" min="0" step="0.01" value={form.stockMinQty} onChange={(e) => setForm({ ...form, stockMinQty: e.target.value })} /></div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Switch checked={form.allowSaleWithoutStock} onCheckedChange={(v) => setForm({ ...form, allowSaleWithoutStock: v })} id="allowSaleWithoutStock" />
+                    <Label htmlFor="allowSaleWithoutStock">Permitir venda sem estoque</Label>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="space-y-4 rounded-lg border p-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Imagem</h3>
+              <div><Label>URL da imagem</Label><Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="https://..." /></div>
+              <div><Label>Texto alternativo</Label><Input value={form.imageAlt} onChange={(e) => setForm({ ...form, imageAlt: e.target.value })} /></div>
+            </div>
+
             {categories?.length === 0 && (
               <p className="text-sm text-amber-600 bg-amber-50 dark:bg-amber-900/20 rounded p-2">
                 ⚠️ Crie uma categoria primeiro antes de adicionar produtos.
