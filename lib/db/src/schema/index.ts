@@ -9,3 +9,4 @@ export * from "./couriers";
 export * from "./delivery";
 export * from "./settings";
 export * from "./delivery-cache";
+export * from "./tenancy";
