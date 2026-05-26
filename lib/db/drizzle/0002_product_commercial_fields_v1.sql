@@ -1,0 +1,13 @@
+ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "sku" text;
+ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "barcode" text;
+ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "cost_price" numeric(10,2);
+ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "track_stock" boolean DEFAULT false NOT NULL;
+ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "allow_sale_without_stock" boolean DEFAULT false NOT NULL;
+ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "stock_qty" numeric(10,2);
+ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "stock_min_qty" numeric(10,2);
+ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "unit" text DEFAULT 'unidade' NOT NULL;
+ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "preparation_time_minutes" integer;
+ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "image_url" text;
+ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "image_storage_key" text;
+ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "image_provider" text;
+ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "image_alt" text;

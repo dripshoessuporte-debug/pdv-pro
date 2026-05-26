@@ -12,6 +12,29 @@ export interface Product {
   /** @nullable */
   description?: string | null;
   price: number;
+  /** @nullable */
+  sku?: string | null;
+  /** @nullable */
+  barcode?: string | null;
+  /** @nullable */
+  costPrice?: number | null;
+  trackStock?: boolean;
+  allowSaleWithoutStock?: boolean;
+  /** @nullable */
+  stockQty?: number | null;
+  /** @nullable */
+  stockMinQty?: number | null;
+  unit?: string;
+  /** @nullable */
+  preparationTimeMinutes?: number | null;
+  /** @nullable */
+  imageUrl?: string | null;
+  /** @nullable */
+  imageStorageKey?: string | null;
+  /** @nullable */
+  imageProvider?: string | null;
+  /** @nullable */
+  imageAlt?: string | null;
   available: boolean;
   active: boolean;
   categoryId: number;

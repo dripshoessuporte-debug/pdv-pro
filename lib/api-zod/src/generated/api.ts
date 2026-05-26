@@ -245,6 +245,19 @@ export const ListProductsResponseItem = zod.object({
   "name": zod.string(),
   "description": zod.string().nullish(),
   "price": zod.number(),
+  "sku": zod.string().nullish(),
+  "barcode": zod.string().nullish(),
+  "costPrice": zod.number().nullish(),
+  "trackStock": zod.boolean().optional(),
+  "allowSaleWithoutStock": zod.boolean().optional(),
+  "stockQty": zod.number().nullish(),
+  "stockMinQty": zod.number().nullish(),
+  "unit": zod.string().optional(),
+  "preparationTimeMinutes": zod.number().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "imageStorageKey": zod.string().nullish(),
+  "imageProvider": zod.string().nullish(),
+  "imageAlt": zod.string().nullish(),
   "available": zod.boolean(),
   "active": zod.boolean(),
   "categoryId": zod.number(),
@@ -259,12 +272,34 @@ export const ListProductsResponse = zod.array(ListProductsResponseItem)
 
 export const createProductBodyPriceMin = 0;
 
+export const createProductBodyCostPriceMin = 0;
+
+export const createProductBodyStockQtyMin = 0;
+
+export const createProductBodyStockMinQtyMin = 0;
+
+
+export const createProductBodyPreparationTimeMinutesMin = 0;
+
 
 
 export const CreateProductBody = zod.object({
   "name": zod.string().min(1),
   "description": zod.string().optional(),
   "price": zod.number().min(createProductBodyPriceMin),
+  "sku": zod.string().optional(),
+  "barcode": zod.string().optional(),
+  "costPrice": zod.number().min(createProductBodyCostPriceMin).optional(),
+  "trackStock": zod.boolean().optional(),
+  "allowSaleWithoutStock": zod.boolean().optional(),
+  "stockQty": zod.number().min(createProductBodyStockQtyMin).optional(),
+  "stockMinQty": zod.number().min(createProductBodyStockMinQtyMin).optional(),
+  "unit": zod.string().min(1).optional(),
+  "preparationTimeMinutes": zod.number().min(createProductBodyPreparationTimeMinutesMin).optional(),
+  "imageUrl": zod.string().optional(),
+  "imageStorageKey": zod.string().optional(),
+  "imageProvider": zod.string().optional(),
+  "imageAlt": zod.string().optional(),
   "available": zod.boolean().optional(),
   "active": zod.boolean().optional(),
   "categoryId": zod.number()
@@ -283,6 +318,19 @@ export const GetProductResponse = zod.object({
   "name": zod.string(),
   "description": zod.string().nullish(),
   "price": zod.number(),
+  "sku": zod.string().nullish(),
+  "barcode": zod.string().nullish(),
+  "costPrice": zod.number().nullish(),
+  "trackStock": zod.boolean().optional(),
+  "allowSaleWithoutStock": zod.boolean().optional(),
+  "stockQty": zod.number().nullish(),
+  "stockMinQty": zod.number().nullish(),
+  "unit": zod.string().optional(),
+  "preparationTimeMinutes": zod.number().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "imageStorageKey": zod.string().nullish(),
+  "imageProvider": zod.string().nullish(),
+  "imageAlt": zod.string().nullish(),
   "available": zod.boolean(),
   "active": zod.boolean(),
   "categoryId": zod.number(),
@@ -300,12 +348,34 @@ export const UpdateProductParams = zod.object({
 
 export const updateProductBodyPriceMin = 0;
 
+export const updateProductBodyCostPriceMin = 0;
+
+export const updateProductBodyStockQtyMin = 0;
+
+export const updateProductBodyStockMinQtyMin = 0;
+
+
+export const updateProductBodyPreparationTimeMinutesMin = 0;
+
 
 
 export const UpdateProductBody = zod.object({
   "name": zod.string().min(1).optional(),
   "description": zod.string().optional(),
   "price": zod.number().min(updateProductBodyPriceMin).optional(),
+  "sku": zod.string().optional(),
+  "barcode": zod.string().optional(),
+  "costPrice": zod.number().min(updateProductBodyCostPriceMin).optional(),
+  "trackStock": zod.boolean().optional(),
+  "allowSaleWithoutStock": zod.boolean().optional(),
+  "stockQty": zod.number().min(updateProductBodyStockQtyMin).optional(),
+  "stockMinQty": zod.number().min(updateProductBodyStockMinQtyMin).optional(),
+  "unit": zod.string().min(1).optional(),
+  "preparationTimeMinutes": zod.number().min(updateProductBodyPreparationTimeMinutesMin).optional(),
+  "imageUrl": zod.string().optional(),
+  "imageStorageKey": zod.string().optional(),
+  "imageProvider": zod.string().optional(),
+  "imageAlt": zod.string().optional(),
   "available": zod.boolean().optional(),
   "active": zod.boolean().optional(),
   "categoryId": zod.number().optional()
@@ -316,6 +386,19 @@ export const UpdateProductResponse = zod.object({
   "name": zod.string(),
   "description": zod.string().nullish(),
   "price": zod.number(),
+  "sku": zod.string().nullish(),
+  "barcode": zod.string().nullish(),
+  "costPrice": zod.number().nullish(),
+  "trackStock": zod.boolean().optional(),
+  "allowSaleWithoutStock": zod.boolean().optional(),
+  "stockQty": zod.number().nullish(),
+  "stockMinQty": zod.number().nullish(),
+  "unit": zod.string().optional(),
+  "preparationTimeMinutes": zod.number().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "imageStorageKey": zod.string().nullish(),
+  "imageProvider": zod.string().nullish(),
+  "imageAlt": zod.string().nullish(),
   "available": zod.boolean(),
   "active": zod.boolean(),
   "categoryId": zod.number(),
@@ -862,10 +945,10 @@ export const GetAlertsResponse = zod.object({
   "routesInProgress": zod.number(),
   "routesAvailable": zod.number(),
   "readyNotActioned": zod.number(),
-  "activeOrdersCount": zod.number(),
-  "pendingKitchenCount": zod.number(),
   "deliveryWithoutRoute": zod.number(),
-  "cashRegisterOpenHours": zod.number()
+  "cashRegisterOpenHours": zod.number(),
+  "pendingKitchenCount": zod.number(),
+  "activeOrdersCount": zod.number()
 })
 
 
@@ -1335,4 +1418,5 @@ export const AdjustRouteTimeResponse = zod.object({
   "deliveryStatus": zod.string().nullish()
 }))
 })
+
 

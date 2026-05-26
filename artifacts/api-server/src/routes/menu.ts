@@ -127,6 +127,19 @@ const selectProductRow = {
   name: productsTable.name,
   description: productsTable.description,
   price: productsTable.price,
+  sku: productsTable.sku,
+  barcode: productsTable.barcode,
+  costPrice: productsTable.costPrice,
+  trackStock: productsTable.trackStock,
+  allowSaleWithoutStock: productsTable.allowSaleWithoutStock,
+  stockQty: productsTable.stockQty,
+  stockMinQty: productsTable.stockMinQty,
+  unit: productsTable.unit,
+  preparationTimeMinutes: productsTable.preparationTimeMinutes,
+  imageUrl: productsTable.imageUrl,
+  imageStorageKey: productsTable.imageStorageKey,
+  imageProvider: productsTable.imageProvider,
+  imageAlt: productsTable.imageAlt,
   available: productsTable.available,
   active: productsTable.active,
   categoryId: productsTable.categoryId,
@@ -170,6 +183,9 @@ router.get("/menu/products", async (req, res): Promise<void> => {
   res.json(ListProductsResponse.parse(rows.map((r) => ({
     ...r,
     price: parseFloat(r.price),
+    costPrice: r.costPrice === null ? null : parseFloat(r.costPrice),
+    stockQty: r.stockQty === null ? null : parseFloat(r.stockQty),
+    stockMinQty: r.stockMinQty === null ? null : parseFloat(r.stockMinQty),
   }))));
 });
 
@@ -203,6 +219,9 @@ router.post("/menu/products", async (req, res): Promise<void> => {
     ...parsed.data,
     name: parsed.data.name.trim(),
     price: String(parsed.data.price),
+    costPrice: parsed.data.costPrice === undefined ? undefined : parsed.data.costPrice === null ? null : String(parsed.data.costPrice),
+    stockQty: parsed.data.stockQty === undefined ? undefined : parsed.data.stockQty === null ? null : String(parsed.data.stockQty),
+    stockMinQty: parsed.data.stockMinQty === undefined ? undefined : parsed.data.stockMinQty === null ? null : String(parsed.data.stockMinQty),
   }).returning();
 
   const [row] = await db
@@ -211,7 +230,13 @@ router.post("/menu/products", async (req, res): Promise<void> => {
     .leftJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
     .where(eq(productsTable.id, product.id));
 
-  res.status(201).json(GetProductResponse.parse({ ...row, price: parseFloat(row!.price) }));
+  res.status(201).json(GetProductResponse.parse({
+    ...row,
+    price: parseFloat(row!.price),
+    costPrice: row!.costPrice === null ? null : parseFloat(row!.costPrice),
+    stockQty: row!.stockQty === null ? null : parseFloat(row!.stockQty),
+    stockMinQty: row!.stockMinQty === null ? null : parseFloat(row!.stockMinQty),
+  }));
 });
 
 router.get("/menu/products/:id", async (req, res): Promise<void> => {
@@ -232,7 +257,13 @@ router.get("/menu/products/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(GetProductResponse.parse({ ...row, price: parseFloat(row.price) }));
+  res.json(GetProductResponse.parse({
+    ...row,
+    price: parseFloat(row.price),
+    costPrice: row.costPrice === null ? null : parseFloat(row.costPrice),
+    stockQty: row.stockQty === null ? null : parseFloat(row.stockQty),
+    stockMinQty: row.stockMinQty === null ? null : parseFloat(row.stockMinQty),
+  }));
 });
 
 router.patch("/menu/products/:id", async (req, res): Promise<void> => {
@@ -273,6 +304,9 @@ router.patch("/menu/products/:id", async (req, res): Promise<void> => {
 
   const updateData: Record<string, unknown> = { ...parsed.data };
   if (parsed.data.price !== undefined) updateData.price = String(parsed.data.price);
+  if (parsed.data.costPrice !== undefined) updateData.costPrice = parsed.data.costPrice === null ? null : String(parsed.data.costPrice);
+  if (parsed.data.stockQty !== undefined) updateData.stockQty = parsed.data.stockQty === null ? null : String(parsed.data.stockQty);
+  if (parsed.data.stockMinQty !== undefined) updateData.stockMinQty = parsed.data.stockMinQty === null ? null : String(parsed.data.stockMinQty);
 
   const [product] = await db.update(productsTable).set(updateData).where(eq(productsTable.id, params.data.id)).returning();
   if (!product) {
@@ -286,7 +320,13 @@ router.patch("/menu/products/:id", async (req, res): Promise<void> => {
     .leftJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
     .where(eq(productsTable.id, product.id));
 
-  res.json(UpdateProductResponse.parse({ ...row, price: parseFloat(row!.price) }));
+  res.json(UpdateProductResponse.parse({
+    ...row,
+    price: parseFloat(row!.price),
+    costPrice: row!.costPrice === null ? null : parseFloat(row!.costPrice),
+    stockQty: row!.stockQty === null ? null : parseFloat(row!.stockQty),
+    stockMinQty: row!.stockMinQty === null ? null : parseFloat(row!.stockMinQty),
+  }));
 });
 
 router.delete("/menu/products/:id", async (req, res): Promise<void> => {

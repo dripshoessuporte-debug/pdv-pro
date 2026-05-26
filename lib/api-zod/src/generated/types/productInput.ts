@@ -12,6 +12,24 @@ export interface ProductInput {
   description?: string;
   /** @minimum 0 */
   price: number;
+  sku?: string;
+  barcode?: string;
+  /** @minimum 0 */
+  costPrice?: number;
+  trackStock?: boolean;
+  allowSaleWithoutStock?: boolean;
+  /** @minimum 0 */
+  stockQty?: number;
+  /** @minimum 0 */
+  stockMinQty?: number;
+  /** @minLength 1 */
+  unit?: string;
+  /** @minimum 0 */
+  preparationTimeMinutes?: number;
+  imageUrl?: string;
+  imageStorageKey?: string;
+  imageProvider?: string;
+  imageAlt?: string;
   available?: boolean;
   active?: boolean;
   categoryId: number;
