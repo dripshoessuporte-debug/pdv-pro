@@ -1118,6 +1118,32 @@ components:
           type: ["string", "null"]
         price:
           type: number
+        sku:
+          type: ["string", "null"]
+        barcode:
+          type: ["string", "null"]
+        costPrice:
+          type: ["number", "null"]
+        trackStock:
+          type: boolean
+        allowSaleWithoutStock:
+          type: boolean
+        stockQty:
+          type: ["number", "null"]
+        stockMinQty:
+          type: ["number", "null"]
+        unit:
+          type: string
+        preparationTimeMinutes:
+          type: ["integer", "null"]
+        imageUrl:
+          type: ["string", "null"]
+        imageStorageKey:
+          type: ["string", "null"]
+        imageProvider:
+          type: ["string", "null"]
+        imageAlt:
+          type: ["string", "null"]
         available:
           type: boolean
         active:
@@ -1139,6 +1165,37 @@ components:
         price:
           type: number
           minimum: 0
+        sku:
+          type: string
+        barcode:
+          type: string
+        costPrice:
+          type: number
+          minimum: 0
+        trackStock:
+          type: boolean
+        allowSaleWithoutStock:
+          type: boolean
+        stockQty:
+          type: number
+          minimum: 0
+        stockMinQty:
+          type: number
+          minimum: 0
+        unit:
+          type: string
+          minLength: 1
+        preparationTimeMinutes:
+          type: integer
+          minimum: 0
+        imageUrl:
+          type: string
+        imageStorageKey:
+          type: string
+        imageProvider:
+          type: string
+        imageAlt:
+          type: string
         available:
           type: boolean
         active:
@@ -1157,6 +1214,37 @@ components:
         price:
           type: number
           minimum: 0
+        sku:
+          type: string
+        barcode:
+          type: string
+        costPrice:
+          type: number
+          minimum: 0
+        trackStock:
+          type: boolean
+        allowSaleWithoutStock:
+          type: boolean
+        stockQty:
+          type: number
+          minimum: 0
+        stockMinQty:
+          type: number
+          minimum: 0
+        unit:
+          type: string
+          minLength: 1
+        preparationTimeMinutes:
+          type: integer
+          minimum: 0
+        imageUrl:
+          type: string
+        imageStorageKey:
+          type: string
+        imageProvider:
+          type: string
+        imageAlt:
+          type: string
         available:
           type: boolean
         active:
@@ -1416,7 +1504,7 @@ components:
     # Dashboard
     AlertsSummary:
       type: object
-      required: [awaitingSettlement, routesInProgress, routesAvailable, readyNotActioned, deliveryWithoutRoute, cashRegisterOpenHours]
+      required: [awaitingSettlement, routesInProgress, routesAvailable, readyNotActioned, deliveryWithoutRoute, cashRegisterOpenHours, pendingKitchenCount, activeOrdersCount]
       properties:
         awaitingSettlement:
           type: integer
@@ -1430,6 +1518,10 @@ components:
           type: integer
         cashRegisterOpenHours:
           type: number
+        pendingKitchenCount:
+          type: integer
+        activeOrdersCount:
+          type: integer
 
     DashboardSummary:
       type: object

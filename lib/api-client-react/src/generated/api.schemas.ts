@@ -114,6 +114,29 @@ export interface Product {
   /** @nullable */
   description?: string | null;
   price: number;
+  /** @nullable */
+  sku?: string | null;
+  /** @nullable */
+  barcode?: string | null;
+  /** @nullable */
+  costPrice?: number | null;
+  trackStock?: boolean;
+  allowSaleWithoutStock?: boolean;
+  /** @nullable */
+  stockQty?: number | null;
+  /** @nullable */
+  stockMinQty?: number | null;
+  unit?: string;
+  /** @nullable */
+  preparationTimeMinutes?: number | null;
+  /** @nullable */
+  imageUrl?: string | null;
+  /** @nullable */
+  imageStorageKey?: string | null;
+  /** @nullable */
+  imageProvider?: string | null;
+  /** @nullable */
+  imageAlt?: string | null;
   available: boolean;
   active: boolean;
   categoryId: number;
@@ -127,6 +150,24 @@ export interface ProductInput {
   description?: string;
   /** @minimum 0 */
   price: number;
+  sku?: string;
+  barcode?: string;
+  /** @minimum 0 */
+  costPrice?: number;
+  trackStock?: boolean;
+  allowSaleWithoutStock?: boolean;
+  /** @minimum 0 */
+  stockQty?: number;
+  /** @minimum 0 */
+  stockMinQty?: number;
+  /** @minLength 1 */
+  unit?: string;
+  /** @minimum 0 */
+  preparationTimeMinutes?: number;
+  imageUrl?: string;
+  imageStorageKey?: string;
+  imageProvider?: string;
+  imageAlt?: string;
   available?: boolean;
   active?: boolean;
   categoryId: number;
@@ -138,6 +179,24 @@ export interface ProductUpdate {
   description?: string;
   /** @minimum 0 */
   price?: number;
+  sku?: string;
+  barcode?: string;
+  /** @minimum 0 */
+  costPrice?: number;
+  trackStock?: boolean;
+  allowSaleWithoutStock?: boolean;
+  /** @minimum 0 */
+  stockQty?: number;
+  /** @minimum 0 */
+  stockMinQty?: number;
+  /** @minLength 1 */
+  unit?: string;
+  /** @minimum 0 */
+  preparationTimeMinutes?: number;
+  imageUrl?: string;
+  imageStorageKey?: string;
+  imageProvider?: string;
+  imageAlt?: string;
   available?: boolean;
   active?: boolean;
   categoryId?: number;
@@ -433,10 +492,10 @@ export interface AlertsSummary {
   routesInProgress: number;
   routesAvailable: number;
   readyNotActioned: number;
-  activeOrdersCount: number;
-  pendingKitchenCount: number;
   deliveryWithoutRoute: number;
   cashRegisterOpenHours: number;
+  pendingKitchenCount: number;
+  activeOrdersCount: number;
 }
 
 export interface DashboardSummary {
@@ -851,3 +910,4 @@ export const ListOrdersStatus = {
   closed: 'closed',
   cancelled: 'cancelled',
 } as const;
+
