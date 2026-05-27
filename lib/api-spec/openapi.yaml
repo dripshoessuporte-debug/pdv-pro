@@ -453,20 +453,170 @@ paths:
 
   /menu/variant-templates:
     get:
+      operationId: listVariantTemplates
+      tags: [menu]
       summary: List variant templates
       responses:
-        '200':
+        "200":
           description: List of variant templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
     post:
+      operationId: createVariantTemplate
+      tags: [menu]
       summary: Create variant template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+                active:
+                  type: boolean
       responses:
-        '201':
+        "201":
           description: Created
+  /menu/variant-templates/{id}:
+    patch:
+      operationId: updateVariantTemplate
+      tags: [menu]
+      summary: Update variant template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Updated
+    delete:
+      operationId: deleteVariantTemplate
+      tags: [menu]
+      summary: Delete variant template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+  /menu/variant-templates/{id}/options:
+    get:
+      operationId: listVariantTemplateOptions
+      tags: [menu]
+      summary: List variant template options
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of options
+    post:
+      operationId: createVariantTemplateOption
+      tags: [menu]
+      summary: Create variant template option
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, price]
+              properties:
+                name:
+                  type: string
+                price:
+                  type: number
+                available:
+                  type: boolean
+      responses:
+        "201":
+          description: Created
+  /menu/variant-template-options/{id}:
+    patch:
+      operationId: updateVariantTemplateOption
+      tags: [menu]
+      summary: Update variant template option
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Updated
+    delete:
+      operationId: deleteVariantTemplateOption
+      tags: [menu]
+      summary: Delete variant template option
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
   /menu/products/{id}/apply-variant-template:
     post:
+      operationId: applyVariantTemplateToProduct
+      tags: [menu]
       summary: Apply variant template to product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [templateId]
+              properties:
+                templateId:
+                  type: integer
       responses:
-        '201':
+        "201":
           description: Created product variants
 
   /menu/product-variants/{id}:

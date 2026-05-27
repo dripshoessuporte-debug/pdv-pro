@@ -458,6 +458,99 @@ export const CreateProductVariantBody = zod.object({
 
 
 /**
+ * @summary List variant templates
+ */
+export const ListVariantTemplatesResponseItem = zod.object({
+
+}).passthrough()
+export const ListVariantTemplatesResponse = zod.array(ListVariantTemplatesResponseItem)
+
+
+/**
+ * @summary Create variant template
+ */
+export const CreateVariantTemplateBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "active": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Update variant template
+ */
+export const UpdateVariantTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateVariantTemplateBody = zod.object({
+
+}).passthrough()
+
+
+/**
+ * @summary Delete variant template
+ */
+export const DeleteVariantTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary List variant template options
+ */
+export const ListVariantTemplateOptionsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary Create variant template option
+ */
+export const CreateVariantTemplateOptionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CreateVariantTemplateOptionBody = zod.object({
+  "name": zod.string(),
+  "price": zod.number(),
+  "available": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Update variant template option
+ */
+export const UpdateVariantTemplateOptionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateVariantTemplateOptionBody = zod.object({
+
+}).passthrough()
+
+
+/**
+ * @summary Delete variant template option
+ */
+export const DeleteVariantTemplateOptionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary Apply variant template to product
+ */
+export const ApplyVariantTemplateToProductParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ApplyVariantTemplateToProductBody = zod.object({
+  "templateId": zod.number()
+})
+
+
+/**
  * @summary Update a product variant
  */
 export const UpdateProductVariantParams = zod.object({

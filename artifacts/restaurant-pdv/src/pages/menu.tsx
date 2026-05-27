@@ -122,6 +122,7 @@ export default function Menu() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [templateForm, setTemplateForm] = useState({ id: 0, name: "", description: "" });
   const [templateOptionForm, setTemplateOptionForm] = useState({ templateId: 0, name: "", price: "", available: true });
+  const [editingTemplateOptionId, setEditingTemplateOptionId] = useState<number>(0);
   const [templateOptionsMap, setTemplateOptionsMap] = useState<Record<number, VariantTemplateOption[]>>({});
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -386,19 +387,48 @@ export default function Menu() {
     const method = isEdit ? "PATCH" : "POST";
     const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: templateForm.name, description: templateForm.description || null }) });
     if (res.ok) {
+      toast({ title: isEdit ? "Modelo atualizado com sucesso." : "Modelo criado com sucesso." });
       setTemplateForm({ id: 0, name: "", description: "" });
       await loadTemplates();
+      return;
     }
+    toast({ title: isEdit ? "Erro ao salvar modelo." : "Erro ao criar modelo.", variant: "destructive" });
   };
   const saveTemplateOption = async () => {
     if (!templateOptionForm.templateId || !templateOptionForm.name.trim() || !templateOptionForm.price) return;
-    const res = await fetch(`/api/menu/variant-templates/${templateOptionForm.templateId}/options`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: templateOptionForm.name, price: parseFloat(templateOptionForm.price), available: templateOptionForm.available }),
+    const isEdit = editingTemplateOptionId > 0;
+    const url = isEdit ? `/api/menu/variant-template-options/${editingTemplateOptionId}` : `/api/menu/variant-templates/${templateOptionForm.templateId}/options`;
+    const res = await fetch(url, {
+      method: isEdit ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: templateOptionForm.name, price: parseFloat(templateOptionForm.price), available: templateOptionForm.available }),
     });
     if (res.ok) {
-      setTemplateOptionForm({ ...templateOptionForm, name: "", price: "" });
+      toast({ title: isEdit ? "Opção atualizada com sucesso." : "Opção adicionada com sucesso." });
+      setEditingTemplateOptionId(0);
+      setTemplateOptionForm({ ...templateOptionForm, name: "", price: "", available: true });
       await loadTemplates();
+      return;
     }
+    toast({ title: isEdit ? "Erro ao atualizar opção." : "Erro ao adicionar opção.", variant: "destructive" });
+  };
+  const removeTemplateOption = async (id: number) => {
+    const res = await fetch(`/api/menu/variant-template-options/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      toast({ title: "Opção removida com sucesso." });
+      await loadTemplates();
+      return;
+    }
+    toast({ title: "Erro ao remover opção.", variant: "destructive" });
+  };
+  const removeTemplate = async (id: number) => {
+    const res = await fetch(`/api/menu/variant-templates/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      toast({ title: "Modelo removido com sucesso." });
+      await loadTemplates();
+      return;
+    }
+    toast({ title: "Erro ao remover modelo.", variant: "destructive" });
   };
   const applyTemplateToProduct = async () => {
     if (!editingId || !selectedTemplateId) return;
@@ -410,7 +440,7 @@ export default function Menu() {
       return;
     }
     invalidateVariants();
-    toast({ title: "Modelo aplicado! As variações foram copiadas para o produto." });
+    toast({ title: "Modelo aplicado com sucesso! As variações foram copiadas para o produto." });
   };
 
   return (
@@ -701,7 +731,7 @@ export default function Menu() {
             <div className="space-y-3 rounded-lg border p-3">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Variações do produto</h3>
               {editingId === null ? (
-                <p className="text-sm text-muted-foreground">Salve o produto primeiro para adicionar variações.</p>
+                <p className="text-sm text-muted-foreground">Salve o produto primeiro para aplicar um modelo de variação.</p>
               ) : (
                 <div className="space-y-3">
                   {loadingVariants ? (
@@ -788,23 +818,52 @@ export default function Menu() {
               <Input placeholder="Nome do modelo" value={templateForm.name} onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })} />
               <Input placeholder="Descrição (opcional)" value={templateForm.description} onChange={(e) => setTemplateForm({ ...templateForm, description: e.target.value })} />
             </div>
-            <Button onClick={saveTemplate}>{templateForm.id ? "Salvar modelo" : "Criar modelo"}</Button>
+            <div className="flex gap-2">
+              <Button onClick={saveTemplate}>{templateForm.id ? "Salvar modelo" : "Criar modelo"}</Button>
+              {templateForm.id > 0 ? (
+                <Button variant="outline" onClick={() => setTemplateForm({ id: 0, name: "", description: "" })}>Cancelar edição</Button>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2 rounded border p-2">
+              <Switch checked={templateOptionForm.available} onCheckedChange={(v) => setTemplateOptionForm({ ...templateOptionForm, available: v })} id="template-option-available" />
+              <Label htmlFor="template-option-available">Opção disponível</Label>
+            </div>
             <div className="space-y-2 max-h-72 overflow-y-auto">
               {templates.map((t) => (
                 <div key={t.id} className="rounded border p-2 space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="font-medium">{t.name}</p>
-                    <Button variant="outline" size="sm" onClick={() => setTemplateForm({ id: t.id, name: t.name, description: t.description ?? "" })}>Editar</Button>
+                    <div className="flex gap-1">
+                      <Button variant="outline" size="sm" onClick={() => setTemplateForm({ id: t.id, name: t.name, description: t.description ?? "" })}>Editar</Button>
+                      <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => removeTemplate(t.id)}>Remover</Button>
+                    </div>
                   </div>
                   <p className="text-xs text-muted-foreground">{t.description ?? "Sem descrição"}</p>
                   <div className="space-y-1">
-                    {(templateOptionsMap[t.id] ?? []).map((op) => <p key={op.id} className="text-xs">{op.name} • R$ {op.price.toFixed(2)} • {op.available ? "Disponível" : "Indisponível"}</p>)}
+                    {(templateOptionsMap[t.id] ?? []).map((op) => (
+                      <div key={op.id} className="flex items-center justify-between rounded border p-1.5 text-xs">
+                        <p>{op.name} • R$ {op.price.toFixed(2)} • {op.available ? "Disponível" : "Indisponível"}</p>
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="outline" onClick={() => { setEditingTemplateOptionId(op.id); setTemplateOptionForm({ templateId: t.id, name: op.name, price: String(op.price), available: op.available }); }}>
+                            <Pencil className="w-3 h-3" />
+                          </Button>
+                          <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => removeTemplateOption(op.id)}>
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <Input placeholder="Opção" value={templateOptionForm.templateId === t.id ? templateOptionForm.name : ""} onChange={(e) => setTemplateOptionForm({ ...templateOptionForm, templateId: t.id, name: e.target.value })} />
                     <Input type="number" step="0.01" min="0" placeholder="Preço" value={templateOptionForm.templateId === t.id ? templateOptionForm.price : ""} onChange={(e) => setTemplateOptionForm({ ...templateOptionForm, templateId: t.id, price: e.target.value })} />
-                    <Button variant="outline" onClick={saveTemplateOption}>Adicionar opção</Button>
+                    <Button variant="outline" onClick={saveTemplateOption}>{editingTemplateOptionId > 0 ? "Salvar opção" : "Adicionar opção"}</Button>
                   </div>
+                  {editingTemplateOptionId > 0 && templateOptionForm.templateId === t.id ? (
+                    <Button size="sm" variant="ghost" onClick={() => { setEditingTemplateOptionId(0); setTemplateOptionForm({ templateId: t.id, name: "", price: "", available: true }); }}>
+                      Cancelar edição da opção
+                    </Button>
+                  ) : null}
                 </div>
               ))}
             </div>

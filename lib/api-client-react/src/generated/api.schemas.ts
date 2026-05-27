@@ -928,6 +928,28 @@ availableOnly?: boolean;
 includeInactive?: boolean;
 };
 
+export type ListVariantTemplates200Item = { [key: string]: unknown };
+
+export type CreateVariantTemplateBody = {
+  name: string;
+  description?: string | null;
+  active?: boolean;
+};
+
+export type UpdateVariantTemplateBody = { [key: string]: unknown };
+
+export type CreateVariantTemplateOptionBody = {
+  name: string;
+  price: number;
+  available?: boolean;
+};
+
+export type UpdateVariantTemplateOptionBody = { [key: string]: unknown };
+
+export type ApplyVariantTemplateToProductBody = {
+  templateId: number;
+};
+
 export type ListOrdersParams = {
 status?: ListOrdersStatus;
 tableId?: number;
