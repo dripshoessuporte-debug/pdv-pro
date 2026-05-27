@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, ilike, and, ne } from "drizzle-orm";
-import { db, categoriesTable, productsTable, productVariantsTable, orderItemsTable } from "@workspace/db";
+import { db, categoriesTable, productsTable, productVariantsTable, orderItemsTable, variantTemplatesTable, variantTemplateOptionsTable } from "@workspace/db";
 import {
   CreateCategoryBody,
   UpdateCategoryParams,
@@ -416,6 +416,97 @@ router.delete("/menu/product-variants/:id", async (req, res): Promise<void> => {
   const [deleted] = await db.delete(productVariantsTable).where(eq(productVariantsTable.id, id)).returning();
   if (!deleted) return void res.status(404).json({ error: "Variação não encontrada." });
   res.sendStatus(204);
+});
+
+router.get("/menu/variant-templates", async (_req, res): Promise<void> => {
+  const rows = await db.select().from(variantTemplatesTable).orderBy(variantTemplatesTable.name);
+  res.json(rows);
+});
+
+router.post("/menu/variant-templates", async (req, res): Promise<void> => {
+  const body = req.body as { name?: string; description?: string; active?: boolean };
+  if (!body?.name?.trim()) return void res.status(400).json({ error: "Nome é obrigatório." });
+  const [created] = await db.insert(variantTemplatesTable).values({
+    name: body.name.trim(), description: body.description?.trim() || null, active: body.active ?? true,
+  }).returning();
+  res.status(201).json(created);
+});
+
+router.patch("/menu/variant-templates/:id", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return void res.status(400).json({ error: "ID inválido." });
+  const body = req.body as { name?: string; description?: string | null; active?: boolean };
+  const data: Record<string, unknown> = { updatedAt: new Date() };
+  if (body.name !== undefined) data.name = body.name.trim();
+  if (body.description !== undefined) data.description = body.description?.trim() || null;
+  if (body.active !== undefined) data.active = body.active;
+  const [updated] = await db.update(variantTemplatesTable).set(data).where(eq(variantTemplatesTable.id, id)).returning();
+  if (!updated) return void res.status(404).json({ error: "Modelo não encontrado." });
+  res.json(updated);
+});
+
+router.delete("/menu/variant-templates/:id", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return void res.status(400).json({ error: "ID inválido." });
+  await db.delete(variantTemplateOptionsTable).where(eq(variantTemplateOptionsTable.templateId, id));
+  const [deleted] = await db.delete(variantTemplatesTable).where(eq(variantTemplatesTable.id, id)).returning();
+  if (!deleted) return void res.status(404).json({ error: "Modelo não encontrado." });
+  res.sendStatus(204);
+});
+
+router.get("/menu/variant-templates/:id/options", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return void res.status(400).json({ error: "ID inválido." });
+  const rows = await db.select().from(variantTemplateOptionsTable).where(eq(variantTemplateOptionsTable.templateId, id)).orderBy(variantTemplateOptionsTable.sortOrder, variantTemplateOptionsTable.id);
+  res.json(rows.map((r) => ({ ...r, price: parseFloat(r.price) })));
+});
+
+router.post("/menu/variant-templates/:id/options", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const body = req.body as { name?: string; price?: number; available?: boolean; sortOrder?: number };
+  if (!Number.isInteger(id) || !body?.name?.trim() || typeof body.price !== "number" || body.price < 0 || !Number.isFinite(body.price)) return void res.status(400).json({ error: "Dados inválidos." });
+  const [created] = await db.insert(variantTemplateOptionsTable).values({
+    templateId: id, name: body.name.trim(), price: String(body.price), available: body.available ?? true, sortOrder: body.sortOrder ?? 0,
+  }).returning();
+  res.status(201).json({ ...created, price: parseFloat(created.price) });
+});
+
+router.patch("/menu/variant-template-options/:id", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return void res.status(400).json({ error: "ID inválido." });
+  const body = req.body as { name?: string; price?: number; available?: boolean; sortOrder?: number };
+  if (body.price !== undefined && (typeof body.price !== "number" || body.price < 0 || !Number.isFinite(body.price))) return void res.status(400).json({ error: "Preço inválido." });
+  const data: Record<string, unknown> = { updatedAt: new Date() };
+  if (body.name !== undefined) data.name = body.name.trim();
+  if (body.price !== undefined) data.price = String(body.price);
+  if (body.available !== undefined) data.available = body.available;
+  if (body.sortOrder !== undefined) data.sortOrder = body.sortOrder;
+  const [updated] = await db.update(variantTemplateOptionsTable).set(data).where(eq(variantTemplateOptionsTable.id, id)).returning();
+  if (!updated) return void res.status(404).json({ error: "Opção não encontrada." });
+  res.json({ ...updated, price: parseFloat(updated.price) });
+});
+
+router.delete("/menu/variant-template-options/:id", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return void res.status(400).json({ error: "ID inválido." });
+  const [deleted] = await db.delete(variantTemplateOptionsTable).where(eq(variantTemplateOptionsTable.id, id)).returning();
+  if (!deleted) return void res.status(404).json({ error: "Opção não encontrada." });
+  res.sendStatus(204);
+});
+
+router.post("/menu/products/:id/apply-variant-template", async (req, res): Promise<void> => {
+  const productId = Number(req.params.id);
+  const templateId = Number((req.body as { templateId?: number }).templateId);
+  if (!Number.isInteger(productId) || !Number.isInteger(templateId)) return void res.status(400).json({ error: "IDs inválidos." });
+  const [product] = await db.select({ id: productsTable.id, storeId: productsTable.storeId }).from(productsTable).where(eq(productsTable.id, productId)).limit(1);
+  if (!product) return void res.status(404).json({ error: "Produto não encontrado." });
+  const [template] = await db.select({ id: variantTemplatesTable.id, active: variantTemplatesTable.active }).from(variantTemplatesTable).where(eq(variantTemplatesTable.id, templateId)).limit(1);
+  if (!template || !template.active) return void res.status(404).json({ error: "Modelo não encontrado ou inativo." });
+  const options = await db.select().from(variantTemplateOptionsTable).where(and(eq(variantTemplateOptionsTable.templateId, templateId), eq(variantTemplateOptionsTable.available, true))).orderBy(variantTemplateOptionsTable.sortOrder, variantTemplateOptionsTable.id);
+  const created = options.length ? await db.insert(productVariantsTable).values(options.map((opt) => ({
+    productId: product.id, storeId: product.storeId, name: opt.name, price: opt.price, active: true, available: opt.available, sortOrder: opt.sortOrder,
+  }))).returning() : [];
+  res.status(201).json(created.map((r) => ({ ...r, price: parseFloat(r.price) })));
 });
 
 export default router;

@@ -68,6 +68,39 @@ export const productVariantsTable = pgTable(
   ]
 );
 
+export const variantTemplatesTable = pgTable(
+  "variant_templates",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().default(1).references(() => storesTable.id),
+    name: text("name").notNull(),
+    description: text("description"),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("variant_templates_store_id_idx").on(table.storeId),
+  ]
+);
+
+export const variantTemplateOptionsTable = pgTable(
+  "variant_template_options",
+  {
+    id: serial("id").primaryKey(),
+    templateId: integer("template_id").notNull().references(() => variantTemplatesTable.id),
+    name: text("name").notNull(),
+    price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+    available: boolean("available").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("variant_template_options_template_id_idx").on(table.templateId),
+  ]
+);
+
 export const insertCategorySchema = createInsertSchema(categoriesTable).omit({ id: true });
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type Category = typeof categoriesTable.$inferSelect;
@@ -79,3 +112,11 @@ export type Product = typeof productsTable.$inferSelect;
 export const insertProductVariantSchema = createInsertSchema(productVariantsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertProductVariant = z.infer<typeof insertProductVariantSchema>;
 export type ProductVariant = typeof productVariantsTable.$inferSelect;
+
+export const insertVariantTemplateSchema = createInsertSchema(variantTemplatesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertVariantTemplate = z.infer<typeof insertVariantTemplateSchema>;
+export type VariantTemplate = typeof variantTemplatesTable.$inferSelect;
+
+export const insertVariantTemplateOptionSchema = createInsertSchema(variantTemplateOptionsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertVariantTemplateOption = z.infer<typeof insertVariantTemplateOptionSchema>;
+export type VariantTemplateOption = typeof variantTemplateOptionsTable.$inferSelect;

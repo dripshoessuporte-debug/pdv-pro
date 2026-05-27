@@ -22,6 +22,7 @@ import type {
 import type {
   AdjustRouteTimeInput,
   AlertsSummary,
+  ApplyVariantTemplateToProductBody,
   AwaitingSettlementOrder,
   CashMovement,
   CashMovementInput,
@@ -32,6 +33,8 @@ import type {
   CategoryInput,
   CategorySales,
   CategoryUpdate,
+  CreateVariantTemplateBody,
+  CreateVariantTemplateOptionBody,
   Customer,
   CustomerInput,
   CustomerUpdate,
@@ -45,6 +48,7 @@ import type {
   ListCustomersParams,
   ListOrdersParams,
   ListProductsParams,
+  ListVariantTemplates200Item,
   Order,
   OrderInput,
   OrderItem,
@@ -64,7 +68,9 @@ import type {
   StoreSettingsInput,
   Table,
   TableInput,
-  TableUpdate
+  TableUpdate,
+  UpdateVariantTemplateBody,
+  UpdateVariantTemplateOptionBody
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -1709,6 +1715,659 @@ export const useCreateProductVariant = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateProductVariantMutationOptions(options));
+    }
+
+export const getListVariantTemplatesUrl = () => {
+
+
+
+
+  return `/api/menu/variant-templates`
+}
+
+/**
+ * @summary List variant templates
+ */
+export const listVariantTemplates = async ( options?: RequestInit): Promise<ListVariantTemplates200Item[]> => {
+
+  return customFetch<ListVariantTemplates200Item[]>(getListVariantTemplatesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVariantTemplatesQueryKey = () => {
+    return [
+    `/api/menu/variant-templates`
+    ] as const;
+    }
+
+
+export const getListVariantTemplatesQueryOptions = <TData = Awaited<ReturnType<typeof listVariantTemplates>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVariantTemplates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVariantTemplatesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVariantTemplates>>> = ({ signal }) => listVariantTemplates({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVariantTemplates>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVariantTemplatesQueryResult = NonNullable<Awaited<ReturnType<typeof listVariantTemplates>>>
+export type ListVariantTemplatesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List variant templates
+ */
+
+export function useListVariantTemplates<TData = Awaited<ReturnType<typeof listVariantTemplates>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVariantTemplates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVariantTemplatesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateVariantTemplateUrl = () => {
+
+
+
+
+  return `/api/menu/variant-templates`
+}
+
+/**
+ * @summary Create variant template
+ */
+export const createVariantTemplate = async (createVariantTemplateBody: CreateVariantTemplateBody, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getCreateVariantTemplateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createVariantTemplateBody,)
+  }
+);}
+
+
+
+
+export const getCreateVariantTemplateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVariantTemplate>>, TError,{data: BodyType<CreateVariantTemplateBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createVariantTemplate>>, TError,{data: BodyType<CreateVariantTemplateBody>}, TContext> => {
+
+const mutationKey = ['createVariantTemplate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createVariantTemplate>>, {data: BodyType<CreateVariantTemplateBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createVariantTemplate(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateVariantTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof createVariantTemplate>>>
+    export type CreateVariantTemplateMutationBody = BodyType<CreateVariantTemplateBody>
+    export type CreateVariantTemplateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create variant template
+ */
+export const useCreateVariantTemplate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVariantTemplate>>, TError,{data: BodyType<CreateVariantTemplateBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createVariantTemplate>>,
+        TError,
+        {data: BodyType<CreateVariantTemplateBody>},
+        TContext
+      > => {
+      return useMutation(getCreateVariantTemplateMutationOptions(options));
+    }
+
+export const getUpdateVariantTemplateUrl = (id: number,) => {
+
+
+
+
+  return `/api/menu/variant-templates/${id}`
+}
+
+/**
+ * @summary Update variant template
+ */
+export const updateVariantTemplate = async (id: number,
+    updateVariantTemplateBody: UpdateVariantTemplateBody, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getUpdateVariantTemplateUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateVariantTemplateBody,)
+  }
+);}
+
+
+
+
+export const getUpdateVariantTemplateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVariantTemplate>>, TError,{id: number;data: BodyType<UpdateVariantTemplateBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateVariantTemplate>>, TError,{id: number;data: BodyType<UpdateVariantTemplateBody>}, TContext> => {
+
+const mutationKey = ['updateVariantTemplate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateVariantTemplate>>, {id: number;data: BodyType<UpdateVariantTemplateBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateVariantTemplate(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateVariantTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof updateVariantTemplate>>>
+    export type UpdateVariantTemplateMutationBody = BodyType<UpdateVariantTemplateBody>
+    export type UpdateVariantTemplateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update variant template
+ */
+export const useUpdateVariantTemplate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVariantTemplate>>, TError,{id: number;data: BodyType<UpdateVariantTemplateBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateVariantTemplate>>,
+        TError,
+        {id: number;data: BodyType<UpdateVariantTemplateBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateVariantTemplateMutationOptions(options));
+    }
+
+export const getDeleteVariantTemplateUrl = (id: number,) => {
+
+
+
+
+  return `/api/menu/variant-templates/${id}`
+}
+
+/**
+ * @summary Delete variant template
+ */
+export const deleteVariantTemplate = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteVariantTemplateUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteVariantTemplateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVariantTemplate>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteVariantTemplate>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteVariantTemplate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteVariantTemplate>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteVariantTemplate(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteVariantTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof deleteVariantTemplate>>>
+
+    export type DeleteVariantTemplateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete variant template
+ */
+export const useDeleteVariantTemplate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVariantTemplate>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteVariantTemplate>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteVariantTemplateMutationOptions(options));
+    }
+
+export const getListVariantTemplateOptionsUrl = (id: number,) => {
+
+
+
+
+  return `/api/menu/variant-templates/${id}/options`
+}
+
+/**
+ * @summary List variant template options
+ */
+export const listVariantTemplateOptions = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getListVariantTemplateOptionsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVariantTemplateOptionsQueryKey = (id: number,) => {
+    return [
+    `/api/menu/variant-templates/${id}/options`
+    ] as const;
+    }
+
+
+export const getListVariantTemplateOptionsQueryOptions = <TData = Awaited<ReturnType<typeof listVariantTemplateOptions>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVariantTemplateOptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVariantTemplateOptionsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVariantTemplateOptions>>> = ({ signal }) => listVariantTemplateOptions(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVariantTemplateOptions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVariantTemplateOptionsQueryResult = NonNullable<Awaited<ReturnType<typeof listVariantTemplateOptions>>>
+export type ListVariantTemplateOptionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List variant template options
+ */
+
+export function useListVariantTemplateOptions<TData = Awaited<ReturnType<typeof listVariantTemplateOptions>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVariantTemplateOptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVariantTemplateOptionsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateVariantTemplateOptionUrl = (id: number,) => {
+
+
+
+
+  return `/api/menu/variant-templates/${id}/options`
+}
+
+/**
+ * @summary Create variant template option
+ */
+export const createVariantTemplateOption = async (id: number,
+    createVariantTemplateOptionBody: CreateVariantTemplateOptionBody, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getCreateVariantTemplateOptionUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createVariantTemplateOptionBody,)
+  }
+);}
+
+
+
+
+export const getCreateVariantTemplateOptionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVariantTemplateOption>>, TError,{id: number;data: BodyType<CreateVariantTemplateOptionBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createVariantTemplateOption>>, TError,{id: number;data: BodyType<CreateVariantTemplateOptionBody>}, TContext> => {
+
+const mutationKey = ['createVariantTemplateOption'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createVariantTemplateOption>>, {id: number;data: BodyType<CreateVariantTemplateOptionBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createVariantTemplateOption(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateVariantTemplateOptionMutationResult = NonNullable<Awaited<ReturnType<typeof createVariantTemplateOption>>>
+    export type CreateVariantTemplateOptionMutationBody = BodyType<CreateVariantTemplateOptionBody>
+    export type CreateVariantTemplateOptionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create variant template option
+ */
+export const useCreateVariantTemplateOption = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVariantTemplateOption>>, TError,{id: number;data: BodyType<CreateVariantTemplateOptionBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createVariantTemplateOption>>,
+        TError,
+        {id: number;data: BodyType<CreateVariantTemplateOptionBody>},
+        TContext
+      > => {
+      return useMutation(getCreateVariantTemplateOptionMutationOptions(options));
+    }
+
+export const getUpdateVariantTemplateOptionUrl = (id: number,) => {
+
+
+
+
+  return `/api/menu/variant-template-options/${id}`
+}
+
+/**
+ * @summary Update variant template option
+ */
+export const updateVariantTemplateOption = async (id: number,
+    updateVariantTemplateOptionBody: UpdateVariantTemplateOptionBody, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getUpdateVariantTemplateOptionUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateVariantTemplateOptionBody,)
+  }
+);}
+
+
+
+
+export const getUpdateVariantTemplateOptionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVariantTemplateOption>>, TError,{id: number;data: BodyType<UpdateVariantTemplateOptionBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateVariantTemplateOption>>, TError,{id: number;data: BodyType<UpdateVariantTemplateOptionBody>}, TContext> => {
+
+const mutationKey = ['updateVariantTemplateOption'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateVariantTemplateOption>>, {id: number;data: BodyType<UpdateVariantTemplateOptionBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateVariantTemplateOption(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateVariantTemplateOptionMutationResult = NonNullable<Awaited<ReturnType<typeof updateVariantTemplateOption>>>
+    export type UpdateVariantTemplateOptionMutationBody = BodyType<UpdateVariantTemplateOptionBody>
+    export type UpdateVariantTemplateOptionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update variant template option
+ */
+export const useUpdateVariantTemplateOption = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVariantTemplateOption>>, TError,{id: number;data: BodyType<UpdateVariantTemplateOptionBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateVariantTemplateOption>>,
+        TError,
+        {id: number;data: BodyType<UpdateVariantTemplateOptionBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateVariantTemplateOptionMutationOptions(options));
+    }
+
+export const getDeleteVariantTemplateOptionUrl = (id: number,) => {
+
+
+
+
+  return `/api/menu/variant-template-options/${id}`
+}
+
+/**
+ * @summary Delete variant template option
+ */
+export const deleteVariantTemplateOption = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteVariantTemplateOptionUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteVariantTemplateOptionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVariantTemplateOption>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteVariantTemplateOption>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteVariantTemplateOption'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteVariantTemplateOption>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteVariantTemplateOption(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteVariantTemplateOptionMutationResult = NonNullable<Awaited<ReturnType<typeof deleteVariantTemplateOption>>>
+
+    export type DeleteVariantTemplateOptionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete variant template option
+ */
+export const useDeleteVariantTemplateOption = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVariantTemplateOption>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteVariantTemplateOption>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteVariantTemplateOptionMutationOptions(options));
+    }
+
+export const getApplyVariantTemplateToProductUrl = (id: number,) => {
+
+
+
+
+  return `/api/menu/products/${id}/apply-variant-template`
+}
+
+/**
+ * @summary Apply variant template to product
+ */
+export const applyVariantTemplateToProduct = async (id: number,
+    applyVariantTemplateToProductBody: ApplyVariantTemplateToProductBody, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getApplyVariantTemplateToProductUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      applyVariantTemplateToProductBody,)
+  }
+);}
+
+
+
+
+export const getApplyVariantTemplateToProductMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyVariantTemplateToProduct>>, TError,{id: number;data: BodyType<ApplyVariantTemplateToProductBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof applyVariantTemplateToProduct>>, TError,{id: number;data: BodyType<ApplyVariantTemplateToProductBody>}, TContext> => {
+
+const mutationKey = ['applyVariantTemplateToProduct'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof applyVariantTemplateToProduct>>, {id: number;data: BodyType<ApplyVariantTemplateToProductBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  applyVariantTemplateToProduct(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApplyVariantTemplateToProductMutationResult = NonNullable<Awaited<ReturnType<typeof applyVariantTemplateToProduct>>>
+    export type ApplyVariantTemplateToProductMutationBody = BodyType<ApplyVariantTemplateToProductBody>
+    export type ApplyVariantTemplateToProductMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Apply variant template to product
+ */
+export const useApplyVariantTemplateToProduct = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyVariantTemplateToProduct>>, TError,{id: number;data: BodyType<ApplyVariantTemplateToProductBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof applyVariantTemplateToProduct>>,
+        TError,
+        {id: number;data: BodyType<ApplyVariantTemplateToProductBody>},
+        TContext
+      > => {
+      return useMutation(getApplyVariantTemplateToProductMutationOptions(options));
     }
 
 export const getUpdateProductVariantUrl = (id: number,) => {
