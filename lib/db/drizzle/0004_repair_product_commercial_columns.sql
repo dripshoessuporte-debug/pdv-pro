@@ -17,17 +17,17 @@ CREATE TABLE IF NOT EXISTS "product_variants" (
   "store_id" integer NOT NULL,
   "product_id" integer NOT NULL,
   "name" text NOT NULL,
-  "price" numeric(10,2),
-  "cost_price" numeric(10,2),
-  "sku" text,
-  "barcode" text,
-  "track_stock" boolean DEFAULT false NOT NULL,
-  "allow_sale_without_stock" boolean DEFAULT false NOT NULL,
-  "stock_qty" numeric(10,2),
-  "stock_min_qty" numeric(10,2),
+  "price" numeric(10,2) NOT NULL,
   "active" boolean DEFAULT true NOT NULL,
-  "created_at" timestamp DEFAULT now() NOT NULL
+  "available" boolean DEFAULT true NOT NULL,
+  "sort_order" integer DEFAULT 0 NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
 );
+
+ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "available" boolean DEFAULT true NOT NULL;
+ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "sort_order" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "updated_at" timestamp DEFAULT now() NOT NULL;
 
 DO $$
 BEGIN
