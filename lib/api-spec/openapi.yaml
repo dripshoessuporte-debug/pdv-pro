@@ -450,6 +450,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProductVariant"
 
+
+  /menu/variant-templates:
+    get:
+      summary: List variant templates
+      responses:
+        '200':
+          description: List of variant templates
+    post:
+      summary: Create variant template
+      responses:
+        '201':
+          description: Created
+  /menu/products/{id}/apply-variant-template:
+    post:
+      summary: Apply variant template to product
+      responses:
+        '201':
+          description: Created product variants
+
   /menu/product-variants/{id}:
     patch:
       operationId: updateProductVariant
