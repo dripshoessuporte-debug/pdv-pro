@@ -382,7 +382,9 @@ router.post("/menu/products/:id/variants", async (req, res): Promise<void> => {
   const params = GetProductParams.safeParse(req.params);
   if (!params.success) return void res.status(400).json({ error: params.error.message });
   const body = req.body as { name?: string; price?: number; active?: boolean; available?: boolean; sortOrder?: number };
-  if (!body?.name?.trim() || typeof body.price !== "number" || body.price < 0) return void res.status(400).json({ error: "Dados da variação inválidos." });
+  if (!body?.name?.trim() || typeof body.price !== "number" || !Number.isFinite(body.price) || body.price < 0) {
+    return void res.status(400).json({ error: "Dados da variação inválidos: preço deve ser numérico e >= 0." });
+  }
   const [product] = await db.select({ id: productsTable.id, storeId: productsTable.storeId }).from(productsTable).where(eq(productsTable.id, params.data.id)).limit(1);
   if (!product) return void res.status(404).json({ error: "Produto não encontrado." });
   const [created] = await db.insert(productVariantsTable).values({
@@ -396,6 +398,9 @@ router.patch("/menu/product-variants/:id", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return void res.status(400).json({ error: "ID inválido." });
   const parsed = req.body as { name?: string; price?: number; active?: boolean; available?: boolean; sortOrder?: number };
+  if (parsed.price !== undefined && (typeof parsed.price !== "number" || !Number.isFinite(parsed.price) || parsed.price < 0)) {
+    return void res.status(400).json({ error: "Preço da variação inválido: deve ser numérico e >= 0." });
+  }
   const data: Record<string, unknown> = { ...parsed };
   if (parsed.name !== undefined) data.name = parsed.name.trim();
   if (parsed.price !== undefined) data.price = String(parsed.price);

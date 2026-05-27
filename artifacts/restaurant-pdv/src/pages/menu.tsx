@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Layout } from "@/components/layout";
 import {
   useListProducts,
@@ -118,12 +118,15 @@ export default function Menu() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const params: Record<string, unknown> = {};
-  if (search) params.search = search;
-  if (selectedCategory !== "all") params.categoryId = parseInt(selectedCategory);
-  if (showInactive) params.includeInactive = true;
+  const params = useMemo(() => {
+    const query: Record<string, unknown> = {};
+    if (search) query.search = search;
+    if (selectedCategory !== "all") query.categoryId = parseInt(selectedCategory);
+    if (showInactive) query.includeInactive = true;
+    return query;
+  }, [search, selectedCategory, showInactive]);
 
-  const { data: products, isLoading: loadingProducts } = useListProducts(params, {
+  const { data: products, isLoading: loadingProducts, error: productsError, isFetching: fetchingProducts } = useListProducts(params, {
     query: { queryKey: getListProductsQueryKey(params) },
   });
 
@@ -135,7 +138,7 @@ export default function Menu() {
   });
 
   const invalidateProducts = () => {
-    queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: ["/api/menu/products"] });
   };
   const invalidateVariants = () => {
     if (editingId !== null) {
@@ -245,7 +248,10 @@ export default function Menu() {
         setVariantForm({ name: "", price: "", available: true });
         toast({ title: "Variação adicionada." });
       },
-      onError: () => toast({ title: "Erro ao adicionar variação.", variant: "destructive" }),
+      onError: (err) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        toast({ title: msg ?? "Erro ao adicionar variação.", variant: "destructive" });
+      },
     },
   });
   const updateVariant = useUpdateProductVariant({
@@ -256,7 +262,10 @@ export default function Menu() {
         setVariantForm({ name: "", price: "", available: true });
         toast({ title: "Variação atualizada." });
       },
-      onError: () => toast({ title: "Erro ao atualizar variação.", variant: "destructive" }),
+      onError: (err) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        toast({ title: msg ?? "Erro ao atualizar variação.", variant: "destructive" });
+      },
     },
   });
   const deleteVariant = useDeleteProductVariant({
@@ -265,9 +274,16 @@ export default function Menu() {
         invalidateVariants();
         toast({ title: "Variação removida." });
       },
-      onError: () => toast({ title: "Erro ao remover variação.", variant: "destructive" }),
+      onError: (err) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        toast({ title: msg ?? "Erro ao remover variação.", variant: "destructive" });
+      },
     },
   });
+  const productsErrorMessage =
+    (productsError as { response?: { data?: { error?: string } }; message?: string } | null)?.response?.data?.error ??
+    (productsError as { message?: string } | null)?.message ??
+    null;
 
   const openEdit = (p: NonNullable<typeof products>[number]) => {
     setEditingId(p.id);
@@ -410,6 +426,11 @@ export default function Menu() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[1, 2, 3, 4, 5, 6].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
           </div>
+        ) : productsErrorMessage ? (
+          <div className="text-center py-16 text-destructive">
+            <p className="text-lg font-medium">Erro ao carregar produtos</p>
+            <p className="text-sm mt-1">{productsErrorMessage}</p>
+          </div>
         ) : products?.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
             <p className="text-lg font-medium">Nenhum produto encontrado</p>
@@ -504,6 +525,9 @@ export default function Menu() {
             ))}
           </div>
         )}
+        {fetchingProducts && !loadingProducts ? (
+          <p className="text-xs text-muted-foreground text-right">Atualizando lista...</p>
+        ) : null}
       </div>
 
       {/* Product Dialog */}
