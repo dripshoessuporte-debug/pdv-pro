@@ -367,6 +367,15 @@ export default function Menu() {
     const sortOrder = variants?.length ?? 0;
     createVariant.mutate({ id: editingId, data: { ...data, sortOrder, active: true } });
   };
+
+  const getErrorMessage = async (res: Response, fallback: string) => {
+    try {
+      const body = await res.json() as { error?: string };
+      return body.error || fallback;
+    } catch {
+      return fallback;
+    }
+  };
   const loadTemplates = async () => {
     const res = await fetch("/api/menu/variant-templates");
     if (!res.ok) return;
@@ -392,7 +401,7 @@ export default function Menu() {
       await loadTemplates();
       return;
     }
-    toast({ title: isEdit ? "Erro ao salvar modelo." : "Erro ao criar modelo.", variant: "destructive" });
+    toast({ title: await getErrorMessage(res, isEdit ? "Erro ao salvar modelo." : "Erro ao criar modelo."), variant: "destructive" });
   };
   const saveTemplateOption = async () => {
     if (!templateOptionForm.templateId || !templateOptionForm.name.trim() || !templateOptionForm.price) return;
@@ -410,7 +419,7 @@ export default function Menu() {
       await loadTemplates();
       return;
     }
-    toast({ title: isEdit ? "Erro ao atualizar opção." : "Erro ao adicionar opção.", variant: "destructive" });
+    toast({ title: await getErrorMessage(res, isEdit ? "Erro ao atualizar opção." : "Erro ao adicionar opção."), variant: "destructive" });
   };
   const removeTemplateOption = async (id: number) => {
     const res = await fetch(`/api/menu/variant-template-options/${id}`, { method: "DELETE" });
@@ -419,7 +428,7 @@ export default function Menu() {
       await loadTemplates();
       return;
     }
-    toast({ title: "Erro ao remover opção.", variant: "destructive" });
+    toast({ title: await getErrorMessage(res, "Erro ao remover opção."), variant: "destructive" });
   };
   const removeTemplate = async (id: number) => {
     const res = await fetch(`/api/menu/variant-templates/${id}`, { method: "DELETE" });
@@ -428,7 +437,7 @@ export default function Menu() {
       await loadTemplates();
       return;
     }
-    toast({ title: "Erro ao remover modelo.", variant: "destructive" });
+    toast({ title: await getErrorMessage(res, "Erro ao remover modelo."), variant: "destructive" });
   };
   const applyTemplateToProduct = async () => {
     if (!editingId || !selectedTemplateId) return;
@@ -436,7 +445,7 @@ export default function Menu() {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ templateId: Number(selectedTemplateId) }),
     });
     if (!res.ok) {
-      toast({ title: "Erro ao aplicar modelo.", variant: "destructive" });
+      toast({ title: await getErrorMessage(res, "Erro ao aplicar modelo."), variant: "destructive" });
       return;
     }
     invalidateVariants();
@@ -824,12 +833,10 @@ export default function Menu() {
                 <Button variant="outline" onClick={() => setTemplateForm({ id: 0, name: "", description: "" })}>Cancelar edição</Button>
               ) : null}
             </div>
-            <div className="flex items-center gap-2 rounded border p-2">
-              <Switch checked={templateOptionForm.available} onCheckedChange={(v) => setTemplateOptionForm({ ...templateOptionForm, available: v })} id="template-option-available" />
-              <Label htmlFor="template-option-available">Opção disponível</Label>
-            </div>
             <div className="space-y-2 max-h-72 overflow-y-auto">
-              {templates.map((t) => (
+              {templates.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Crie um modelo primeiro para adicionar opções.</p>
+              ) : templates.map((t) => (
                 <div key={t.id} className="rounded border p-2 space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="font-medium">{t.name}</p>
@@ -854,10 +861,14 @@ export default function Menu() {
                       </div>
                     ))}
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                     <Input placeholder="Opção" value={templateOptionForm.templateId === t.id ? templateOptionForm.name : ""} onChange={(e) => setTemplateOptionForm({ ...templateOptionForm, templateId: t.id, name: e.target.value })} />
                     <Input type="number" step="0.01" min="0" placeholder="Preço" value={templateOptionForm.templateId === t.id ? templateOptionForm.price : ""} onChange={(e) => setTemplateOptionForm({ ...templateOptionForm, templateId: t.id, price: e.target.value })} />
-                    <Button variant="outline" onClick={saveTemplateOption}>{editingTemplateOptionId > 0 ? "Salvar opção" : "Adicionar opção"}</Button>
+                    <div className="flex items-center gap-2 rounded border px-2">
+                      <Switch checked={templateOptionForm.templateId === t.id ? templateOptionForm.available : true} onCheckedChange={(v) => setTemplateOptionForm({ ...templateOptionForm, templateId: t.id, available: v })} id={`template-option-available-${t.id}`} />
+                      <Label htmlFor={`template-option-available-${t.id}`}>Opção disponível</Label>
+                    </div>
+                    <Button variant="outline" onClick={saveTemplateOption}>{editingTemplateOptionId > 0 && templateOptionForm.templateId === t.id ? "Salvar opção" : "Adicionar opção"}</Button>
                   </div>
                   {editingTemplateOptionId > 0 && templateOptionForm.templateId === t.id ? (
                     <Button size="sm" variant="ghost" onClick={() => { setEditingTemplateOptionId(0); setTemplateOptionForm({ templateId: t.id, name: "", price: "", available: true }); }}>
