@@ -36,6 +36,13 @@
       "when": 1764096000000,
       "tag": "0005_variant_templates_v1",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1764097500000,
+      "tag": "0006_order_item_variants",
+      "breakpoints": true
     }
   ]
 }

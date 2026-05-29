@@ -1711,6 +1711,12 @@ components:
           type: number
         notes:
           type: ["string", "null"]
+        variantId:
+          type: ["integer", "null"]
+        variantName:
+          type: ["string", "null"]
+        variantPrice:
+          type: ["number", "null"]
 
     OrderItemInput:
       type: object
@@ -1723,6 +1729,8 @@ components:
           minimum: 1
         notes:
           type: string
+        variantId:
+          type: ["integer", "null"]
 
     # Payments
     Payment:

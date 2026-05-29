@@ -3,7 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { customersTable } from "./customers";
 import { tablesTable } from "./tables";
-import { productsTable } from "./menu";
+import { productsTable, productVariantsTable } from "./menu";
 
 export const ordersTable = pgTable("orders", {
   id: serial("id").primaryKey(),
@@ -50,6 +50,9 @@ export const orderItemsTable = pgTable("order_items", {
   id: serial("id").primaryKey(),
   orderId: integer("order_id").notNull().references(() => ordersTable.id),
   productId: integer("product_id").references(() => productsTable.id),
+  variantId: integer("variant_id").references(() => productVariantsTable.id),
+  variantName: text("variant_name"),
+  variantPrice: numeric("variant_price", { precision: 10, scale: 2 }),
   externalProductName: text("external_product_name"), // used when productId is null (external orders)
   quantity: integer("quantity").notNull().default(1),
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),

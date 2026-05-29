@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, sql } from "drizzle-orm";
-import { db, ordersTable, orderItemsTable, tablesTable, customersTable, productsTable, kitchenTicketsTable, paymentsTable, cashMovementsTable } from "@workspace/db";
+import { db, ordersTable, orderItemsTable, tablesTable, customersTable, productsTable, productVariantsTable, kitchenTicketsTable, paymentsTable, cashMovementsTable } from "@workspace/db";
 import {
   CreateOrderBody,
   GetOrderParams,
@@ -67,6 +67,9 @@ async function getOrderWithItems(orderId: number) {
       orderId: orderItemsTable.orderId,
       productId: orderItemsTable.productId,
       productName: sql<string | null>`coalesce(${productsTable.name}, ${orderItemsTable.externalProductName})`,
+      variantId: orderItemsTable.variantId,
+      variantName: orderItemsTable.variantName,
+      variantPrice: orderItemsTable.variantPrice,
       quantity: orderItemsTable.quantity,
       unitPrice: orderItemsTable.unitPrice,
       totalPrice: orderItemsTable.totalPrice,
@@ -88,6 +91,7 @@ async function getOrderWithItems(orderId: number) {
     updatedAt: order.updatedAt.toISOString(),
     items: items.map((item) => ({
       ...item,
+      variantPrice: item.variantPrice ? parseFloat(String(item.variantPrice)) : null,
       unitPrice: parseFloat(String(item.unitPrice)),
       totalPrice: parseFloat(String(item.totalPrice)),
     })),
@@ -156,6 +160,9 @@ router.get("/orders", async (req, res): Promise<void> => {
         orderId: orderItemsTable.orderId,
         productId: orderItemsTable.productId,
         productName: sql<string | null>`coalesce(${productsTable.name}, ${orderItemsTable.externalProductName})`,
+        variantId: orderItemsTable.variantId,
+        variantName: orderItemsTable.variantName,
+        variantPrice: orderItemsTable.variantPrice,
         quantity: orderItemsTable.quantity,
         unitPrice: orderItemsTable.unitPrice,
         totalPrice: orderItemsTable.totalPrice,
@@ -178,6 +185,7 @@ router.get("/orders", async (req, res): Promise<void> => {
       updatedAt: order.updatedAt.toISOString(),
       items: items.map((item) => ({
         ...item,
+        variantPrice: item.variantPrice ? parseFloat(String(item.variantPrice)) : null,
         unitPrice: parseFloat(String(item.unitPrice)),
         totalPrice: parseFloat(String(item.totalPrice)),
       })),
@@ -275,12 +283,47 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
     return;
   }
 
-  const unitPrice = parseFloat(String(product.price));
+  const activeVariants = await db.select({
+    id: productVariantsTable.id,
+  }).from(productVariantsTable).where(and(
+    eq(productVariantsTable.productId, parsed.data.productId),
+    eq(productVariantsTable.active, true),
+    eq(productVariantsTable.available, true),
+  ));
+
+  let unitPrice = parseFloat(String(product.price));
+  let variantName: string | null = null;
+  let variantPrice: number | null = null;
+  let variantId: number | null = null;
+
+  if (parsed.data.variantId != null) {
+    const [variant] = await db.select().from(productVariantsTable).where(and(
+      eq(productVariantsTable.id, parsed.data.variantId),
+      eq(productVariantsTable.productId, parsed.data.productId),
+      eq(productVariantsTable.active, true),
+      eq(productVariantsTable.available, true),
+    ));
+    if (!variant) {
+      res.status(400).json({ error: "Variação inválida para este produto." });
+      return;
+    }
+    unitPrice = parseFloat(String(variant.price));
+    variantId = variant.id;
+    variantName = variant.name;
+    variantPrice = unitPrice;
+  } else if (activeVariants.length > 0) {
+    res.status(400).json({ error: "Escolha uma variação para este produto." });
+    return;
+  }
+
   const totalPrice = unitPrice * parsed.data.quantity;
 
   const [item] = await db.insert(orderItemsTable).values({
     orderId: params.data.id,
     productId: parsed.data.productId,
+    variantId,
+    variantName,
+    variantPrice: variantPrice != null ? String(variantPrice) : null,
     quantity: parsed.data.quantity,
     unitPrice: String(unitPrice),
     totalPrice: String(totalPrice),
@@ -292,6 +335,7 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
   const itemWithName = {
     ...item,
     productName: product.name,
+    variantPrice,
     unitPrice,
     totalPrice,
   };
