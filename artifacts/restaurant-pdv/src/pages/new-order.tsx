@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Plus, Minus, ShoppingCart, Search, MessageSquare, Truck, Banknote, Smartphone, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -36,7 +37,9 @@ type OrderType = "counter" | "table" | "takeaway" | "delivery";
 
 type CartItem = {
   productId: number;
+  variantId: number | null;
   name: string;
+  variantName: string | null;
   price: number;
   quantity: number;
   notes: string;
@@ -56,6 +59,10 @@ export default function NewOrder() {
   const [productSearch, setProductSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [creating, setCreating] = useState(false);
+  const [variantModalOpen, setVariantModalOpen] = useState(false);
+  const [variantProduct, setVariantProduct] = useState<{ id: number; name: string; price: number } | null>(null);
+  const [variantOptions, setVariantOptions] = useState<Array<{ id: number; name: string; price: number; active: boolean; available: boolean }>>([]);
+  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
 
   // Delivery / takeaway fields
   const [customerName, setCustomerName] = useState("");
@@ -263,30 +270,30 @@ export default function NewOrder() {
     return () => { cancelled = true; };
   }, [deliveryCep, orderType, storeSettings]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const addToCart = (product: { id: number; name: string; price: number }) => {
+  const addToCart = (product: { id: number; name: string; price: number }, variant?: { id: number; name: string; price: number }) => {
     setCart((prev) => {
-      const existing = prev.find((i) => i.productId === product.id);
+      const existing = prev.find((i) => i.productId === product.id && i.variantId === (variant?.id ?? null));
       if (existing) {
         return prev.map((i) =>
-          i.productId === product.id ? { ...i, quantity: i.quantity + 1 } : i
+          i.productId === product.id && i.variantId === (variant?.id ?? null) ? { ...i, quantity: i.quantity + 1 } : i
         );
       }
-      return [...prev, { productId: product.id, name: product.name, price: product.price, quantity: 1, notes: "" }];
+      return [...prev, { productId: product.id, variantId: variant?.id ?? null, name: product.name, variantName: variant?.name ?? null, price: variant?.price ?? product.price, quantity: 1, notes: "" }];
     });
   };
 
-  const removeFromCart = (productId: number) => {
+  const removeFromCart = (productId: number, variantId: number | null) => {
     setCart((prev) => {
-      const existing = prev.find((i) => i.productId === productId);
+      const existing = prev.find((i) => i.productId === productId && i.variantId === variantId);
       if (existing && existing.quantity > 1) {
-        return prev.map((i) => i.productId === productId ? { ...i, quantity: i.quantity - 1 } : i);
+        return prev.map((i) => i.productId === productId && i.variantId === variantId ? { ...i, quantity: i.quantity - 1 } : i);
       }
-      return prev.filter((i) => i.productId !== productId);
+      return prev.filter((i) => !(i.productId === productId && i.variantId === variantId));
     });
   };
 
-  const updateItemNotes = (productId: number, notes: string) => {
-    setCart((prev) => prev.map((i) => i.productId === productId ? { ...i, notes } : i));
+  const updateItemNotes = (productId: number, variantId: number | null, notes: string) => {
+    setCart((prev) => prev.map((i) => i.productId === productId && i.variantId === variantId ? { ...i, notes } : i));
   };
 
   const cartSubtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
@@ -371,6 +378,7 @@ export default function NewOrder() {
               data: {
                 productId: item.productId,
                 quantity: item.quantity,
+                ...(item.variantId != null ? { variantId: item.variantId } : {}),
                 ...(item.notes.trim() ? { notes: item.notes.trim() } : {}),
               },
             },
@@ -396,6 +404,17 @@ export default function NewOrder() {
     { value: "takeaway", label: "🛵 Viagem" },
     { value: "delivery", label: "🚚 Delivery" },
   ];
+
+  const handleProductClick = async (product: { id: number; name: string; price: number }) => {
+    const response = await fetch(`/api/menu/products/${product.id}/variants`);
+    const variants = await response.json() as Array<{ id: number; name: string; price: number; active: boolean; available: boolean }>;
+    const activeVariants = variants.filter((v) => v.active && v.available);
+    if (activeVariants.length === 0) return addToCart(product);
+    setVariantProduct(product);
+    setVariantOptions(activeVariants);
+    setSelectedVariantId(null);
+    setVariantModalOpen(true);
+  };
 
   return (
     <Layout>
@@ -831,7 +850,7 @@ export default function NewOrder() {
                       <Card
                         key={product.id}
                         className={`cursor-pointer hover:shadow-md transition-all select-none ${inCart ? "ring-2 ring-primary bg-primary/5" : ""}`}
-                        onClick={() => addToCart(product)}
+                        onClick={() => void handleProductClick(product)}
                         data-testid={`card-product-${product.id}`}
                       >
                         <CardContent className="p-3">
@@ -876,10 +895,10 @@ export default function NewOrder() {
                 ) : (
                   <div className="space-y-4 mb-4 max-h-72 overflow-y-auto pr-1">
                     {cart.map((item) => (
-                      <div key={item.productId} data-testid={`cart-item-${item.productId}`} className="border-b pb-3 last:border-0">
+                      <div key={`${item.productId}-${item.variantId ?? "base"}`} data-testid={`cart-item-${item.productId}-${item.variantId ?? "base"}`} className="border-b pb-3 last:border-0">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{item.name}</p>
+                            <p className="text-sm font-medium truncate">{item.name}{item.variantName ? ` — ${item.variantName}` : ""}</p>
                             <p className="text-xs text-muted-foreground">
                               {item.quantity}x R$ {item.price.toFixed(2)} = <span className="font-semibold text-foreground">R$ {(item.price * item.quantity).toFixed(2)}</span>
                             </p>
@@ -889,7 +908,7 @@ export default function NewOrder() {
                               size="sm"
                               variant="outline"
                               className="h-7 w-7 p-0"
-                              onClick={() => removeFromCart(item.productId)}
+                              onClick={() => removeFromCart(item.productId, item.variantId)}
                             >
                               <Minus className="w-3 h-3" />
                             </Button>
@@ -898,7 +917,7 @@ export default function NewOrder() {
                               size="sm"
                               variant="outline"
                               className="h-7 w-7 p-0"
-                              onClick={() => addToCart({ id: item.productId, name: item.name, price: item.price })}
+                              onClick={() => addToCart({ id: item.productId, name: item.name, price: item.price }, item.variantId != null ? { id: item.variantId, name: item.variantName ?? "", price: item.price } : undefined)}
                             >
                               <Plus className="w-3 h-3" />
                             </Button>
@@ -909,7 +928,7 @@ export default function NewOrder() {
                           <Input
                             placeholder="Observação (ex: sem sal)"
                             value={item.notes}
-                            onChange={(e) => updateItemNotes(item.productId, e.target.value)}
+                            onChange={(e) => updateItemNotes(item.productId, item.variantId, e.target.value)}
                             className="h-6 text-xs px-2 py-0"
                             data-testid={`cart-item-notes-${item.productId}`}
                           />
@@ -959,6 +978,24 @@ export default function NewOrder() {
           </div>
         </div>
       </div>
+      <Dialog open={variantModalOpen} onOpenChange={setVariantModalOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Escolha a variação{variantProduct ? ` · ${variantProduct.name}` : ""}</DialogTitle></DialogHeader>
+          <div className="space-y-2">
+            {variantOptions.map((v) => (
+              <Button key={v.id} type="button" variant={selectedVariantId === v.id ? "default" : "outline"} className="w-full justify-between" onClick={() => setSelectedVariantId(v.id)}>
+                <span>{v.name}</span><span>R$ {v.price.toFixed(2)}</span>
+              </Button>
+            ))}
+          </div>
+          <Button disabled={selectedVariantId == null || !variantProduct} onClick={() => {
+            const variant = variantOptions.find((v) => v.id === selectedVariantId);
+            if (!variant || !variantProduct) return;
+            addToCart(variantProduct, variant);
+            setVariantModalOpen(false);
+          }}>Adicionar ao pedido</Button>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }

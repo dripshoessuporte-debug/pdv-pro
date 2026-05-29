@@ -18,4 +18,10 @@ export interface OrderItem {
   totalPrice: number;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  variantId?: number | null;
+  /** @nullable */
+  variantName?: string | null;
+  /** @nullable */
+  variantPrice?: number | null;
 }

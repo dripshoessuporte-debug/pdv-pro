@@ -11,4 +11,6 @@ export interface OrderItemInput {
   /** @minimum 1 */
   quantity: number;
   notes?: string;
+  /** @nullable */
+  variantId?: number | null;
 }

@@ -291,6 +291,12 @@ export interface OrderItem {
   totalPrice: number;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  variantId?: number | null;
+  /** @nullable */
+  variantName?: string | null;
+  /** @nullable */
+  variantPrice?: number | null;
 }
 
 export interface Order {
@@ -430,6 +436,8 @@ export interface OrderItemInput {
   /** @minimum 1 */
   quantity: number;
   notes?: string;
+  /** @nullable */
+  variantId?: number | null;
 }
 
 export type PaymentMethod = typeof PaymentMethod[keyof typeof PaymentMethod];

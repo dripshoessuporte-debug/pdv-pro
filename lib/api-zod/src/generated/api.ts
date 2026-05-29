@@ -641,7 +641,10 @@ export const ListOrdersResponseItem = zod.object({
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "variantId": zod.number().nullish(),
+  "variantName": zod.string().nullish(),
+  "variantPrice": zod.number().nullish()
 }))
 })
 export const ListOrdersResponse = zod.array(ListOrdersResponseItem)
@@ -719,7 +722,10 @@ export const GetOrderResponse = zod.object({
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "variantId": zod.number().nullish(),
+  "variantName": zod.string().nullish(),
+  "variantPrice": zod.number().nullish()
 }))
 })
 
@@ -779,7 +785,10 @@ export const UpdateOrderResponse = zod.object({
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "variantId": zod.number().nullish(),
+  "variantName": zod.string().nullish(),
+  "variantPrice": zod.number().nullish()
 }))
 })
 
@@ -797,7 +806,8 @@ export const AddOrderItemParams = zod.object({
 export const AddOrderItemBody = zod.object({
   "productId": zod.number(),
   "quantity": zod.number().min(1),
-  "notes": zod.string().optional()
+  "notes": zod.string().optional(),
+  "variantId": zod.number().nullish()
 })
 
 
@@ -858,7 +868,10 @@ export const SendOrderToKitchenResponse = zod.object({
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "variantId": zod.number().nullish(),
+  "variantName": zod.string().nullish(),
+  "variantPrice": zod.number().nullish()
 }))
 })
 
@@ -911,7 +924,10 @@ export const CancelOrderResponse = zod.object({
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "variantId": zod.number().nullish(),
+  "variantName": zod.string().nullish(),
+  "variantPrice": zod.number().nullish()
 }))
 })
 
@@ -968,7 +984,10 @@ export const UpdateDeliveryStatusResponse = zod.object({
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "variantId": zod.number().nullish(),
+  "variantName": zod.string().nullish(),
+  "variantPrice": zod.number().nullish()
 }))
 })
 
@@ -1037,7 +1056,10 @@ export const GetReceiptResponse = zod.object({
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "variantId": zod.number().nullish(),
+  "variantName": zod.string().nullish(),
+  "variantPrice": zod.number().nullish()
 }))
 }),
   "payment": zod.object({
@@ -1057,7 +1079,10 @@ export const GetReceiptResponse = zod.object({
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "variantId": zod.number().nullish(),
+  "variantName": zod.string().nullish(),
+  "variantPrice": zod.number().nullish()
 }))
 })
 
@@ -1081,7 +1106,10 @@ export const GetKitchenQueueResponseItem = zod.object({
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "variantId": zod.number().nullish(),
+  "variantName": zod.string().nullish(),
+  "variantPrice": zod.number().nullish()
 }))
 })
 export const GetKitchenQueueResponse = zod.array(GetKitchenQueueResponseItem)
@@ -1110,7 +1138,10 @@ export const MarkTicketReadyResponse = zod.object({
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "variantId": zod.number().nullish(),
+  "variantName": zod.string().nullish(),
+  "variantPrice": zod.number().nullish()
 }))
 })
 
@@ -1188,7 +1219,10 @@ export const GetRecentOrdersResponseItem = zod.object({
   "quantity": zod.number(),
   "unitPrice": zod.number(),
   "totalPrice": zod.number(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "variantId": zod.number().nullish(),
+  "variantName": zod.string().nullish(),
+  "variantPrice": zod.number().nullish()
 }))
 })
 export const GetRecentOrdersResponse = zod.array(GetRecentOrdersResponseItem)
