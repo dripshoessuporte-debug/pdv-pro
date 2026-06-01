@@ -31,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -628,191 +629,146 @@ export default function Menu() {
 
       {/* Product Dialog */}
       <Dialog open={productDialog} onOpenChange={(o) => { setProductDialog(o); if (!o) { setEditingId(null); setForm(emptyProduct); } }}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="flex max-h-[85vh] max-w-4xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="border-b px-6 py-5 pr-12">
             <DialogTitle>{editingId ? "Editar Produto" : "Novo Produto"}</DialogTitle>
             <DialogDescription>Preencha os dados do produto.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-6 pt-2">
-            <div className="space-y-4 rounded-lg border p-3">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Produto</h3>
-              <div>
-                <Label>Nome *</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Ex: X-Burger"
-                  data-testid="input-product-name"
-                />
-              </div>
-              <div>
-                <Label>Descrição</Label>
-                <Textarea
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  placeholder="Ingredientes, tamanho, etc."
-                  rows={2}
-                  data-testid="input-product-description"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+          <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+            <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Produto</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <Label>Nome *</Label>
+                  <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: X-Burger" data-testid="input-product-name" />
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Descrição</Label>
+                  <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Ingredientes, tamanho, etc." rows={3} data-testid="input-product-description" />
+                </div>
                 <div>
                   <Label>Preço de venda (R$) *</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={form.price}
-                    onChange={(e) => setForm({ ...form, price: e.target.value })}
-                    placeholder="0,00"
-                    data-testid="input-product-price"
-                  />
+                  <Input type="number" step="0.01" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="0,00" data-testid="input-product-price" />
                 </div>
                 <div>
                   <Label>Categoria *</Label>
                   <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v })}>
-                    <SelectTrigger data-testid="select-product-category">
-                      <SelectValue placeholder="Selecionar" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories?.map((cat) => (
-                        <SelectItem key={cat.id} value={String(cat.id)}>{cat.name}</SelectItem>
-                      ))}
-                    </SelectContent>
+                    <SelectTrigger data-testid="select-product-category"><SelectValue placeholder="Selecionar" /></SelectTrigger>
+                    <SelectContent>{categories?.map((cat) => (<SelectItem key={cat.id} value={String(cat.id)}>{cat.name}</SelectItem>))}</SelectContent>
                   </Select>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={form.available}
-                    onCheckedChange={(v) => setForm({ ...form, available: v })}
-                    id="available"
-                    data-testid="switch-product-available"
-                  />
-                  <Label htmlFor="available">Disponível para venda</Label>
-                  <p className="text-xs text-muted-foreground">Quando desligado, este produto não aparece para venda.</p>
+                <div className="flex min-h-12 items-center gap-3 rounded-lg border px-3 py-2 md:col-span-2">
+                  <Switch checked={form.available} onCheckedChange={(v) => setForm({ ...form, available: v })} id="available" data-testid="switch-product-available" />
+                  <div>
+                    <Label htmlFor="available">Disponível para venda</Label>
+                    <p className="text-xs text-muted-foreground">Quando desligado, este produto não aparece para venda.</p>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-4 rounded-lg border p-3">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Imagem do produto</h3>
-              <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">Upload de imagem será habilitado em uma próxima etapa.</div>
-              <div><Label>URL da imagem (opcional avançado)</Label><Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="https://..." /></div>
-              {form.imageUrl ? <img src={form.imageUrl} alt={form.imageAlt || form.name || "Prévia"} className="h-24 w-24 rounded object-cover border" /> : null}
-              <div><Label>Texto alternativo</Label><Input value={form.imageAlt} onChange={(e) => setForm({ ...form, imageAlt: e.target.value })} /></div>
+            <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Imagem do produto</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground md:col-span-2">Upload de imagem será habilitado em uma próxima etapa.</div>
+                <div><Label>URL da imagem (opcional avançado)</Label><Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="https://..." /></div>
+                <div><Label>Texto alternativo</Label><Input value={form.imageAlt} onChange={(e) => setForm({ ...form, imageAlt: e.target.value })} /></div>
+                {form.imageUrl ? <img src={form.imageUrl} alt={form.imageAlt || form.name || "Prévia"} className="h-28 w-28 rounded-lg border object-cover" /> : null}
+              </div>
             </div>
 
-            <div className="space-y-4 rounded-lg border p-3">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Comercial</h3>
-              <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Comercial</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div><Label>SKU</Label><Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></div>
                 <div><Label>Código de barras</Label><Input value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} /></div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
                 <div><Label>Custo (R$)</Label><Input type="number" min="0" step="0.01" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} /></div>
                 <div><Label>Unidade</Label><Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="unidade" /></div>
                 <div><Label>Preparo (min)</Label><Input type="number" min="0" step="1" value={form.preparationTimeMinutes} onChange={(e) => setForm({ ...form, preparationTimeMinutes: e.target.value })} /></div>
               </div>
             </div>
 
-            <div className="space-y-4 rounded-lg border p-3">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Estoque opcional</h3>
-              <div className="flex items-center gap-3">
-                <Switch checked={form.trackStock} onCheckedChange={(v) => setForm({ ...form, trackStock: v })} id="trackStock" />
-                <Label htmlFor="trackStock">Controlar estoque</Label>
-              </div>
-              {form.trackStock && (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div><Label>Quantidade em estoque</Label><Input type="number" min="0" step="0.01" value={form.stockQty} onChange={(e) => setForm({ ...form, stockQty: e.target.value })} /></div>
-                    <div><Label>Estoque mínimo</Label><Input type="number" min="0" step="0.01" value={form.stockMinQty} onChange={(e) => setForm({ ...form, stockMinQty: e.target.value })} /></div>
-                  </div>
-                  <div className="flex items-center gap-3">
+            <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Estoque opcional</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="flex min-h-12 items-center gap-3 rounded-lg border px-3 py-2 md:col-span-2">
+                  <Switch checked={form.trackStock} onCheckedChange={(v) => setForm({ ...form, trackStock: v })} id="trackStock" />
+                  <Label htmlFor="trackStock">Controlar estoque</Label>
+                </div>
+                {form.trackStock && (<>
+                  <div><Label>Quantidade em estoque</Label><Input type="number" min="0" step="0.01" value={form.stockQty} onChange={(e) => setForm({ ...form, stockQty: e.target.value })} /></div>
+                  <div><Label>Estoque mínimo</Label><Input type="number" min="0" step="0.01" value={form.stockMinQty} onChange={(e) => setForm({ ...form, stockMinQty: e.target.value })} /></div>
+                  <div className="flex min-h-12 items-center gap-3 rounded-lg border px-3 py-2 md:col-span-2">
                     <Switch checked={form.allowSaleWithoutStock} onCheckedChange={(v) => setForm({ ...form, allowSaleWithoutStock: v })} id="allowSaleWithoutStock" />
                     <Label htmlFor="allowSaleWithoutStock">Permitir venda sem estoque</Label>
                   </div>
-                </>
-              )}
+                </>)}
+              </div>
             </div>
 
-            <div className="space-y-3 rounded-lg border p-3">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Variações do produto</h3>
+            <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Variações do produto</h3>
               {editingId === null ? (
-                <p className="text-sm text-muted-foreground">Salve o produto primeiro para aplicar um modelo de variação.</p>
+                <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Salve o produto primeiro para aplicar um modelo de variação.</p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {loadingVariants ? (
-                    <Skeleton className="h-16 w-full" />
+                    <Skeleton className="h-20 w-full" />
                   ) : variants && variants.length > 0 ? (
-                    <div className="space-y-2">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       {variants.map((variant) => (
-                        <div key={variant.id} className="flex items-center justify-between rounded border p-2">
+                        <div key={variant.id} className="flex min-h-20 items-center justify-between gap-3 rounded-lg border bg-background p-3">
                           <div>
-                            <p className="text-sm font-medium">{variant.name}</p>
+                            <p className="text-sm font-semibold">{variant.name}</p>
                             <p className="text-xs text-muted-foreground">R$ {variant.price.toFixed(2)} • {variant.available ? "Disponível" : "Indisponível"}</p>
                           </div>
                           <div className="flex gap-1">
-                            <Button size="sm" variant="outline" onClick={() => { setEditingVariantId(variant.id); setVariantForm({ name: variant.name, price: String(variant.price), available: variant.available }); }}>
-                              <Pencil className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => deleteVariant.mutate({ id: variant.id })}>
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => { setEditingVariantId(variant.id); setVariantForm({ name: variant.name, price: String(variant.price), available: variant.available }); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                            <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => deleteVariant.mutate({ id: variant.id })}><Trash2 className="h-3.5 w-3.5" /></Button>
                           </div>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">Nenhuma variação cadastrada ainda.</p>
+                    <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Nenhuma variação cadastrada ainda.</p>
                   )}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <Input placeholder="Nome da variação" value={variantForm.name} onChange={(e) => setVariantForm({ ...variantForm, name: e.target.value })} />
                     <Input type="number" step="0.01" min="0" placeholder="Preço" value={variantForm.price} onChange={(e) => setVariantForm({ ...variantForm, price: e.target.value })} />
-                    <div className="flex items-center gap-2 rounded border px-2">
+                    <div className="flex min-h-12 items-center gap-2 rounded-lg border px-3 py-2">
                       <Switch checked={variantForm.available} onCheckedChange={(v) => setVariantForm({ ...variantForm, available: v })} id="variant-available" />
                       <Label htmlFor="variant-available">Disponível para venda</Label>
                     </div>
-                  </div>
-                  <div className="rounded border p-3 space-y-2">
-                    <p className="text-xs text-muted-foreground">Ao aplicar um modelo, as variações serão copiadas para este produto e poderão ser editadas individualmente.</p>
-                    <div className="flex gap-2">
-                      <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
-                        <SelectTrigger><SelectValue placeholder="Selecionar modelo de variação" /></SelectTrigger>
-                        <SelectContent>{templates.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent>
-                      </Select>
-                      <Button type="button" variant="outline" onClick={applyTemplateToProduct} disabled={!selectedTemplateId}>Aplicar modelo</Button>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button type="button" onClick={handleVariantSubmit} disabled={isVariantPending || !variantForm.name.trim() || !variantForm.price}>{editingVariantId ? "Salvar variação" : "Adicionar variação"}</Button>
+                      {editingVariantId && (<Button type="button" variant="outline" onClick={() => { setEditingVariantId(null); setVariantForm({ name: "", price: "", available: true }); }}>Cancelar edição</Button>)}
                     </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button type="button" onClick={handleVariantSubmit} disabled={isVariantPending || !variantForm.name.trim() || !variantForm.price}>
-                      {editingVariantId ? "Salvar variação" : "Adicionar variação"}
-                    </Button>
-                    {editingVariantId && (
-                      <Button type="button" variant="outline" onClick={() => { setEditingVariantId(null); setVariantForm({ name: "", price: "", available: true }); }}>
-                        Cancelar edição
-                      </Button>
-                    )}
                   </div>
                 </div>
               )}
             </div>
 
+            <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Variações gerais/modelos</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <p className="text-sm text-muted-foreground md:col-span-2">Ao aplicar um modelo, as variações serão copiadas para este produto e poderão ser editadas individualmente.</p>
+                <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                  <SelectTrigger><SelectValue placeholder="Selecionar modelo de variação" /></SelectTrigger>
+                  <SelectContent>{templates.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent>
+                </Select>
+                <Button type="button" variant="outline" onClick={applyTemplateToProduct} disabled={!selectedTemplateId || editingId === null}>Aplicar modelo</Button>
+              </div>
+            </div>
+
             {categories?.length === 0 && (
-              <p className="text-sm text-amber-600 bg-amber-50 dark:bg-amber-900/20 rounded p-2">
-                ⚠️ Crie uma categoria primeiro antes de adicionar produtos.
-              </p>
+              <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-600 dark:bg-amber-900/20">⚠️ Crie uma categoria primeiro antes de adicionar produtos.</p>
             )}
-            <Button
-              className="w-full"
-              onClick={handleSubmit}
-              disabled={isPending || !form.name.trim() || !form.price || !form.categoryId}
-              data-testid="button-submit-product"
-            >
+          </div>
+          <DialogFooter className="gap-2 border-t bg-background px-6 py-4 sm:space-x-0">
+            <Button className="w-full sm:w-auto" onClick={handleSubmit} disabled={isPending || !form.name.trim() || !form.price || !form.categoryId} data-testid="button-submit-product">
               {isPending ? "Salvando..." : editingId ? "Salvar Alterações" : "Criar Produto"}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

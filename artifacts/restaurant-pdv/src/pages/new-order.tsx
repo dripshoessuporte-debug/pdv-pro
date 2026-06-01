@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Plus, Minus, ShoppingCart, Search, MessageSquare, Truck, Banknote, Smartphone, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -979,21 +979,45 @@ export default function NewOrder() {
         </div>
       </div>
       <Dialog open={variantModalOpen} onOpenChange={setVariantModalOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Escolha a variação{variantProduct ? ` · ${variantProduct.name}` : ""}</DialogTitle></DialogHeader>
-          <div className="space-y-2">
-            {variantOptions.map((v) => (
-              <Button key={v.id} type="button" variant={selectedVariantId === v.id ? "default" : "outline"} className="w-full justify-between" onClick={() => setSelectedVariantId(v.id)}>
-                <span>{v.name}</span><span>R$ {v.price.toFixed(2)}</span>
-              </Button>
-            ))}
+        <DialogContent className="flex max-h-[85vh] max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+          <DialogHeader className="border-b px-6 py-5 pr-12">
+            <DialogTitle className="text-xl">Escolha a variação{variantProduct ? ` · ${variantProduct.name}` : ""}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {variantOptions.map((v) => {
+                const selected = selectedVariantId === v.id;
+
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    className={`min-h-28 rounded-xl border p-4 text-left transition hover:border-primary/60 hover:bg-primary/5 ${selected ? "border-primary bg-primary/10 shadow-sm ring-2 ring-primary/30" : "border-border bg-card"}`}
+                    onClick={() => setSelectedVariantId(v.id)}
+                  >
+                    <div className="flex h-full flex-col justify-between gap-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-base font-semibold leading-snug text-foreground">{v.name}</span>
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                          {selected ? "Selecionada" : "Opção"}
+                        </span>
+                      </div>
+                      <span className="text-2xl font-bold text-primary">R$ {v.price.toFixed(2)}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <Button disabled={selectedVariantId == null || !variantProduct} onClick={() => {
-            const variant = variantOptions.find((v) => v.id === selectedVariantId);
-            if (!variant || !variantProduct) return;
-            addToCart(variantProduct, variant);
-            setVariantModalOpen(false);
-          }}>Adicionar ao pedido</Button>
+          <DialogFooter className="gap-2 border-t bg-background px-6 py-4 sm:justify-between sm:space-x-0">
+            <Button type="button" variant="outline" onClick={() => setVariantModalOpen(false)}>Cancelar</Button>
+            <Button disabled={selectedVariantId == null || !variantProduct} onClick={() => {
+              const variant = variantOptions.find((v) => v.id === selectedVariantId);
+              if (!variant || !variantProduct) return;
+              addToCart(variantProduct, variant);
+              setVariantModalOpen(false);
+            }}>Adicionar ao pedido</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </Layout>
