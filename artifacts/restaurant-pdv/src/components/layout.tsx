@@ -90,15 +90,14 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
       <aside className="w-64 border-r border-white/10 bg-sidebar text-sidebar-foreground flex flex-col shadow-2xl shadow-slate-950/20">
         <div className="min-h-20 flex items-center px-6 border-b border-white/10">
-          <div className="flex min-h-11 items-center gap-3">
-            <div
-              aria-hidden="true"
-              className="h-10 w-10 shrink-0 rounded-2xl border border-dashed border-white/20 bg-white/[0.03]"
+          <Link href="/" className="flex min-h-11 items-center">
+            <img
+              src="/brand/gestor-max-logo.svg"
+              alt="Gestor Max"
+              className="h-11 w-auto max-w-[188px] object-contain"
             />
-            <span className="font-extrabold text-xl tracking-tight text-white leading-tight">
-              Gestor Max
-            </span>
-          </div>
+            <span className="sr-only">Gestor Max</span>
+          </Link>
         </div>
         <nav className="flex-1 overflow-y-auto p-4 space-y-1.5">
           {navItems.map((item) => {
