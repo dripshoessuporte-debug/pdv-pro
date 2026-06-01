@@ -107,7 +107,7 @@ export default function Cash() {
   const { data: history, isLoading: loadingHistory } = useListCashRegisters({
     query: {
       queryKey: getListCashRegistersQueryKey(),
-      enabled: tab === "history",
+      enabled: tab === "history" || noCashOpen,
     },
   });
 
@@ -143,7 +143,10 @@ export default function Cash() {
                 {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-28" />)}
               </div>
             ) : noCashOpen ? (
-              <OpenCashForm onSuccess={invalidate} />
+              <div className="space-y-5">
+                <ClosedCashOverview registers={history} loading={loadingHistory} />
+                <OpenCashForm onSuccess={invalidate} />
+              </div>
             ) : currentRegister ? (
               <OpenRegisterView register={currentRegister} onSuccess={invalidate} />
             ) : null}
@@ -155,6 +158,50 @@ export default function Cash() {
         )}
       </div>
     </Layout>
+  );
+}
+
+function ClosedCashOverview({ registers, loading }: { registers?: CashRegisterDetail[]; loading: boolean }) {
+  const recent = registers?.slice(0, 5) ?? [];
+  const totalSales = recent.reduce((sum, register) => sum + (register.summary?.totalSales ?? 0), 0);
+  const lastClosed = registers?.find((register) => register.status === "closed");
+
+  return (
+    <Card className="border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
+          <History className="h-5 w-5" />
+          Visão geral administrativa
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Nenhum caixa aberto agora. Exibindo histórico recente sem misturar com uma sessão ativa.
+        </p>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20" />)}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border bg-white p-4 dark:bg-background">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sessões recentes</p>
+              <p className="mt-1 text-2xl font-black text-slate-900 dark:text-slate-100">{recent.length}</p>
+            </div>
+            <div className="rounded-xl border bg-white p-4 dark:bg-background">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vendas recentes</p>
+              <p className="mt-1 text-2xl font-black text-emerald-700 dark:text-emerald-400">{fmt(totalSales)}</p>
+            </div>
+            <div className="rounded-xl border bg-white p-4 dark:bg-background">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Último fechamento</p>
+              <p className="mt-1 text-sm font-bold text-slate-900 dark:text-slate-100">
+                {lastClosed ? fmtDate(lastClosed.closedAt ?? lastClosed.openedAt) : "Sem fechamento"}
+              </p>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -551,13 +598,13 @@ function PendingSettlementsPanel() {
   }
 
   return (
-    <Card className="border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/10">
+    <Card className="border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/20">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base text-orange-800 dark:text-orange-300 flex items-center gap-2">
+        <CardTitle className="text-base text-[#D91F16] dark:text-red-300 flex items-center gap-2">
           <Truck className="w-4 h-4" />
           Entregas aguardando baixa financeira ({pending.length})
         </CardTitle>
-        <p className="text-xs text-orange-700 dark:text-orange-400">
+        <p className="text-xs text-[#D91F16] dark:text-red-300">
           Registre os recebimentos antes de fechar o caixa
         </p>
       </CardHeader>
@@ -566,7 +613,7 @@ function PendingSettlementsPanel() {
           {pending.map((order) => (
             <div
               key={order.id}
-              className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800"
+              className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-red-950/20 border border-red-200 dark:border-red-900/60"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -823,7 +870,7 @@ function SummaryCard({
     blue: "text-blue-600 bg-blue-100 dark:bg-blue-900/30",
     purple: "text-purple-600 bg-purple-100 dark:bg-purple-900/30",
     indigo: "text-indigo-600 bg-indigo-100 dark:bg-indigo-900/30",
-    orange: "text-orange-600 bg-orange-100 dark:bg-orange-900/30",
+    orange: "text-[#D91F16] bg-red-100 dark:bg-red-900/30",
   };
   return (
     <Card>

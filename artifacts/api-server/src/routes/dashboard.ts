@@ -82,13 +82,14 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
 });
 
 router.get("/dashboard/recent-orders", async (_req, res): Promise<void> => {
+  const operationalStart = await getOperationalSessionStart();
   const orders = await db
     .select({
       id: ordersTable.id,
       tableId: ordersTable.tableId,
       tableNumber: tablesTable.number,
       customerId: ordersTable.customerId,
-      customerName: customersTable.name,
+      customerName: sql<string | null>`coalesce(${ordersTable.customerName}, ${customersTable.name})`,
       status: ordersTable.status,
       type: ordersTable.type,
       notes: ordersTable.notes,
@@ -100,6 +101,7 @@ router.get("/dashboard/recent-orders", async (_req, res): Promise<void> => {
     .from(ordersTable)
     .leftJoin(tablesTable, eq(ordersTable.tableId, tablesTable.id))
     .leftJoin(customersTable, eq(ordersTable.customerId, customersTable.id))
+    .where(gte(ordersTable.createdAt, operationalStart))
     .orderBy(sql`${ordersTable.createdAt} DESC`)
     .limit(10);
 

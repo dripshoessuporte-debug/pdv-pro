@@ -96,8 +96,8 @@ export default function Dashboard() {
         alerts.awaitingSettlement > 0 && {
           key: "awaitingSettlement",
           icon: Banknote,
-          color: "text-orange-600 dark:text-orange-400",
-          bg: "bg-orange-50 dark:bg-orange-900/20",
+          color: "text-[#D91F16] dark:text-red-300",
+          bg: "bg-red-50 dark:bg-red-950/20",
           label: `${alerts.awaitingSettlement} entrega${alerts.awaitingSettlement > 1 ? "s" : ""} pendente${alerts.awaitingSettlement > 1 ? "s" : ""} de baixa financeira`,
           href: "/cash",
         },
@@ -128,8 +128,8 @@ export default function Dashboard() {
         alerts.readyNotActioned > 0 && {
           key: "readyNotActioned",
           icon: Clock,
-          color: "text-amber-600 dark:text-amber-400",
-          bg: "bg-amber-50 dark:bg-amber-900/20",
+          color: "text-[#D91F16] dark:text-red-300",
+          bg: "bg-red-50 dark:bg-red-950/20",
           label: `${alerts.readyNotActioned} pedido${alerts.readyNotActioned > 1 ? "s" : ""} pronto${alerts.readyNotActioned > 1 ? "s" : ""} há mais de 20 min sem ação`,
           href: "/orders",
         },
@@ -231,12 +231,12 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="border-amber-200 bg-amber-50">
+            <Card className="border-red-200 bg-red-50">
               <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-amber-500 shrink-0" />
+                <div className="w-3 h-3 rounded-full bg-[#FF2A1F] shrink-0" />
                 <div>
                   <p className="text-2xl font-bold text-amber-700">{summary.occupiedTables}</p>
-                  <p className="text-sm text-amber-600">Mesas ocupadas</p>
+                  <p className="text-sm text-[#D91F16]">Mesas ocupadas</p>
                 </div>
               </CardContent>
             </Card>
@@ -343,7 +343,7 @@ function StatCard({
   highlight?: boolean;
 }) {
   return (
-    <Card className={highlight ? "border-amber-400 dark:border-amber-600 shadow-amber-100 dark:shadow-amber-900/20 shadow-md" : ""}>
+    <Card className={highlight ? "border-red-300 dark:border-red-700 shadow-red-100 dark:shadow-red-900/20 shadow-md" : ""}>
       <CardHeader className="flex flex-row items-center justify-between pb-1 pt-4">
         <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</CardTitle>
         <Icon className={`w-4 h-4 ${accent ? "text-primary" : "text-muted-foreground"}`} />
@@ -353,7 +353,7 @@ function StatCard({
           <Skeleton className="h-8 w-24" />
         ) : (
           <>
-            <div className={`text-2xl font-bold ${accent ? "text-primary" : ""} ${highlight ? "text-amber-600 dark:text-amber-400" : ""}`}>
+            <div className={`text-2xl font-bold ${accent ? "text-primary" : ""} ${highlight ? "text-[#D91F16] dark:text-red-300" : ""}`}>
               {value ?? "0"}
             </div>
             {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}

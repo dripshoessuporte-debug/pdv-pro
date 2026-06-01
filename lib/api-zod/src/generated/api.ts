@@ -26,6 +26,8 @@ export const ListTablesResponseItem = zod.object({
   "capacity": zod.number(),
   "status": zod.enum(['available', 'occupied', 'reserved']),
   "currentOrderId": zod.number().nullish(),
+  "openOrdersCount": zod.number().optional(),
+  "hasMultipleOpenOrders": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 export const ListTablesResponse = zod.array(ListTablesResponseItem)
@@ -54,6 +56,8 @@ export const GetTableResponse = zod.object({
   "capacity": zod.number(),
   "status": zod.enum(['available', 'occupied', 'reserved']),
   "currentOrderId": zod.number().nullish(),
+  "openOrdersCount": zod.number().optional(),
+  "hasMultipleOpenOrders": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 
@@ -77,6 +81,8 @@ export const UpdateTableResponse = zod.object({
   "capacity": zod.number(),
   "status": zod.enum(['available', 'occupied', 'reserved']),
   "currentOrderId": zod.number().nullish(),
+  "openOrdersCount": zod.number().optional(),
+  "hasMultipleOpenOrders": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 

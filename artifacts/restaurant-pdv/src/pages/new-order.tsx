@@ -495,10 +495,10 @@ export default function NewOrder() {
           }
           if (deliveryPaymentNotes.trim()) orderData.deliveryPaymentNotes = deliveryPaymentNotes.trim();
         }
-      } else if (orderType === "takeaway") {
-        // Takeaway: name and phone optional
+      } else {
+        // Balcão, viagem e mesa: identificação avulsa opcional, sem exigir telefone/endereço
         if (customerName.trim()) orderData.customerName = customerName.trim();
-        if (customerPhone.trim()) orderData.customerPhone = customerPhone.trim();
+        if (orderType === "takeaway" && customerPhone.trim()) orderData.customerPhone = customerPhone.trim();
       }
 
       const order = await new Promise<{ id: number }>((resolve, reject) => {
@@ -609,10 +609,28 @@ export default function NewOrder() {
                   </div>
                 )}
 
+                {/* Identificação opcional para pedidos não delivery */}
+                {orderType !== "delivery" && (
+                  <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+                    <div>
+                      <Label>Nome do cliente (opcional)</Label>
+                      <Input
+                        placeholder={orderType === "table" ? "Ex: João / aniversariante" : "Ex: Maria"}
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        data-testid="input-customer-name"
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Identifica a comanda sem criar cadastro quando não houver telefone.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Campos de Delivery */}
                 {orderType === "delivery" && (
-                  <div className="space-y-3 border rounded-lg p-4 bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800">
-                    <div className="flex items-center gap-2 text-orange-700 dark:text-orange-400 font-semibold text-sm">
+                  <div className="space-y-3 border rounded-lg p-4 bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900/60">
+                    <div className="flex items-center gap-2 text-[#D91F16] dark:text-red-300 font-semibold text-sm">
                       <Truck className="w-4 h-4" />
                       Dados de Entrega
                     </div>
@@ -678,7 +696,7 @@ export default function NewOrder() {
                     {(storeSettings?.deliveryFeeMode === "per_km" || storeSettings?.deliveryFeeMode === "distance_tier") && (
                       <>
                         {!storeSettings.storeCep && (
-                          <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
+                          <p className="text-xs text-[#D91F16] dark:text-red-300 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 rounded px-3 py-2">
                             ⚠️ Configure o CEP da loja em Configurações para calcular a taxa automaticamente.
                           </p>
                         )}
@@ -697,7 +715,7 @@ export default function NewOrder() {
                           <p className="text-xs text-red-500">CEP não encontrado no ViaCEP. Preencha o endereço manualmente.</p>
                         )}
                         {distanceCalcStatus === "error" && (
-                          <p className="text-xs text-amber-600 dark:text-amber-400">Não foi possível calcular a distância. Verifique o CEP ou preencha a taxa manualmente.</p>
+                          <p className="text-xs text-[#D91F16] dark:text-red-300">Não foi possível calcular a distância. Verifique o CEP ou preencha a taxa manualmente.</p>
                         )}
                         {feeCalcInfo && (
                           <div className="text-xs bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded px-3 py-2 space-y-1 text-green-800 dark:text-green-300">
@@ -768,8 +786,8 @@ export default function NewOrder() {
                     </div>
 
                     {/* Pagamento */}
-                    <div className="border rounded-lg p-4 bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800 space-y-3">
-                      <p className="font-semibold text-sm text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                    <div className="border rounded-lg p-4 bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-700 space-y-3">
+                      <p className="font-semibold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
                         <Banknote className="w-4 h-4" /> Pagamento
                       </p>
                       {/* Quando pagar */}
@@ -784,8 +802,8 @@ export default function NewOrder() {
                             onClick={() => setPaymentTiming(opt.value as "now" | "on_delivery")}
                             className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
                               paymentTiming === opt.value
-                                ? "bg-amber-600 text-white border-amber-600"
-                                : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 hover:border-amber-400"
+                                ? "bg-[#FF2A1F] text-white border-[#FF2A1F]"
+                                : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 hover:border-[#FF2A1F]"
                             }`}
                             data-testid={`button-payment-timing-${opt.value}`}
                           >
@@ -811,8 +829,8 @@ export default function NewOrder() {
                                   onClick={() => setDeliveryPaymentMethod(value as "dinheiro" | "pix" | "cartao")}
                                   className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg border text-xs font-medium transition-colors ${
                                     deliveryPaymentMethod === value
-                                      ? "bg-amber-600 text-white border-amber-600"
-                                      : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 hover:border-amber-400"
+                                      ? "bg-[#FF2A1F] text-white border-[#FF2A1F]"
+                                      : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 hover:border-[#FF2A1F]"
                                   }`}
                                   data-testid={`button-payment-method-${value}`}
                                 >
@@ -839,7 +857,7 @@ export default function NewOrder() {
                                       onClick={() => setNeedsChange(opt.value)}
                                       className={`px-3 py-1 rounded border text-xs font-medium transition-colors ${
                                         needsChange === opt.value
-                                          ? "bg-amber-600 text-white border-amber-600"
+                                          ? "bg-[#FF2A1F] text-white border-[#FF2A1F]"
                                           : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700"
                                       }`}
                                       data-testid={`button-needs-change-${opt.value}`}
@@ -1118,7 +1136,7 @@ export default function NewOrder() {
                     {orderType === "delivery" && (
                       <div className="flex justify-between text-sm text-muted-foreground">
                         <span>Taxa de entrega</span>
-                        <span className={parsedFee > 0 ? "text-orange-600 dark:text-orange-400 font-medium" : ""}>
+                        <span className={parsedFee > 0 ? "text-[#D91F16] dark:text-red-300 font-medium" : ""}>
                           {parsedFee > 0 ? `R$ ${parsedFee.toFixed(2)}` : "—"}
                         </span>
                       </div>

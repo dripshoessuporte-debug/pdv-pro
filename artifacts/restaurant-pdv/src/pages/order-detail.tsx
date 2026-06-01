@@ -94,7 +94,7 @@ const DELIVERY_STATUS_COLORS: Record<string, string> = {
   ready: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
   out_for_delivery: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
   delivered: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-  awaiting_settlement: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
+  awaiting_settlement: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
 };
 
 // Status que permitem ações financeiras
@@ -244,7 +244,7 @@ export default function OrderDetail() {
                 {STATUS_LABELS[order.status]}
               </span>
               {isDelivery && (
-                <span className="px-3 py-1 rounded-full text-sm font-semibold bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300 flex items-center gap-1">
+                <span className="px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 flex items-center gap-1">
                   <Truck className="w-3.5 h-3.5" /> Delivery
                 </span>
               )}
@@ -410,9 +410,9 @@ export default function OrderDetail() {
 
             {/* Seção de Entrega */}
             {isDelivery && (
-              <Card className="border-orange-200 dark:border-orange-800">
+              <Card className="border-red-200 dark:border-red-900/60">
                 <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-orange-700 dark:text-orange-400">
+                  <CardTitle className="flex items-center gap-2 text-[#D91F16] dark:text-red-300">
                     <Truck className="w-5 h-5" /> Dados de Entrega
                   </CardTitle>
                 </CardHeader>
@@ -597,10 +597,10 @@ export default function OrderDetail() {
                       <span>R$ {itemsSubtotal.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="flex items-center gap-1 text-orange-600 dark:text-orange-400">
+                      <span className="flex items-center gap-1 text-[#D91F16] dark:text-red-300">
                         <Package className="w-3.5 h-3.5" /> Taxa de entrega
                       </span>
-                      <span className="text-orange-600 dark:text-orange-400 font-medium">
+                      <span className="text-[#D91F16] dark:text-red-300 font-medium">
                         + R$ {deliveryFee.toFixed(2)}
                       </span>
                     </div>
