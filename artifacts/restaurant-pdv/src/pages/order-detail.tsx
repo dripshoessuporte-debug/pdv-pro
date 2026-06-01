@@ -125,7 +125,7 @@ export default function OrderDetail() {
     queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() });
   };
 
-  const { data: order, isLoading } = useGetOrder(orderId, {
+  const { data: order, isLoading, isError, error } = useGetOrder(orderId, {
     query: {
       enabled: !!orderId,
       queryKey: getGetOrderQueryKey(orderId),
@@ -176,7 +176,7 @@ export default function OrderDetail() {
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-    queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListTablesQueryKey() });
         toast({ title: "Pedido cancelado" });
         setLocation("/orders");
@@ -196,6 +196,8 @@ export default function OrderDetail() {
     },
   });
 
+  const orderLoadError = error instanceof Error ? error.message : "Não foi possível carregar os dados do pedido.";
+
   if (isLoading) {
     return (
       <Layout>
@@ -207,11 +209,16 @@ export default function OrderDetail() {
     );
   }
 
-  if (!order) {
+  if (isError || !order) {
     return (
       <Layout>
-        <div className="text-center py-16">
-          <p className="text-muted-foreground">Pedido não encontrado</p>
+        <div className="text-center py-16 space-y-3">
+          <div>
+            <p className="font-medium">{isError ? "Erro ao carregar pedido" : "Pedido não encontrado"}</p>
+            <p className="text-sm text-muted-foreground">
+              {isError ? orderLoadError : "Verifique se o pedido ainda existe e tente novamente."}
+            </p>
+          </div>
           <Button asChild className="mt-4">
             <Link href="/orders">Voltar</Link>
           </Button>
@@ -220,7 +227,9 @@ export default function OrderDetail() {
     );
   }
 
-  const isEditable = order.status === "open";
+  const isTableOrder = order.type === "table";
+  const isTableComandaOpen = isTableOrder && ["open", "preparing", "ready"].includes(order.status);
+  const isEditable = order.status === "open" || isTableComandaOpen;
   const isPayable = PAYABLE.includes(order.status);
   const isDelivery = order.type === "delivery";
   const deliveryFee = order.deliveryFee ?? 0;
