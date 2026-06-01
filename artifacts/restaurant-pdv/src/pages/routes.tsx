@@ -200,6 +200,16 @@ const URGENCY_ICON: Record<TimeUrgency, typeof Clock> = {
   danger: AlertCircle,
 };
 
+
+function isTodayLocal(iso: string | null): boolean {
+  if (!iso) return false;
+  const date = new Date(iso);
+  const today = new Date();
+  return date.getFullYear() === today.getFullYear()
+    && date.getMonth() === today.getMonth()
+    && date.getDate() === today.getDate();
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Routes() {
@@ -473,7 +483,7 @@ export default function Routes() {
   const pendingOrdersRenderable = pendingOrders.filter((order) => {
     const isEligibleDeliveryStatus = ["pending", "preparing", "ready"].includes(order.deliveryStatus ?? "");
     const hasRouteLink = (order as { routeId?: number | null }).routeId != null;
-    return isEligibleDeliveryStatus && !hasRouteLink;
+    return isEligibleDeliveryStatus && !hasRouteLink && isTodayLocal(order.createdAt);
   });
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [bulkAdding, setBulkAdding] = useState(false);
@@ -516,7 +526,9 @@ export default function Routes() {
   const activeRoutes = routes.filter((r) => r.status !== "completed");
   const availableRoutes = routes.filter((r) => r.status === "available");
   const inProgressRoutes = routes.filter((r) => r.status === "in_progress");
-  const completedRoutes = routes.filter((r) => r.status === "completed");
+  const completedTodayRoutes = routes.filter((r) => r.status === "completed" && isTodayLocal(r.completedAt));
+  const oldCompletedRoutes = routes.filter((r) => r.status === "completed" && !isTodayLocal(r.completedAt));
+  const completedRoutes = showCompleted ? [...completedTodayRoutes, ...oldCompletedRoutes] : completedTodayRoutes;
 
   return (
     <Layout>
@@ -582,7 +594,7 @@ export default function Routes() {
               { label: "Aguardando rota", count: pendingOrdersRenderable.length },
               { label: "Disponíveis", count: activeRoutes.filter((r) => r.status === "available").length },
               { label: "Em andamento", count: activeRoutes.filter((r) => r.status === "in_progress").length },
-              { label: "Concluídas hoje", count: completedRoutes.length },
+              { label: "Concluídas hoje", count: completedTodayRoutes.length },
             ].map((s) => (
               <div key={s.label} className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2">
                 <span className="min-w-[1.75rem] h-7 rounded-md bg-[#0F172A] text-white text-sm font-bold flex items-center justify-center px-1.5">
@@ -619,7 +631,7 @@ export default function Routes() {
           <section>
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <h2 className="text-base font-semibold">Aguardando Rota</h2>
-              <Badge variant="secondary" className="bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+              <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
                 {pendingOrdersRenderable.length}
               </Badge>
               <div className="flex items-center gap-2 ml-auto flex-wrap">
@@ -776,7 +788,7 @@ export default function Routes() {
         )}
 
         {/* ── Completed routes ── */}
-        {completedRoutes.length > 0 && (
+        {(completedTodayRoutes.length > 0 || oldCompletedRoutes.length > 0) && (
           <section>
             <button
               className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors group"
@@ -784,7 +796,7 @@ export default function Routes() {
             >
               <CheckCircle2 className="w-4 h-4" />
               <span className="font-medium">
-                {showCompleted ? "Ocultar concluídas" : `Ver rotas concluídas (${completedRoutes.length})`}
+                {showCompleted ? "Ocultar concluídas" : `Ver histórico de concluídas (${completedRoutes.length})`}
               </span>
               <ChevronRight className={`w-4 h-4 transition-transform ${showCompleted ? "rotate-90" : ""}`} />
             </button>
@@ -1012,7 +1024,7 @@ export default function Routes() {
                 <div className="border-t pt-2">
                   <Button
                     variant="outline"
-                    className="w-full gap-2 border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-400"
+                    className="w-full gap-2 border-red-300 text-[#D91F16] hover:bg-red-50 dark:border-red-800 dark:text-red-300"
                     onClick={() => addPendingState && handleCreateEmergency(addPendingState.orderId)}
                     disabled={addingToRoute}
                   >
@@ -1124,7 +1136,7 @@ export default function Routes() {
             <div className="border-t pt-2 space-y-1.5">
               <Button
                 variant="outline"
-                className="w-full gap-2 border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-400"
+                className="w-full gap-2 border-red-300 text-[#D91F16] hover:bg-red-50 dark:border-red-800 dark:text-red-300"
                 onClick={() => moveOrderState && handleCreateEmergency(moveOrderState.orderId, true)}
                 disabled={movingOrder}
               >
@@ -1267,7 +1279,7 @@ function PendingOrderRow({
         <Button
           size="sm"
           variant="ghost"
-          className="h-7 px-2 text-xs gap-1 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:text-orange-400"
+          className="h-7 px-2 text-xs gap-1 text-[#D91F16] hover:text-[#D91F16] hover:bg-red-50 dark:text-red-300"
           onClick={onEmergency}
           title="Criar rota solitária"
         >

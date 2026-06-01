@@ -20,7 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
-import { Plus, Users, Eye, Trash2 } from "lucide-react";
+import { AlertTriangle, Plus, Users, Eye, Trash2, Utensils } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_CONFIG = {
@@ -32,9 +32,9 @@ const STATUS_CONFIG = {
   },
   occupied: {
     label: "Ocupada",
-    headerClass: "bg-amber-500",
-    cardClass: "border-amber-300 bg-amber-50 hover:border-amber-500",
-    badgeClass: "bg-amber-100 text-amber-800 border border-amber-300",
+    headerClass: "bg-[#FF2A1F]",
+    cardClass: "border-red-200 bg-red-50 hover:border-[#FF2A1F]",
+    badgeClass: "bg-red-100 text-red-800 border border-red-300",
   },
   reserved: {
     label: "Reservada",
@@ -182,6 +182,8 @@ export default function Tables() {
                   onClick={() => {
                     if (table.currentOrderId) {
                       setLocation(`/orders/${table.currentOrderId}`);
+                    } else if (table.status === "available") {
+                      setLocation(`/orders/new?tableId=${table.id}`);
                     }
                   }}
                 >
@@ -245,8 +247,31 @@ export default function Tables() {
                         }}
                         data-testid={`button-open-order-${table.id}`}
                       >
-                        Abrir Pedido
+                        Abrir Comanda
                       </Button>
+                    )}
+
+                    {isOccupied && table.currentOrderId && (
+                      <div className="mt-auto space-y-2">
+                        {table.hasMultipleOpenOrders && (
+                          <div className="flex items-start gap-1.5 rounded-lg border border-red-200 bg-white px-2 py-1.5 text-[11px] font-medium text-red-700">
+                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                            Mais de uma comanda aberta; usando a mais recente.
+                          </div>
+                        )}
+                        <Button
+                          size="sm"
+                          className="h-9 w-full rounded-xl bg-[#FF2A1F] text-sm font-semibold text-white hover:bg-[#D91F16]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLocation(`/orders/${table.currentOrderId}`);
+                          }}
+                          data-testid={`button-add-items-${table.id}`}
+                        >
+                          <Utensils className="mr-2 h-4 w-4" />
+                          Abrir / Adicionar itens
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </div>

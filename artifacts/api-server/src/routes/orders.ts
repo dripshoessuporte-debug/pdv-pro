@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { db, ordersTable, orderItemsTable, tablesTable, customersTable, productsTable, productVariantsTable, kitchenTicketsTable, paymentsTable, cashMovementsTable } from "@workspace/db";
 import {
   CreateOrderBody,
@@ -21,6 +21,7 @@ import {
   UpdateDeliveryStatusBody,
   UpdateDeliveryStatusResponse,
 } from "@workspace/api-zod";
+import { getDefaultStoreIdOrThrow } from "../lib/store-context";
 
 const router: IRouter = Router();
 
@@ -224,6 +225,40 @@ router.post("/orders", async (req, res): Promise<void> => {
 
   const { deliveryFee, needsChange, changeFor, ...restData } = parsed.data;
   const fee = deliveryFee ?? 0;
+
+  if (parsed.data.tableId) {
+    const storeId = await getDefaultStoreIdOrThrow();
+    const [table] = await db
+      .select({ id: tablesTable.id, storeId: tablesTable.storeId })
+      .from(tablesTable)
+      .where(and(eq(tablesTable.id, parsed.data.tableId), eq(tablesTable.storeId, storeId)))
+      .limit(1);
+
+    if (!table) {
+      res.status(404).json({ error: "Mesa não encontrada nesta loja." });
+      return;
+    }
+
+    const [existingOpenOrder] = await db
+      .select({ id: ordersTable.id })
+      .from(ordersTable)
+      .where(and(
+        eq(ordersTable.tableId, parsed.data.tableId),
+        inArray(ordersTable.status, ["open", "preparing", "ready"])
+      ))
+      .orderBy(sql`${ordersTable.createdAt} DESC`)
+      .limit(1);
+
+    if (existingOpenOrder) {
+      const full = await getOrderWithItems(existingOpenOrder.id);
+      res.status(409).json({
+        error: "Esta mesa já possui comanda aberta. Abra a comanda existente para adicionar itens.",
+        currentOrder: full,
+        currentOrderId: existingOpenOrder.id,
+      });
+      return;
+    }
+  }
 
   const [order] = await db.insert(ordersTable).values({
     ...restData,

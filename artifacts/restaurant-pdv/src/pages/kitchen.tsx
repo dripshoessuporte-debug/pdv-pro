@@ -70,7 +70,7 @@ const ORDER_TYPE_COLORS: Record<string, string> = {
   table: "bg-blue-600",
   counter: "bg-violet-600",
   takeaway: "bg-teal-600",
-  delivery: "bg-orange-600",
+  delivery: "bg-[#FF2A1F]",
 };
 
 export default function Kitchen() {
