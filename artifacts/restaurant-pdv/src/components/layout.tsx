@@ -38,7 +38,7 @@ const navItems = [
 function AlertBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+    <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-primary text-white text-[10px] font-bold leading-none shadow-sm shadow-red-950/25">
       {count > 99 ? "99+" : count}
     </span>
   );
@@ -87,13 +87,19 @@ export function Layout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen w-full bg-background overflow-hidden">
-      <aside className="w-64 border-r bg-card flex flex-col">
-        <div className="h-16 flex items-center px-6 border-b">
-          <UtensilsCrossed className="w-6 h-6 text-primary mr-2" />
-          <span className="font-bold text-lg tracking-tight">PDV Pro</span>
+    <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
+      <aside className="w-64 border-r border-white/10 bg-sidebar text-sidebar-foreground flex flex-col shadow-2xl shadow-slate-950/20">
+        <div className="min-h-20 flex items-center px-6 border-b border-white/10">
+          <Link href="/" className="flex min-h-11 items-center">
+            <img
+              src="/brand/gestor-max-logo.svg"
+              alt="Gestor Max"
+              className="h-11 w-auto max-w-[188px] object-contain"
+            />
+            <span className="sr-only">Gestor Max</span>
+          </Link>
         </div>
-        <nav className="flex-1 overflow-y-auto p-4 space-y-1">
+        <nav className="flex-1 overflow-y-auto p-4 space-y-1.5">
           {navItems.map((item) => {
             const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
             const isCash = item.href === "/cash";
@@ -102,23 +108,23 @@ export function Layout({ children }: { children: ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center justify-between px-3 py-2.5 rounded-md transition-colors ${
+                className={`group flex items-center justify-between px-3.5 py-3 rounded-xl text-sm transition-all duration-200 ${
                   isActive
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    ? "bg-primary text-white font-semibold shadow-lg shadow-red-950/30"
+                    : "text-zinc-300 hover:bg-white/10 hover:text-white"
                 }`}
               >
                 <span className="flex items-center">
-                  <item.icon className="w-5 h-5 mr-3" />
+                  <item.icon className={`w-5 h-5 mr-3 transition-colors ${isActive ? "text-white" : "text-zinc-400 group-hover:text-white"}`} />
                   {item.label}
                 </span>
                 <span className="flex items-center gap-1.5">
                   {badge > 0 && <AlertBadge count={badge} />}
                   {isCash && (
-                    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                       cashOpen
-                        ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
-                        : "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400"
+                        ? "bg-green-500/15 text-green-300 ring-1 ring-green-400/25"
+                        : "bg-red-500/15 text-red-200 ring-1 ring-red-400/25"
                     }`}>
                       {cashOpen ? "Aberto" : "Fechado"}
                     </span>
@@ -130,12 +136,12 @@ export function Layout({ children }: { children: ReactNode }) {
         </nav>
 
         {/* Cash status footer */}
-        <div className={`mx-4 mb-2 px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${
+        <div className={`mx-4 mb-3 px-3.5 py-3 rounded-xl text-xs flex items-center gap-2.5 border ${
           cashOpen
-            ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400"
-            : "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400"
+            ? "bg-green-500/10 text-green-200 border-green-400/20"
+            : "bg-amber-500/10 text-amber-200 border-amber-400/20"
         }`}>
-          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${cashOpen ? "bg-green-500" : "bg-amber-500"}`} />
+          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${cashOpen ? "bg-green-400" : "bg-amber-400"}`} />
           {cashOpen ? (
             <span>Caixa aberto · {cashRegister?.operator}</span>
           ) : (
@@ -145,19 +151,19 @@ export function Layout({ children }: { children: ReactNode }) {
           )}
         </div>
 
-        <div className="p-4 border-t text-sm flex items-center justify-between">
-          <div className="flex items-center text-muted-foreground">
+        <div className="p-4 border-t border-white/10 text-sm flex items-center justify-between">
+          <div className="flex items-center text-zinc-300">
             {health?.status === "ok" ? (
-              <CheckCircle2 className="w-4 h-4 text-green-500 mr-2" />
+              <CheckCircle2 className="w-4 h-4 text-green-400 mr-2" />
             ) : (
-              <AlertCircle className="w-4 h-4 text-destructive mr-2" />
+              <AlertCircle className="w-4 h-4 text-red-400 mr-2" />
             )}
             Status do Sistema
           </div>
         </div>
       </aside>
-      <main className="flex-1 overflow-y-auto bg-muted/30">
-        <div className="p-8 max-w-7xl mx-auto h-full">
+      <main className="flex-1 overflow-y-auto bg-background">
+        <div className="p-8 lg:p-10 max-w-7xl mx-auto min-h-full">
           {children}
         </div>
       </main>

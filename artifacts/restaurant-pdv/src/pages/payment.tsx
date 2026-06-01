@@ -158,7 +158,7 @@ export default function Payment() {
               </CardHeader>
               <CardContent className="font-mono text-sm space-y-1">
                 <div className="text-center border-b pb-3 mb-3">
-                  <p className="font-bold text-lg">PDV Pro</p>
+                  <p className="font-bold text-lg">Gestor Max</p>
                   <p className="text-xs text-muted-foreground">
                     {new Date(receipt.order.createdAt).toLocaleString("pt-BR")}
                   </p>
