@@ -92,7 +92,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <div className="min-h-20 flex items-center px-6 border-b border-white/10">
           <Link href="/" className="flex min-h-11 items-center">
             <img
-              src="/brand/gestor-max-logo.svg"
+              src="/brand/gestor-max-logo.png"
               alt="Gestor Max"
               className="h-11 w-auto max-w-[188px] object-contain"
             />
