@@ -12,6 +12,8 @@ import {
   getListProductsQueryKey,
   useCreateOrder,
   useAddOrderItem,
+  useCreateCustomer,
+  useUpdateCustomer,
   getListOrdersQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -30,7 +32,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Minus, ShoppingCart, Search, MessageSquare, Truck, Banknote, Smartphone, CreditCard } from "lucide-react";
+import { Plus, Minus, ShoppingCart, Search, MessageSquare, Truck, Banknote, Smartphone, CreditCard, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type OrderType = "counter" | "table" | "takeaway" | "delivery";
@@ -43,6 +45,58 @@ type CartItem = {
   price: number;
   quantity: number;
   notes: string;
+};
+
+type CustomerOption = {
+  id: number;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  notes?: string | null;
+};
+
+type SavedCustomer = { id: number; name: string; phone?: string | null; notes?: string | null };
+
+const onlyDigits = (value: string) => value.replace(/\D/g, "");
+
+const buildDeliveryAddressNote = ({
+  cep,
+  address,
+  neighborhood,
+  reference,
+}: {
+  cep: string;
+  address: string;
+  neighborhood: string;
+  reference: string;
+}) => {
+  const parts = [
+    address.trim(),
+    neighborhood.trim() ? `Bairro: ${neighborhood.trim()}` : "",
+    cep.trim() ? `CEP: ${cep.trim()}` : "",
+    reference.trim() ? `Ref.: ${reference.trim()}` : "",
+  ].filter(Boolean);
+
+  return parts.length > 0 ? `Endereço delivery: ${parts.join(" · ")}` : "";
+};
+
+const extractErrorMessage = (error: unknown) => {
+  if (error && typeof error === "object") {
+    const data = "data" in error ? (error as { data?: unknown }).data : undefined;
+    if (data && typeof data === "object") {
+      const errorText = (data as { error?: unknown; message?: unknown; detail?: unknown }).error
+        ?? (data as { error?: unknown; message?: unknown; detail?: unknown }).message
+        ?? (data as { error?: unknown; message?: unknown; detail?: unknown }).detail;
+      if (typeof errorText === "string" && errorText.trim()) return errorText;
+    }
+
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+
+  if (typeof error === "string" && error.trim()) return error;
+
+  return "Erro ao criar pedido. Tente novamente.";
 };
 
 export default function NewOrder() {
@@ -67,6 +121,7 @@ export default function NewOrder() {
   // Delivery / takeaway fields
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [autoSaveCustomer, setAutoSaveCustomer] = useState(true);
   const [deliveryCep, setDeliveryCep] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryNeighborhood, setDeliveryNeighborhood] = useState("");
@@ -125,6 +180,8 @@ export default function NewOrder() {
 
   const createOrder = useCreateOrder();
   const addItem = useAddOrderItem();
+  const createCustomer = useCreateCustomer();
+  const updateCustomer = useUpdateCustomer();
 
   useEffect(() => {
     if (preselectedTableId) {
@@ -301,6 +358,85 @@ export default function NewOrder() {
   const cartTotal = cartSubtotal + parsedFee;
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
 
+  const selectedCustomer = customers?.find((c) => String(c.id) === customerId) as CustomerOption | undefined;
+  const customerFormHasData = Boolean(
+    customerName.trim()
+      || customerPhone.trim()
+      || deliveryAddress.trim()
+      || deliveryNeighborhood.trim()
+      || deliveryReference.trim()
+  );
+  const canAutoSaveCustomer = autoSaveCustomer && !customerId && customerFormHasData && Boolean(customerName.trim() && customerPhone.trim());
+
+  const selectCustomer = (value: string) => {
+    const nextCustomerId = value === "none" ? "" : value;
+    setCustomerId(nextCustomerId);
+
+    const customer = customers?.find((c) => String(c.id) === nextCustomerId);
+    if (!customer) return;
+
+    if (!customerName.trim()) setCustomerName(customer.name);
+    if (!customerPhone.trim() && customer.phone) setCustomerPhone(customer.phone);
+  };
+
+  const saveCustomerForOrder = async (): Promise<number | undefined> => {
+    if (customerId) return parseInt(customerId);
+    if (!canAutoSaveCustomer) return undefined;
+
+    const phoneDigits = onlyDigits(customerPhone);
+    const addressNote = orderType === "delivery"
+      ? buildDeliveryAddressNote({
+        cep: deliveryCep,
+        address: deliveryAddress,
+        neighborhood: deliveryNeighborhood,
+        reference: deliveryReference,
+      })
+      : "";
+
+    const existingCustomer = phoneDigits
+      ? customers?.find((customer) => customer.phone && onlyDigits(customer.phone) === phoneDigits)
+      : undefined;
+
+    if (existingCustomer) {
+      const nextNotes = addressNote && !existingCustomer.notes?.includes(addressNote)
+        ? [existingCustomer.notes, addressNote].filter(Boolean).join("\n")
+        : existingCustomer.notes ?? undefined;
+
+      const updated = await new Promise<SavedCustomer>((resolve, reject) => {
+        updateCustomer.mutate(
+          {
+            id: existingCustomer.id,
+            data: {
+              name: customerName.trim() || existingCustomer.name,
+              phone: customerPhone.trim() || existingCustomer.phone || undefined,
+              ...(nextNotes ? { notes: nextNotes } : {}),
+            },
+          },
+          { onSuccess: (customer) => resolve(customer), onError: (e) => reject(e) }
+        );
+      });
+
+      setCustomerId(String(updated.id));
+      return updated.id;
+    }
+
+    const created = await new Promise<SavedCustomer>((resolve, reject) => {
+      createCustomer.mutate(
+        {
+          data: {
+            name: customerName.trim(),
+            phone: customerPhone.trim(),
+            ...(addressNote ? { notes: addressNote } : {}),
+          },
+        },
+        { onSuccess: (customer) => resolve(customer), onError: (e) => reject(e) }
+      );
+    });
+
+    setCustomerId(String(created.id));
+    return created.id;
+  };
+
   const handleCreate = async () => {
     if (cart.length === 0) {
       toast({ title: "Adicione pelo menos um item ao pedido", variant: "destructive" });
@@ -331,11 +467,13 @@ export default function NewOrder() {
 
     setCreating(true);
     try {
+      const savedCustomerId = await saveCustomerForOrder();
+
       // Build order payload
       const orderData: Record<string, unknown> = { type: orderType };
 
       if (tableId) orderData.tableId = parseInt(tableId);
-      if (customerId) orderData.customerId = parseInt(customerId);
+      if (savedCustomerId) orderData.customerId = savedCustomerId;
       if (orderNotes.trim()) orderData.notes = orderNotes.trim();
 
       if (orderType === "delivery") {
@@ -389,10 +527,11 @@ export default function NewOrder() {
 
       queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
       queryClient.invalidateQueries({ queryKey: getListTablesQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getListCustomersQueryKey({}) });
       toast({ title: "Pedido criado com sucesso!" });
       setLocation(`/orders/${order.id}`);
-    } catch {
-      toast({ title: "Erro ao criar pedido. Tente novamente.", variant: "destructive" });
+    } catch (error) {
+      toast({ title: "Erro ao criar pedido", description: extractErrorMessage(error), variant: "destructive" });
     } finally {
       setCreating(false);
     }
@@ -418,21 +557,21 @@ export default function NewOrder() {
 
   return (
     <Layout>
-      <div className="space-y-6">
+      <div className="space-y-8 pb-24 lg:pb-28">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Novo Pedido</h1>
           <p className="text-muted-foreground mt-1">Configure o pedido e adicione itens</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:items-start">
           {/* Esquerda: Configuração + Cardápio */}
           <div className="lg:col-span-2 space-y-5">
             <Card>
-              <CardContent className="p-5 space-y-4">
+              <CardContent className="p-5 space-y-5 sm:p-6">
                 {/* Tipo de pedido */}
                 <div>
                   <Label className="mb-2 block text-sm font-medium">Tipo de Pedido</Label>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {ORDER_TYPES.map((t) => (
                       <Button
                         key={t.value}
@@ -479,7 +618,7 @@ export default function NewOrder() {
                     </div>
 
                     {/* Nome + Telefone */}
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <Label>Nome do Cliente *</Label>
                         <Input
@@ -501,7 +640,7 @@ export default function NewOrder() {
                     </div>
 
                     {/* CEP + Taxa */}
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <Label>CEP</Label>
                         <Input
@@ -595,7 +734,7 @@ export default function NewOrder() {
                     </div>
 
                     {/* Bairro + Complemento */}
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <Label>Bairro *</Label>
                         <Input
@@ -657,10 +796,10 @@ export default function NewOrder() {
 
                       {/* Forma de pagamento (apenas se pagar na entrega) */}
                       {paymentTiming === "on_delivery" && (
-                        <div className="space-y-3">
+                        <div className="space-y-4 pb-6">
                           <div>
                             <Label>Forma de pagamento</Label>
-                            <div className="grid grid-cols-3 gap-2 mt-1">
+                            <div className="grid grid-cols-1 gap-2 mt-1 sm:grid-cols-3">
                               {[
                                 { value: "dinheiro", label: "Dinheiro", Icon: Banknote },
                                 { value: "pix", label: "Pix", Icon: Smartphone },
@@ -747,7 +886,7 @@ export default function NewOrder() {
                     <div className="text-blue-700 dark:text-blue-400 font-semibold text-sm">
                       🛵 Dados para Retirada (opcional)
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <Label>Nome (opcional)</Label>
                         <Input
@@ -770,25 +909,56 @@ export default function NewOrder() {
                   </div>
                 )}
 
-                {/* Cliente registrado — apenas balcão / mesa */}
-                {(orderType === "counter" || orderType === "table") && (
-                  <div>
-                    <Label>Cliente (opcional)</Label>
-                    <Select value={customerId || "none"} onValueChange={(v) => setCustomerId(v === "none" ? "" : v)}>
-                      <SelectTrigger data-testid="select-customer">
-                        <SelectValue placeholder="Selecionar cliente" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Sem cliente identificado</SelectItem>
-                        {customers?.map((c) => (
-                          <SelectItem key={c.id} value={String(c.id)}>
-                            {c.name}{c.phone ? ` · ${c.phone}` : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                {/* Cliente registrado / auto-salvamento */}
+                <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <Label>{orderType === "delivery" || orderType === "takeaway" ? "Cliente cadastrado (opcional)" : "Cliente (opcional)"}</Label>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {selectedCustomer
+                          ? `Pedido vinculado a ${selectedCustomer.name}${selectedCustomer.phone ? ` · ${selectedCustomer.phone}` : ""}.`
+                          : "Selecione um cliente existente ou deixe sem cliente identificado quando permitido."}
+                      </p>
+                    </div>
+                    <Save className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
                   </div>
-                )}
+                  <Select value={customerId || "none"} onValueChange={selectCustomer}>
+                    <SelectTrigger data-testid="select-customer">
+                      <SelectValue placeholder="Selecionar cliente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sem cliente identificado</SelectItem>
+                      {customers?.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.name}{c.phone ? ` · ${c.phone}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {!customerId && customerFormHasData && (
+                    <button
+                      type="button"
+                      onClick={() => setAutoSaveCustomer((value) => !value)}
+                      className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left text-sm transition-colors ${
+                        autoSaveCustomer
+                          ? "border-green-300 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950/30 dark:text-green-200"
+                          : "border-border bg-background text-muted-foreground"
+                      }`}
+                      data-testid="button-auto-save-customer"
+                    >
+                      <span className={`mt-0.5 h-4 w-4 rounded border ${autoSaveCustomer ? "border-green-600 bg-green-600" : "border-muted-foreground"}`} />
+                      <span>
+                        <span className="block font-medium">Salvar cliente automaticamente</span>
+                        <span className="block text-xs opacity-80">
+                          {canAutoSaveCustomer
+                            ? "Ao confirmar, o sistema busca pelo telefone nesta loja, atualiza o cadastro encontrado ou cria um novo cliente."
+                            : "Informe nome e telefone para salvar automaticamente; caso contrário o pedido segue sem cliente identificado quando permitido."}
+                        </span>
+                      </span>
+                    </button>
+                  )}
+                </div>
 
                 {/* Observação geral */}
                 <div>
@@ -805,7 +975,7 @@ export default function NewOrder() {
             </Card>
 
             {/* Cardápio */}
-            <div className="space-y-3">
+            <div className="space-y-4 pb-6">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
@@ -839,23 +1009,23 @@ export default function NewOrder() {
               </div>
 
               {loadingProducts ? (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-20" />)}
                 </div>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 md:grid-cols-3">
                   {products?.filter((p) => p.available).map((product) => {
                     const inCart = cart.find((i) => i.productId === product.id);
                     return (
                       <Card
                         key={product.id}
-                        className={`cursor-pointer hover:shadow-md transition-all select-none ${inCart ? "ring-2 ring-primary bg-primary/5" : ""}`}
+                        className={`cursor-pointer select-none rounded-xl border transition-all hover:-translate-y-0.5 hover:shadow-md ${inCart ? "ring-2 ring-primary bg-primary/5" : ""}`}
                         onClick={() => void handleProductClick(product)}
                         data-testid={`card-product-${product.id}`}
                       >
-                        <CardContent className="p-3">
-                          <p className="font-medium text-sm line-clamp-2 mb-1">{product.name}</p>
-                          <div className="flex items-center justify-between">
+                        <CardContent className="flex min-h-24 flex-col justify-between p-4">
+                          <p className="font-medium text-sm line-clamp-2 mb-3 leading-snug">{product.name}</p>
+                          <div className="flex items-center justify-between gap-3">
                             <span className="text-primary font-bold text-sm">R$ {product.price.toFixed(2)}</span>
                             {inCart ? (
                               <Badge className="text-xs">{inCart.quantity}x</Badge>
@@ -879,8 +1049,8 @@ export default function NewOrder() {
 
           {/* Direita: Carrinho */}
           <div className="lg:col-span-1">
-            <Card className="sticky top-4">
-              <CardContent className="p-5">
+            <Card className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)]">
+              <CardContent className="flex max-h-[inherit] flex-col p-5 sm:p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <ShoppingCart className="w-5 h-5 text-primary" />
                   <h2 className="font-semibold text-lg">Resumo do Pedido</h2>
@@ -893,7 +1063,7 @@ export default function NewOrder() {
                     <p className="text-sm">Clique nos produtos para adicionar</p>
                   </div>
                 ) : (
-                  <div className="space-y-4 mb-4 max-h-72 overflow-y-auto pr-1">
+                  <div className="mb-4 max-h-[45vh] space-y-4 overflow-y-auto pr-1 lg:max-h-[calc(100vh-22rem)]">
                     {cart.map((item) => (
                       <div key={`${item.productId}-${item.variantId ?? "base"}`} data-testid={`cart-item-${item.productId}-${item.variantId ?? "base"}`} className="border-b pb-3 last:border-0">
                         <div className="flex items-center justify-between gap-2">
