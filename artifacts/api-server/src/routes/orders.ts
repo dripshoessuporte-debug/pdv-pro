@@ -332,6 +332,21 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
     return;
   }
 
+  const [order] = await db
+    .select({ status: ordersTable.status })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, params.data.id));
+
+  if (!order) {
+    res.status(404).json({ error: "Order not found" });
+    return;
+  }
+
+  if (["closed", "cancelled"].includes(order.status)) {
+    res.status(409).json({ error: "Não é possível adicionar itens a um pedido finalizado ou cancelado." });
+    return;
+  }
+
   const [product] = await db.select().from(productsTable).where(eq(productsTable.id, parsed.data.productId));
   if (!product) {
     res.status(404).json({ error: "Product not found" });
