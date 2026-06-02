@@ -168,7 +168,7 @@ export default function Payment() {
                 </div>
                 {receipt.items.map((item) => (
                   <div key={item.id} className="flex justify-between" data-testid={`receipt-item-${item.id}`}>
-                    <span className="truncate">{item.quantity}x {item.productName}</span>
+                    <span className="truncate">{item.quantity}x {item.productName}{"addons" in item && Array.isArray(item.addons) && item.addons.length > 0 ? ` + ${item.addons.length} adicional(is)` : ""}</span>
                     <span className="ml-2 shrink-0">R$ {item.totalPrice.toFixed(2)}</span>
                   </div>
                 ))}
@@ -299,7 +299,7 @@ export default function Payment() {
               <CardContent className="space-y-2">
                 {order.items.map((item) => (
                   <div key={item.id} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{item.quantity}x {item.productName}</span>
+                    <span className="text-muted-foreground">{item.quantity}x {item.productName}{"addons" in item && Array.isArray(item.addons) && item.addons.length > 0 ? ` + ${item.addons.length} adicional(is)` : ""}</span>
                     <span>R$ {item.totalPrice.toFixed(2)}</span>
                   </div>
                 ))}

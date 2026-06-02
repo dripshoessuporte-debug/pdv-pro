@@ -477,6 +477,224 @@ export const CreateProductVariantBody = zod.object({
 
 
 /**
+ * @summary List addon groups
+ */
+export const ListAddonGroupsResponseItem = zod.object({
+  "id": zod.number(),
+  "storeId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "required": zod.boolean(),
+  "minSelected": zod.number(),
+  "maxSelected": zod.number().nullish(),
+  "active": zod.boolean(),
+  "sortOrder": zod.number(),
+  "options": zod.array(zod.object({
+  "id": zod.number(),
+  "storeId": zod.number(),
+  "groupId": zod.number(),
+  "name": zod.string(),
+  "price": zod.number(),
+  "available": zod.boolean(),
+  "sortOrder": zod.number()
+}))
+})
+export const ListAddonGroupsResponse = zod.array(ListAddonGroupsResponseItem)
+
+
+/**
+ * @summary Create addon group
+ */
+export const createAddonGroupBodyMinSelectedMin = 0;
+
+
+
+export const CreateAddonGroupBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "required": zod.boolean().optional(),
+  "minSelected": zod.number().min(createAddonGroupBodyMinSelectedMin).optional(),
+  "maxSelected": zod.number().nullish(),
+  "active": zod.boolean().optional(),
+  "sortOrder": zod.number().optional()
+})
+
+
+/**
+ * @summary Update addon group
+ */
+export const UpdateAddonGroupParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateAddonGroupBodyMinSelectedMin = 0;
+
+
+
+export const UpdateAddonGroupBody = zod.object({
+  "name": zod.string().optional(),
+  "description": zod.string().nullish(),
+  "required": zod.boolean().optional(),
+  "minSelected": zod.number().min(updateAddonGroupBodyMinSelectedMin).optional(),
+  "maxSelected": zod.number().nullish(),
+  "active": zod.boolean().optional(),
+  "sortOrder": zod.number().optional()
+})
+
+export const UpdateAddonGroupResponse = zod.object({
+  "id": zod.number(),
+  "storeId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "required": zod.boolean(),
+  "minSelected": zod.number(),
+  "maxSelected": zod.number().nullish(),
+  "active": zod.boolean(),
+  "sortOrder": zod.number(),
+  "options": zod.array(zod.object({
+  "id": zod.number(),
+  "storeId": zod.number(),
+  "groupId": zod.number(),
+  "name": zod.string(),
+  "price": zod.number(),
+  "available": zod.boolean(),
+  "sortOrder": zod.number()
+}))
+})
+
+
+/**
+ * @summary List addon options
+ */
+export const ListAddonOptionsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListAddonOptionsResponseItem = zod.object({
+  "id": zod.number(),
+  "storeId": zod.number(),
+  "groupId": zod.number(),
+  "name": zod.string(),
+  "price": zod.number(),
+  "available": zod.boolean(),
+  "sortOrder": zod.number()
+})
+export const ListAddonOptionsResponse = zod.array(ListAddonOptionsResponseItem)
+
+
+/**
+ * @summary Create addon option
+ */
+export const CreateAddonOptionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const createAddonOptionBodyPriceMin = 0;
+
+
+
+export const CreateAddonOptionBody = zod.object({
+  "name": zod.string(),
+  "price": zod.number().min(createAddonOptionBodyPriceMin),
+  "available": zod.boolean().optional(),
+  "sortOrder": zod.number().optional()
+})
+
+
+/**
+ * @summary Update addon option
+ */
+export const UpdateAddonOptionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateAddonOptionBodyPriceMin = 0;
+
+
+
+export const UpdateAddonOptionBody = zod.object({
+  "name": zod.string().optional(),
+  "price": zod.number().min(updateAddonOptionBodyPriceMin).optional(),
+  "available": zod.boolean().optional(),
+  "sortOrder": zod.number().optional()
+})
+
+export const UpdateAddonOptionResponse = zod.object({
+  "id": zod.number(),
+  "storeId": zod.number(),
+  "groupId": zod.number(),
+  "name": zod.string(),
+  "price": zod.number(),
+  "available": zod.boolean(),
+  "sortOrder": zod.number()
+})
+
+
+/**
+ * @summary List addon groups linked to product
+ */
+export const ListProductAddonGroupsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListProductAddonGroupsResponseItem = zod.object({
+  "id": zod.number(),
+  "storeId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "required": zod.boolean(),
+  "minSelected": zod.number(),
+  "maxSelected": zod.number().nullish(),
+  "active": zod.boolean(),
+  "sortOrder": zod.number(),
+  "options": zod.array(zod.object({
+  "id": zod.number(),
+  "storeId": zod.number(),
+  "groupId": zod.number(),
+  "name": zod.string(),
+  "price": zod.number(),
+  "available": zod.boolean(),
+  "sortOrder": zod.number()
+}))
+})
+export const ListProductAddonGroupsResponse = zod.array(ListProductAddonGroupsResponseItem)
+
+
+/**
+ * @summary Replace product addon group links
+ */
+export const UpdateProductAddonGroupsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateProductAddonGroupsBody = zod.object({
+  "addonGroupIds": zod.array(zod.number())
+})
+
+export const UpdateProductAddonGroupsResponseItem = zod.object({
+  "id": zod.number(),
+  "storeId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "required": zod.boolean(),
+  "minSelected": zod.number(),
+  "maxSelected": zod.number().nullish(),
+  "active": zod.boolean(),
+  "sortOrder": zod.number(),
+  "options": zod.array(zod.object({
+  "id": zod.number(),
+  "storeId": zod.number(),
+  "groupId": zod.number(),
+  "name": zod.string(),
+  "price": zod.number(),
+  "available": zod.boolean(),
+  "sortOrder": zod.number()
+}))
+})
+export const UpdateProductAddonGroupsResponse = zod.array(UpdateProductAddonGroupsResponseItem)
+
+
+/**
  * @summary List variant templates
  */
 export const ListVariantTemplatesResponseItem = zod.object({
@@ -663,7 +881,17 @@ export const ListOrdersResponseItem = zod.object({
   "notes": zod.string().nullish(),
   "variantId": zod.number().nullish(),
   "variantName": zod.string().nullish(),
-  "variantPrice": zod.number().nullish()
+  "variantPrice": zod.number().nullish(),
+  "addons": zod.array(zod.object({
+  "id": zod.number(),
+  "orderItemId": zod.number(),
+  "addonOptionId": zod.number().nullish(),
+  "addonGroupName": zod.string(),
+  "addonName": zod.string(),
+  "addonPrice": zod.number(),
+  "quantity": zod.number(),
+  "totalPrice": zod.number()
+})).optional()
 }))
 })
 export const ListOrdersResponse = zod.array(ListOrdersResponseItem)
@@ -744,7 +972,17 @@ export const GetOrderResponse = zod.object({
   "notes": zod.string().nullish(),
   "variantId": zod.number().nullish(),
   "variantName": zod.string().nullish(),
-  "variantPrice": zod.number().nullish()
+  "variantPrice": zod.number().nullish(),
+  "addons": zod.array(zod.object({
+  "id": zod.number(),
+  "orderItemId": zod.number(),
+  "addonOptionId": zod.number().nullish(),
+  "addonGroupName": zod.string(),
+  "addonName": zod.string(),
+  "addonPrice": zod.number(),
+  "quantity": zod.number(),
+  "totalPrice": zod.number()
+})).optional()
 }))
 })
 
@@ -807,7 +1045,17 @@ export const UpdateOrderResponse = zod.object({
   "notes": zod.string().nullish(),
   "variantId": zod.number().nullish(),
   "variantName": zod.string().nullish(),
-  "variantPrice": zod.number().nullish()
+  "variantPrice": zod.number().nullish(),
+  "addons": zod.array(zod.object({
+  "id": zod.number(),
+  "orderItemId": zod.number(),
+  "addonOptionId": zod.number().nullish(),
+  "addonGroupName": zod.string(),
+  "addonName": zod.string(),
+  "addonPrice": zod.number(),
+  "quantity": zod.number(),
+  "totalPrice": zod.number()
+})).optional()
 }))
 })
 
@@ -822,11 +1070,16 @@ export const AddOrderItemParams = zod.object({
 
 
 
+
 export const AddOrderItemBody = zod.object({
   "productId": zod.number(),
   "quantity": zod.number().min(1),
   "notes": zod.string().optional(),
-  "variantId": zod.number().nullish()
+  "variantId": zod.number().nullish(),
+  "addons": zod.array(zod.object({
+  "addonOptionId": zod.number(),
+  "quantity": zod.number().min(1).optional()
+})).optional()
 })
 
 
@@ -890,7 +1143,17 @@ export const SendOrderToKitchenResponse = zod.object({
   "notes": zod.string().nullish(),
   "variantId": zod.number().nullish(),
   "variantName": zod.string().nullish(),
-  "variantPrice": zod.number().nullish()
+  "variantPrice": zod.number().nullish(),
+  "addons": zod.array(zod.object({
+  "id": zod.number(),
+  "orderItemId": zod.number(),
+  "addonOptionId": zod.number().nullish(),
+  "addonGroupName": zod.string(),
+  "addonName": zod.string(),
+  "addonPrice": zod.number(),
+  "quantity": zod.number(),
+  "totalPrice": zod.number()
+})).optional()
 }))
 })
 
@@ -946,7 +1209,17 @@ export const CancelOrderResponse = zod.object({
   "notes": zod.string().nullish(),
   "variantId": zod.number().nullish(),
   "variantName": zod.string().nullish(),
-  "variantPrice": zod.number().nullish()
+  "variantPrice": zod.number().nullish(),
+  "addons": zod.array(zod.object({
+  "id": zod.number(),
+  "orderItemId": zod.number(),
+  "addonOptionId": zod.number().nullish(),
+  "addonGroupName": zod.string(),
+  "addonName": zod.string(),
+  "addonPrice": zod.number(),
+  "quantity": zod.number(),
+  "totalPrice": zod.number()
+})).optional()
 }))
 })
 
@@ -1006,7 +1279,17 @@ export const UpdateDeliveryStatusResponse = zod.object({
   "notes": zod.string().nullish(),
   "variantId": zod.number().nullish(),
   "variantName": zod.string().nullish(),
-  "variantPrice": zod.number().nullish()
+  "variantPrice": zod.number().nullish(),
+  "addons": zod.array(zod.object({
+  "id": zod.number(),
+  "orderItemId": zod.number(),
+  "addonOptionId": zod.number().nullish(),
+  "addonGroupName": zod.string(),
+  "addonName": zod.string(),
+  "addonPrice": zod.number(),
+  "quantity": zod.number(),
+  "totalPrice": zod.number()
+})).optional()
 }))
 })
 
@@ -1078,7 +1361,17 @@ export const GetReceiptResponse = zod.object({
   "notes": zod.string().nullish(),
   "variantId": zod.number().nullish(),
   "variantName": zod.string().nullish(),
-  "variantPrice": zod.number().nullish()
+  "variantPrice": zod.number().nullish(),
+  "addons": zod.array(zod.object({
+  "id": zod.number(),
+  "orderItemId": zod.number(),
+  "addonOptionId": zod.number().nullish(),
+  "addonGroupName": zod.string(),
+  "addonName": zod.string(),
+  "addonPrice": zod.number(),
+  "quantity": zod.number(),
+  "totalPrice": zod.number()
+})).optional()
 }))
 }),
   "payment": zod.object({
@@ -1101,7 +1394,17 @@ export const GetReceiptResponse = zod.object({
   "notes": zod.string().nullish(),
   "variantId": zod.number().nullish(),
   "variantName": zod.string().nullish(),
-  "variantPrice": zod.number().nullish()
+  "variantPrice": zod.number().nullish(),
+  "addons": zod.array(zod.object({
+  "id": zod.number(),
+  "orderItemId": zod.number(),
+  "addonOptionId": zod.number().nullish(),
+  "addonGroupName": zod.string(),
+  "addonName": zod.string(),
+  "addonPrice": zod.number(),
+  "quantity": zod.number(),
+  "totalPrice": zod.number()
+})).optional()
 }))
 })
 
@@ -1128,7 +1431,17 @@ export const GetKitchenQueueResponseItem = zod.object({
   "notes": zod.string().nullish(),
   "variantId": zod.number().nullish(),
   "variantName": zod.string().nullish(),
-  "variantPrice": zod.number().nullish()
+  "variantPrice": zod.number().nullish(),
+  "addons": zod.array(zod.object({
+  "id": zod.number(),
+  "orderItemId": zod.number(),
+  "addonOptionId": zod.number().nullish(),
+  "addonGroupName": zod.string(),
+  "addonName": zod.string(),
+  "addonPrice": zod.number(),
+  "quantity": zod.number(),
+  "totalPrice": zod.number()
+})).optional()
 }))
 })
 export const GetKitchenQueueResponse = zod.array(GetKitchenQueueResponseItem)
@@ -1160,7 +1473,17 @@ export const MarkTicketReadyResponse = zod.object({
   "notes": zod.string().nullish(),
   "variantId": zod.number().nullish(),
   "variantName": zod.string().nullish(),
-  "variantPrice": zod.number().nullish()
+  "variantPrice": zod.number().nullish(),
+  "addons": zod.array(zod.object({
+  "id": zod.number(),
+  "orderItemId": zod.number(),
+  "addonOptionId": zod.number().nullish(),
+  "addonGroupName": zod.string(),
+  "addonName": zod.string(),
+  "addonPrice": zod.number(),
+  "quantity": zod.number(),
+  "totalPrice": zod.number()
+})).optional()
 }))
 })
 
@@ -1241,7 +1564,17 @@ export const GetRecentOrdersResponseItem = zod.object({
   "notes": zod.string().nullish(),
   "variantId": zod.number().nullish(),
   "variantName": zod.string().nullish(),
-  "variantPrice": zod.number().nullish()
+  "variantPrice": zod.number().nullish(),
+  "addons": zod.array(zod.object({
+  "id": zod.number(),
+  "orderItemId": zod.number(),
+  "addonOptionId": zod.number().nullish(),
+  "addonGroupName": zod.string(),
+  "addonName": zod.string(),
+  "addonPrice": zod.number(),
+  "quantity": zod.number(),
+  "totalPrice": zod.number()
+})).optional()
 }))
 })
 export const GetRecentOrdersResponse = zod.array(GetRecentOrdersResponseItem)

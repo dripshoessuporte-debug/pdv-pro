@@ -6,6 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './addonGroup';
+export * from './addonGroupInput';
+export * from './addonGroupUpdate';
+export * from './addonOption';
+export * from './addonOptionInput';
+export * from './addonOptionUpdate';
 export * from './adjustRouteTimeInput';
 export * from './alertsSummary';
 export * from './applyVariantTemplateToProductBody';
@@ -64,6 +70,8 @@ export * from './orderInput';
 export * from './orderInputPaymentTiming';
 export * from './orderInputType';
 export * from './orderItem';
+export * from './orderItemAddon';
+export * from './orderItemAddonInput';
 export * from './orderItemInput';
 export * from './orderPaymentTiming';
 export * from './orderStatus';
@@ -76,6 +84,7 @@ export * from './paymentInputMethod';
 export * from './paymentMethod';
 export * from './paymentStatus';
 export * from './product';
+export * from './productAddonGroupsInput';
 export * from './productInput';
 export * from './productUpdate';
 export * from './productVariant';

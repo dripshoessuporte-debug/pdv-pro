@@ -103,6 +103,8 @@ type VariantForm = {
 };
 type VariantTemplate = { id: number; name: string; description: string | null; active: boolean };
 type VariantTemplateOption = { id: number; templateId: number; name: string; price: number; available: boolean; sortOrder: number };
+type AddonOption = { id: number; groupId: number; name: string; price: number; available: boolean; sortOrder: number };
+type AddonGroup = { id: number; name: string; description: string | null; required: boolean; minSelected: number; maxSelected: number | null; active: boolean; options: AddonOption[] };
 
 export default function Menu() {
   const [search, setSearch] = useState("");
@@ -125,6 +127,10 @@ export default function Menu() {
   const [templateOptionForm, setTemplateOptionForm] = useState({ templateId: 0, name: "", price: "", available: true });
   const [editingTemplateOptionId, setEditingTemplateOptionId] = useState<number>(0);
   const [templateOptionsMap, setTemplateOptionsMap] = useState<Record<number, VariantTemplateOption[]>>({});
+  const [addonGroups, setAddonGroups] = useState<AddonGroup[]>([]);
+  const [productAddonGroupIds, setProductAddonGroupIds] = useState<number[]>([]);
+  const [addonGroupForm, setAddonGroupForm] = useState({ name: "", description: "", required: false, minSelected: "0", maxSelected: "", active: true });
+  const [addonOptionForm, setAddonOptionForm] = useState({ groupId: 0, name: "", price: "", available: true });
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -357,6 +363,80 @@ export default function Menu() {
 
   const isPending = createProduct.isPending || updateProduct.isPending;
   const isCatPending = createCategory.isPending || updateCategory.isPending;
+
+  const loadAddonGroups = async () => {
+    const res = await fetch("/api/menu/addon-groups");
+    const data = await res.json() as AddonGroup[];
+    setAddonGroups(data);
+  };
+
+  const loadProductAddonGroups = async (productId: number) => {
+    const res = await fetch(`/api/menu/products/${productId}/addon-groups`);
+    const data = await res.json() as AddonGroup[];
+    setProductAddonGroupIds(data.map((group) => group.id));
+  };
+
+  useEffect(() => {
+    void loadAddonGroups();
+  }, []);
+
+  useEffect(() => {
+    if (editingId !== null) void loadProductAddonGroups(editingId);
+    else setProductAddonGroupIds([]);
+  }, [editingId]);
+
+  const createAddonGroup = async () => {
+    const payload = {
+      name: addonGroupForm.name.trim(),
+      description: addonGroupForm.description.trim() || null,
+      required: addonGroupForm.required,
+      minSelected: Number(addonGroupForm.minSelected || 0),
+      maxSelected: addonGroupForm.maxSelected ? Number(addonGroupForm.maxSelected) : null,
+      active: addonGroupForm.active,
+    };
+    const res = await fetch("/api/menu/addon-groups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (!res.ok) throw new Error("Erro ao criar grupo de adicionais.");
+    setAddonGroupForm({ name: "", description: "", required: false, minSelected: "0", maxSelected: "", active: true });
+    await loadAddonGroups();
+    toast({ title: "Grupo de adicionais criado." });
+  };
+
+  const updateAddonGroup = async (groupId: number, data: Partial<AddonGroup>) => {
+    const res = await fetch(`/api/menu/addon-groups/${groupId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    if (!res.ok) throw new Error("Erro ao atualizar grupo.");
+    await loadAddonGroups();
+  };
+
+  const createAddonOption = async () => {
+    const res = await fetch(`/api/menu/addon-groups/${addonOptionForm.groupId}/options`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: addonOptionForm.name.trim(), price: Number(addonOptionForm.price || 0), available: addonOptionForm.available }),
+    });
+    if (!res.ok) throw new Error("Erro ao criar opção de adicional.");
+    setAddonOptionForm({ groupId: addonOptionForm.groupId, name: "", price: "", available: true });
+    await loadAddonGroups();
+    toast({ title: "Opção de adicional criada." });
+  };
+
+  const updateAddonOption = async (optionId: number, data: Partial<AddonOption>) => {
+    const res = await fetch(`/api/menu/addon-options/${optionId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    if (!res.ok) throw new Error("Erro ao atualizar opção.");
+    await loadAddonGroups();
+  };
+
+  const saveProductAddonGroups = async (nextIds = productAddonGroupIds) => {
+    if (editingId === null) return;
+    const res = await fetch(`/api/menu/products/${editingId}/addon-groups`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ addonGroupIds: nextIds }),
+    });
+    if (!res.ok) throw new Error("Erro ao vincular adicionais ao produto.");
+    setProductAddonGroupIds(nextIds);
+    toast({ title: "Adicionais vinculados ao produto." });
+  };
+
   const isVariantPending = createVariant.isPending || updateVariant.isPending;
   const handleVariantSubmit = () => {
     if (!editingId || !variantForm.name.trim() || !variantForm.price) return;
@@ -704,6 +784,38 @@ export default function Menu() {
                   </div>
                 </>)}
               </div>
+            </div>
+
+
+            <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Adicionais do produto</h3>
+              {editingId === null ? (
+                <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Salve o produto primeiro para vincular grupos de adicionais.</p>
+              ) : addonGroups.length === 0 ? (
+                <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Nenhum grupo de adicionais criado ainda.</p>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    {addonGroups.map((group) => {
+                      const checked = productAddonGroupIds.includes(group.id);
+                      return (
+                        <label key={group.id} className="flex items-center gap-3 rounded-lg border p-3 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const nextIds = e.target.checked ? [...productAddonGroupIds, group.id] : productAddonGroupIds.filter((id) => id !== group.id);
+                              setProductAddonGroupIds(nextIds);
+                            }}
+                          />
+                          <span>{group.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <Button type="button" variant="outline" onClick={() => void saveProductAddonGroups()}>Salvar vínculos de adicionais</Button>
+                </div>
+              )}
             </div>
 
             <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">

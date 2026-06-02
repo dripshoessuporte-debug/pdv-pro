@@ -178,9 +178,14 @@ export default function Kitchen() {
                           <p className="font-bold text-foreground text-base leading-snug">
                             {item.productName}
                           </p>
+                          {"addons" in item && Array.isArray(item.addons) && item.addons.map((addon: { id: number; addonName: string }) => (
+                            <p key={addon.id} className="text-sm text-muted-foreground font-medium mt-0.5">
+                              ↳ {addon.addonName}
+                            </p>
+                          ))}
                           {item.notes && (
                             <p className="text-sm text-amber-700 dark:text-amber-400 font-medium mt-0.5">
-                              ↳ {item.notes}
+                              💬 {item.notes}
                             </p>
                           )}
                         </div>

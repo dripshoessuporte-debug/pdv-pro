@@ -55,6 +55,35 @@ import { getCurrentActor } from "@/lib/rbac";
 
 type OrderType = "counter" | "table" | "takeaway" | "delivery";
 
+type AddonOption = {
+  id: number;
+  groupId: number;
+  name: string;
+  price: number;
+  available: boolean;
+  sortOrder?: number;
+};
+
+type AddonGroup = {
+  id: number;
+  name: string;
+  description?: string | null;
+  required: boolean;
+  minSelected: number;
+  maxSelected?: number | null;
+  active: boolean;
+  options: AddonOption[];
+};
+
+type SelectedAddon = {
+  addonOptionId: number;
+  groupId: number;
+  groupName: string;
+  name: string;
+  price: number;
+  quantity: number;
+};
+
 type CartItem = {
   productId: number;
   variantId: number | null;
@@ -63,6 +92,8 @@ type CartItem = {
   price: number;
   quantity: number;
   notes: string;
+  addons: SelectedAddon[];
+  addonKey: string;
 };
 
 type CustomerOption = {
@@ -162,6 +193,15 @@ export default function NewOrder() {
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(
     null,
   );
+  const [addonModalOpen, setAddonModalOpen] = useState(false);
+  const [addonProduct, setAddonProduct] = useState<{
+    id: number;
+    name: string;
+    price: number;
+    variant?: { id: number; name: string; price: number };
+  } | null>(null);
+  const [addonGroups, setAddonGroups] = useState<AddonGroup[]>([]);
+  const [selectedAddons, setSelectedAddons] = useState<Record<number, SelectedAddon>>({});
 
   // Delivery / takeaway fields
   const [customerName, setCustomerName] = useState("");
@@ -446,18 +486,35 @@ export default function NewOrder() {
     };
   }, [deliveryCep, orderType, storeSettings]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const buildAddonKey = (addons: SelectedAddon[]) =>
+    addons
+      .filter((addon) => addon.quantity > 0)
+      .sort((a, b) => a.addonOptionId - b.addonOptionId)
+      .map((addon) => `${addon.addonOptionId}:${addon.quantity}`)
+      .join("|");
+
   const addToCart = (
     product: { id: number; name: string; price: number },
     variant?: { id: number; name: string; price: number },
+    addons: SelectedAddon[] = [],
   ) => {
+    const addonKey = buildAddonKey(addons);
+    const addonsTotal = addons.reduce(
+      (sum, addon) => sum + addon.price * addon.quantity,
+      0,
+    );
     setCart((prev) => {
       const existing = prev.find(
         (i) =>
-          i.productId === product.id && i.variantId === (variant?.id ?? null),
+          i.productId === product.id &&
+          i.variantId === (variant?.id ?? null) &&
+          i.addonKey === addonKey,
       );
       if (existing) {
         return prev.map((i) =>
-          i.productId === product.id && i.variantId === (variant?.id ?? null)
+          i.productId === product.id &&
+          i.variantId === (variant?.id ?? null) &&
+          i.addonKey === addonKey
             ? { ...i, quantity: i.quantity + 1 }
             : i,
         );
@@ -469,28 +526,45 @@ export default function NewOrder() {
           variantId: variant?.id ?? null,
           name: product.name,
           variantName: variant?.name ?? null,
-          price: variant?.price ?? product.price,
+          price: (variant?.price ?? product.price) + addonsTotal,
           quantity: 1,
           notes: "",
+          addons,
+          addonKey,
         },
       ];
     });
   };
 
-  const removeFromCart = (productId: number, variantId: number | null) => {
+  const openAddonStep = async (
+    product: { id: number; name: string; price: number },
+    variant?: { id: number; name: string; price: number },
+  ) => {
+    const response = await fetch(`/api/menu/products/${product.id}/addon-groups`);
+    const groups = ((await response.json()) as AddonGroup[]).filter(
+      (group) => group.active,
+    );
+    if (groups.length === 0) return addToCart(product, variant);
+    setAddonProduct({ ...product, variant });
+    setAddonGroups(groups);
+    setSelectedAddons({});
+    setAddonModalOpen(true);
+  };
+
+  const removeFromCart = (productId: number, variantId: number | null, addonKey = "") => {
     setCart((prev) => {
       const existing = prev.find(
-        (i) => i.productId === productId && i.variantId === variantId,
+        (i) => i.productId === productId && i.variantId === variantId && i.addonKey === addonKey,
       );
       if (existing && existing.quantity > 1) {
         return prev.map((i) =>
-          i.productId === productId && i.variantId === variantId
+          i.productId === productId && i.variantId === variantId && i.addonKey === addonKey
             ? { ...i, quantity: i.quantity - 1 }
             : i,
         );
       }
       return prev.filter(
-        (i) => !(i.productId === productId && i.variantId === variantId),
+        (i) => !(i.productId === productId && i.variantId === variantId && i.addonKey === addonKey),
       );
     });
   };
@@ -498,11 +572,12 @@ export default function NewOrder() {
   const updateItemNotes = (
     productId: number,
     variantId: number | null,
+    addonKey: string,
     notes: string,
   ) => {
     setCart((prev) =>
       prev.map((i) =>
-        i.productId === productId && i.variantId === variantId
+        i.productId === productId && i.variantId === variantId && i.addonKey === addonKey
           ? { ...i, notes }
           : i,
       ),
@@ -721,6 +796,14 @@ export default function NewOrder() {
                   ? { variantId: item.variantId }
                   : {}),
                 ...(item.notes.trim() ? { notes: item.notes.trim() } : {}),
+                ...(item.addons.length
+                  ? {
+                      addons: item.addons.map((addon) => ({
+                        addonOptionId: addon.addonOptionId,
+                        quantity: addon.quantity,
+                      })),
+                    }
+                  : {}),
               },
             },
             { onSuccess: () => resolve(), onError: (e) => reject(e) },
@@ -744,6 +827,56 @@ export default function NewOrder() {
     }
   };
 
+
+  const toggleAddon = (group: AddonGroup, option: AddonOption) => {
+    if (!option.available) return;
+    setSelectedAddons((prev) => {
+      const current = prev[option.id];
+      if (current) {
+        const next = { ...prev };
+        delete next[option.id];
+        return next;
+      }
+      const groupSelected = Object.values(prev).filter(
+        (addon) => addon.groupId === group.id,
+      );
+      if (group.maxSelected != null && groupSelected.length >= group.maxSelected) {
+        toast({
+          title: `Selecione no máximo ${group.maxSelected} em ${group.name}`,
+          variant: "destructive",
+        });
+        return prev;
+      }
+      return {
+        ...prev,
+        [option.id]: {
+          addonOptionId: option.id,
+          groupId: group.id,
+          groupName: group.name,
+          name: option.name,
+          price: option.price,
+          quantity: 1,
+        },
+      };
+    });
+  };
+
+  const selectedAddonList = Object.values(selectedAddons);
+  const addonValidationError = addonGroups
+    .map((group) => {
+      const selectedCount = selectedAddonList.filter(
+        (addon) => addon.groupId === group.id,
+      ).length;
+      const minimum = group.required ? Math.max(1, group.minSelected) : group.minSelected;
+      if (selectedCount < minimum) return `Selecione pelo menos ${minimum} em ${group.name}.`;
+      if (group.maxSelected != null && selectedCount > group.maxSelected)
+        return `Selecione no máximo ${group.maxSelected} em ${group.name}.`;
+      return null;
+    })
+    .find(Boolean);
+  const addonBasePrice = addonProduct?.variant?.price ?? addonProduct?.price ?? 0;
+  const addonTotal = addonBasePrice + selectedAddonList.reduce((sum, addon) => sum + addon.price * addon.quantity, 0);
+
   const ORDER_TYPES: { value: OrderType; label: string }[] = [
     { value: "counter", label: "🍽 Balcão" },
     { value: "table", label: "🪑 Mesa" },
@@ -765,7 +898,7 @@ export default function NewOrder() {
       available: boolean;
     }>;
     const activeVariants = variants.filter((v) => v.active && v.available);
-    if (activeVariants.length === 0) return addToCart(product);
+    if (activeVariants.length === 0) return openAddonStep(product);
     setVariantProduct(product);
     setVariantOptions(activeVariants);
     setSelectedVariantId(null);
@@ -1425,7 +1558,7 @@ export default function NewOrder() {
                   <div className="mb-4 max-h-[45vh] space-y-4 overflow-y-auto pr-1 lg:max-h-[calc(100vh-22rem)]">
                     {cart.map((item) => (
                       <div
-                        key={`${item.productId}-${item.variantId ?? "base"}`}
+                        key={`${item.productId}-${item.variantId ?? "base"}-${item.addonKey}`}
                         data-testid={`cart-item-${item.productId}-${item.variantId ?? "base"}`}
                         className="border-b pb-3 last:border-0"
                       >
@@ -1441,6 +1574,13 @@ export default function NewOrder() {
                                 R$ {(item.price * item.quantity).toFixed(2)}
                               </span>
                             </p>
+                            {item.addons.length > 0 && (
+                              <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                                {item.addons.map((addon) => (
+                                  <p key={addon.addonOptionId}>↳ {addon.name} · R$ {addon.price.toFixed(2)}</p>
+                                ))}
+                              </div>
+                            )}
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
                             <Button
@@ -1448,7 +1588,7 @@ export default function NewOrder() {
                               variant="outline"
                               className="h-7 w-7 p-0"
                               onClick={() =>
-                                removeFromCart(item.productId, item.variantId)
+                                removeFromCart(item.productId, item.variantId, item.addonKey)
                               }
                             >
                               <Minus className="w-3 h-3" />
@@ -1471,9 +1611,10 @@ export default function NewOrder() {
                                     ? {
                                         id: item.variantId,
                                         name: item.variantName ?? "",
-                                        price: item.price,
+                                        price: item.price - item.addons.reduce((sum, addon) => sum + addon.price * addon.quantity, 0),
                                       }
                                     : undefined,
+                                  item.addons,
                                 )
                               }
                             >
@@ -1490,6 +1631,7 @@ export default function NewOrder() {
                               updateItemNotes(
                                 item.productId,
                                 item.variantId,
+                                item.addonKey,
                                 e.target.value,
                               )
                             }
@@ -1550,6 +1692,76 @@ export default function NewOrder() {
           </div>
         </div>
       </div>
+
+      <Dialog open={addonModalOpen} onOpenChange={setAddonModalOpen}>
+        <DialogContent className="flex max-h-[85vh] max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+          <DialogHeader className="border-b px-6 py-5 pr-12">
+            <DialogTitle className="text-xl">
+              Escolha adicionais{addonProduct ? ` · ${addonProduct.name}` : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+            {addonGroups.map((group) => {
+              const selectedCount = selectedAddonList.filter((addon) => addon.groupId === group.id).length;
+              return (
+                <div key={group.id} className="rounded-xl border p-4">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold">{group.name}</h3>
+                      <p className="text-xs text-muted-foreground">
+                        {group.required ? "Obrigatório" : "Opcional"} · mín. {group.required ? Math.max(1, group.minSelected) : group.minSelected}
+                        {group.maxSelected != null ? ` · máx. ${group.maxSelected}` : ""}
+                      </p>
+                    </div>
+                    <Badge variant="outline">{selectedCount} selecionado(s)</Badge>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    {group.options.map((option) => {
+                      const selected = Boolean(selectedAddons[option.id]);
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          disabled={!option.available}
+                          className={`rounded-lg border p-3 text-left transition ${selected ? "border-primary bg-primary/10" : "border-border hover:bg-muted/60"} ${!option.available ? "cursor-not-allowed opacity-50" : ""}`}
+                          onClick={() => toggleAddon(group, option)}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium">{option.name}</span>
+                            <span className="font-semibold text-primary">R$ {option.price.toFixed(2)}</span>
+                          </div>
+                          {!option.available && <p className="text-xs text-muted-foreground">Indisponível</p>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter className="gap-2 border-t bg-background px-6 py-4 sm:justify-between sm:space-x-0">
+            <div className="text-sm">
+              {addonValidationError && <p className="text-destructive">{addonValidationError}</p>}
+              <p className="font-semibold">Total do item: R$ {addonTotal.toFixed(2)}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setAddonModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                disabled={Boolean(addonValidationError) || !addonProduct}
+                onClick={() => {
+                  if (!addonProduct || addonValidationError) return;
+                  addToCart(addonProduct, addonProduct.variant, selectedAddonList);
+                  setAddonModalOpen(false);
+                }}
+              >
+                Adicionar ao pedido
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={variantModalOpen} onOpenChange={setVariantModalOpen}>
         <DialogContent className="flex max-h-[85vh] max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
           <DialogHeader className="border-b px-6 py-5 pr-12">
@@ -1605,8 +1817,8 @@ export default function NewOrder() {
                   (v) => v.id === selectedVariantId,
                 );
                 if (!variant || !variantProduct) return;
-                addToCart(variantProduct, variant);
                 setVariantModalOpen(false);
+                void openAddonStep(variantProduct, variant);
               }}
             >
               Adicionar ao pedido

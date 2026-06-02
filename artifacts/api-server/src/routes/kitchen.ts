@@ -7,6 +7,7 @@ import {
   tablesTable,
   orderItemsTable,
   productsTable,
+  orderItemAddonsTable,
 } from "@workspace/db";
 import {
   MarkTicketReadyParams,
@@ -63,11 +64,16 @@ async function getTicketWithItems(ticketId: number, storeId?: number) {
   return {
     ...ticket,
     createdAt: ticket.createdAt.toISOString(),
-    items: items.map((item) => ({
+    items: await Promise.all(items.map(async (item) => ({
       ...item,
       unitPrice: parseFloat(String(item.unitPrice)),
       totalPrice: parseFloat(String(item.totalPrice)),
-    })),
+      addons: (await db.select().from(orderItemAddonsTable).where(eq(orderItemAddonsTable.orderItemId, item.id))).map((addon) => ({
+        ...addon,
+        addonPrice: parseFloat(String(addon.addonPrice)),
+        totalPrice: parseFloat(String(addon.totalPrice)),
+      })),
+    }))),
   };
 }
 
@@ -119,11 +125,16 @@ router.get("/kitchen/queue", async (req, res): Promise<void> => {
       return {
         ...ticket,
         createdAt: ticket.createdAt.toISOString(),
-        items: items.map((item) => ({
+        items: await Promise.all(items.map(async (item) => ({
           ...item,
           unitPrice: parseFloat(String(item.unitPrice)),
           totalPrice: parseFloat(String(item.totalPrice)),
-        })),
+          addons: (await db.select().from(orderItemAddonsTable).where(eq(orderItemAddonsTable.orderItemId, item.id))).map((addon) => ({
+            ...addon,
+            addonPrice: parseFloat(String(addon.addonPrice)),
+            totalPrice: parseFloat(String(addon.totalPrice)),
+          })),
+        }))),
       };
     }),
   );

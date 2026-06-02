@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, numeric, boolean, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, boolean, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { storesTable } from "./tenancy";
@@ -101,6 +101,62 @@ export const variantTemplateOptionsTable = pgTable(
   ]
 );
 
+
+export const addonGroupsTable = pgTable(
+  "addon_groups",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().references(() => storesTable.id),
+    name: text("name").notNull(),
+    description: text("description"),
+    required: boolean("required").notNull().default(false),
+    minSelected: integer("min_selected").notNull().default(0),
+    maxSelected: integer("max_selected"),
+    active: boolean("active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("addon_groups_store_id_idx").on(table.storeId),
+  ]
+);
+
+export const addonOptionsTable = pgTable(
+  "addon_options",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().references(() => storesTable.id),
+    groupId: integer("group_id").notNull().references(() => addonGroupsTable.id),
+    name: text("name").notNull(),
+    price: numeric("price", { precision: 10, scale: 2 }).notNull().default("0"),
+    available: boolean("available").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("addon_options_store_id_idx").on(table.storeId),
+    index("addon_options_group_id_idx").on(table.groupId),
+  ]
+);
+
+export const productAddonGroupsTable = pgTable(
+  "product_addon_groups",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().references(() => storesTable.id),
+    productId: integer("product_id").notNull().references(() => productsTable.id),
+    addonGroupId: integer("addon_group_id").notNull().references(() => addonGroupsTable.id),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (table) => [
+    index("product_addon_groups_store_id_idx").on(table.storeId),
+    index("product_addon_groups_product_id_idx").on(table.productId),
+    uniqueIndex("product_addon_groups_unique_idx").on(table.storeId, table.productId, table.addonGroupId),
+  ]
+);
+
 export const insertCategorySchema = createInsertSchema(categoriesTable).omit({ id: true });
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type Category = typeof categoriesTable.$inferSelect;
@@ -120,3 +176,16 @@ export type VariantTemplate = typeof variantTemplatesTable.$inferSelect;
 export const insertVariantTemplateOptionSchema = createInsertSchema(variantTemplateOptionsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertVariantTemplateOption = z.infer<typeof insertVariantTemplateOptionSchema>;
 export type VariantTemplateOption = typeof variantTemplateOptionsTable.$inferSelect;
+
+
+export const insertAddonGroupSchema = createInsertSchema(addonGroupsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertAddonGroup = z.infer<typeof insertAddonGroupSchema>;
+export type AddonGroup = typeof addonGroupsTable.$inferSelect;
+
+export const insertAddonOptionSchema = createInsertSchema(addonOptionsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertAddonOption = z.infer<typeof insertAddonOptionSchema>;
+export type AddonOption = typeof addonOptionsTable.$inferSelect;
+
+export const insertProductAddonGroupSchema = createInsertSchema(productAddonGroupsTable).omit({ id: true });
+export type InsertProductAddonGroup = z.infer<typeof insertProductAddonGroupSchema>;
+export type ProductAddonGroup = typeof productAddonGroupsTable.$inferSelect;

@@ -20,6 +20,12 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AddonGroup,
+  AddonGroupInput,
+  AddonGroupUpdate,
+  AddonOption,
+  AddonOptionInput,
+  AddonOptionUpdate,
   AdjustRouteTimeInput,
   AlertsSummary,
   ApplyVariantTemplateToProductBody,
@@ -58,6 +64,7 @@ import type {
   Payment,
   PaymentInput,
   Product,
+  ProductAddonGroupsInput,
   ProductInput,
   ProductUpdate,
   ProductVariant,
@@ -1794,6 +1801,596 @@ export const useCreateProductVariant = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateProductVariantMutationOptions(options));
+    }
+
+export const getListAddonGroupsUrl = () => {
+
+
+
+
+  return `/api/menu/addon-groups`
+}
+
+/**
+ * @summary List addon groups
+ */
+export const listAddonGroups = async ( options?: RequestInit): Promise<AddonGroup[]> => {
+
+  return customFetch<AddonGroup[]>(getListAddonGroupsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAddonGroupsQueryKey = () => {
+    return [
+    `/api/menu/addon-groups`
+    ] as const;
+    }
+
+
+export const getListAddonGroupsQueryOptions = <TData = Awaited<ReturnType<typeof listAddonGroups>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAddonGroups>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAddonGroupsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAddonGroups>>> = ({ signal }) => listAddonGroups({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAddonGroups>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAddonGroupsQueryResult = NonNullable<Awaited<ReturnType<typeof listAddonGroups>>>
+export type ListAddonGroupsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List addon groups
+ */
+
+export function useListAddonGroups<TData = Awaited<ReturnType<typeof listAddonGroups>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAddonGroups>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAddonGroupsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateAddonGroupUrl = () => {
+
+
+
+
+  return `/api/menu/addon-groups`
+}
+
+/**
+ * @summary Create addon group
+ */
+export const createAddonGroup = async (addonGroupInput: AddonGroupInput, options?: RequestInit): Promise<AddonGroup> => {
+
+  return customFetch<AddonGroup>(getCreateAddonGroupUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      addonGroupInput,)
+  }
+);}
+
+
+
+
+export const getCreateAddonGroupMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAddonGroup>>, TError,{data: BodyType<AddonGroupInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAddonGroup>>, TError,{data: BodyType<AddonGroupInput>}, TContext> => {
+
+const mutationKey = ['createAddonGroup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAddonGroup>>, {data: BodyType<AddonGroupInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAddonGroup(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAddonGroupMutationResult = NonNullable<Awaited<ReturnType<typeof createAddonGroup>>>
+    export type CreateAddonGroupMutationBody = BodyType<AddonGroupInput>
+    export type CreateAddonGroupMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create addon group
+ */
+export const useCreateAddonGroup = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAddonGroup>>, TError,{data: BodyType<AddonGroupInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAddonGroup>>,
+        TError,
+        {data: BodyType<AddonGroupInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAddonGroupMutationOptions(options));
+    }
+
+export const getUpdateAddonGroupUrl = (id: number,) => {
+
+
+
+
+  return `/api/menu/addon-groups/${id}`
+}
+
+/**
+ * @summary Update addon group
+ */
+export const updateAddonGroup = async (id: number,
+    addonGroupUpdate: AddonGroupUpdate, options?: RequestInit): Promise<AddonGroup> => {
+
+  return customFetch<AddonGroup>(getUpdateAddonGroupUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      addonGroupUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateAddonGroupMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAddonGroup>>, TError,{id: number;data: BodyType<AddonGroupUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAddonGroup>>, TError,{id: number;data: BodyType<AddonGroupUpdate>}, TContext> => {
+
+const mutationKey = ['updateAddonGroup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAddonGroup>>, {id: number;data: BodyType<AddonGroupUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAddonGroup(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAddonGroupMutationResult = NonNullable<Awaited<ReturnType<typeof updateAddonGroup>>>
+    export type UpdateAddonGroupMutationBody = BodyType<AddonGroupUpdate>
+    export type UpdateAddonGroupMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update addon group
+ */
+export const useUpdateAddonGroup = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAddonGroup>>, TError,{id: number;data: BodyType<AddonGroupUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAddonGroup>>,
+        TError,
+        {id: number;data: BodyType<AddonGroupUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateAddonGroupMutationOptions(options));
+    }
+
+export const getListAddonOptionsUrl = (id: number,) => {
+
+
+
+
+  return `/api/menu/addon-groups/${id}/options`
+}
+
+/**
+ * @summary List addon options
+ */
+export const listAddonOptions = async (id: number, options?: RequestInit): Promise<AddonOption[]> => {
+
+  return customFetch<AddonOption[]>(getListAddonOptionsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAddonOptionsQueryKey = (id: number,) => {
+    return [
+    `/api/menu/addon-groups/${id}/options`
+    ] as const;
+    }
+
+
+export const getListAddonOptionsQueryOptions = <TData = Awaited<ReturnType<typeof listAddonOptions>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAddonOptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAddonOptionsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAddonOptions>>> = ({ signal }) => listAddonOptions(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAddonOptions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAddonOptionsQueryResult = NonNullable<Awaited<ReturnType<typeof listAddonOptions>>>
+export type ListAddonOptionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List addon options
+ */
+
+export function useListAddonOptions<TData = Awaited<ReturnType<typeof listAddonOptions>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAddonOptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAddonOptionsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateAddonOptionUrl = (id: number,) => {
+
+
+
+
+  return `/api/menu/addon-groups/${id}/options`
+}
+
+/**
+ * @summary Create addon option
+ */
+export const createAddonOption = async (id: number,
+    addonOptionInput: AddonOptionInput, options?: RequestInit): Promise<AddonOption> => {
+
+  return customFetch<AddonOption>(getCreateAddonOptionUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      addonOptionInput,)
+  }
+);}
+
+
+
+
+export const getCreateAddonOptionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAddonOption>>, TError,{id: number;data: BodyType<AddonOptionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAddonOption>>, TError,{id: number;data: BodyType<AddonOptionInput>}, TContext> => {
+
+const mutationKey = ['createAddonOption'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAddonOption>>, {id: number;data: BodyType<AddonOptionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createAddonOption(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAddonOptionMutationResult = NonNullable<Awaited<ReturnType<typeof createAddonOption>>>
+    export type CreateAddonOptionMutationBody = BodyType<AddonOptionInput>
+    export type CreateAddonOptionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create addon option
+ */
+export const useCreateAddonOption = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAddonOption>>, TError,{id: number;data: BodyType<AddonOptionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAddonOption>>,
+        TError,
+        {id: number;data: BodyType<AddonOptionInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAddonOptionMutationOptions(options));
+    }
+
+export const getUpdateAddonOptionUrl = (id: number,) => {
+
+
+
+
+  return `/api/menu/addon-options/${id}`
+}
+
+/**
+ * @summary Update addon option
+ */
+export const updateAddonOption = async (id: number,
+    addonOptionUpdate: AddonOptionUpdate, options?: RequestInit): Promise<AddonOption> => {
+
+  return customFetch<AddonOption>(getUpdateAddonOptionUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      addonOptionUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateAddonOptionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAddonOption>>, TError,{id: number;data: BodyType<AddonOptionUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAddonOption>>, TError,{id: number;data: BodyType<AddonOptionUpdate>}, TContext> => {
+
+const mutationKey = ['updateAddonOption'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAddonOption>>, {id: number;data: BodyType<AddonOptionUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAddonOption(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAddonOptionMutationResult = NonNullable<Awaited<ReturnType<typeof updateAddonOption>>>
+    export type UpdateAddonOptionMutationBody = BodyType<AddonOptionUpdate>
+    export type UpdateAddonOptionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update addon option
+ */
+export const useUpdateAddonOption = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAddonOption>>, TError,{id: number;data: BodyType<AddonOptionUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAddonOption>>,
+        TError,
+        {id: number;data: BodyType<AddonOptionUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateAddonOptionMutationOptions(options));
+    }
+
+export const getListProductAddonGroupsUrl = (id: number,) => {
+
+
+
+
+  return `/api/menu/products/${id}/addon-groups`
+}
+
+/**
+ * @summary List addon groups linked to product
+ */
+export const listProductAddonGroups = async (id: number, options?: RequestInit): Promise<AddonGroup[]> => {
+
+  return customFetch<AddonGroup[]>(getListProductAddonGroupsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListProductAddonGroupsQueryKey = (id: number,) => {
+    return [
+    `/api/menu/products/${id}/addon-groups`
+    ] as const;
+    }
+
+
+export const getListProductAddonGroupsQueryOptions = <TData = Awaited<ReturnType<typeof listProductAddonGroups>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProductAddonGroups>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListProductAddonGroupsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listProductAddonGroups>>> = ({ signal }) => listProductAddonGroups(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listProductAddonGroups>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListProductAddonGroupsQueryResult = NonNullable<Awaited<ReturnType<typeof listProductAddonGroups>>>
+export type ListProductAddonGroupsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List addon groups linked to product
+ */
+
+export function useListProductAddonGroups<TData = Awaited<ReturnType<typeof listProductAddonGroups>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProductAddonGroups>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListProductAddonGroupsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateProductAddonGroupsUrl = (id: number,) => {
+
+
+
+
+  return `/api/menu/products/${id}/addon-groups`
+}
+
+/**
+ * @summary Replace product addon group links
+ */
+export const updateProductAddonGroups = async (id: number,
+    productAddonGroupsInput: ProductAddonGroupsInput, options?: RequestInit): Promise<AddonGroup[]> => {
+
+  return customFetch<AddonGroup[]>(getUpdateProductAddonGroupsUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      productAddonGroupsInput,)
+  }
+);}
+
+
+
+
+export const getUpdateProductAddonGroupsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProductAddonGroups>>, TError,{id: number;data: BodyType<ProductAddonGroupsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateProductAddonGroups>>, TError,{id: number;data: BodyType<ProductAddonGroupsInput>}, TContext> => {
+
+const mutationKey = ['updateProductAddonGroups'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateProductAddonGroups>>, {id: number;data: BodyType<ProductAddonGroupsInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateProductAddonGroups(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateProductAddonGroupsMutationResult = NonNullable<Awaited<ReturnType<typeof updateProductAddonGroups>>>
+    export type UpdateProductAddonGroupsMutationBody = BodyType<ProductAddonGroupsInput>
+    export type UpdateProductAddonGroupsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Replace product addon group links
+ */
+export const useUpdateProductAddonGroups = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProductAddonGroups>>, TError,{id: number;data: BodyType<ProductAddonGroupsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateProductAddonGroups>>,
+        TError,
+        {id: number;data: BodyType<ProductAddonGroupsInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateProductAddonGroupsMutationOptions(options));
     }
 
 export const getListVariantTemplatesUrl = () => {
