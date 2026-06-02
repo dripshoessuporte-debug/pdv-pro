@@ -1,1 +1,62 @@
-{"version":"7","dialect":"postgresql","entries":[{"idx":0,"version":"7","when":1764090000000,"tag":"0000_first_red_ghost","breakpoints":true},{"idx":1,"version":"7","when":1764091500000,"tag":"0001_multi_tenant_base_data_pr2","breakpoints":true},{"idx":2,"version":"7","when":1764093000000,"tag":"0003_product_variants_v1","breakpoints":true},{"idx":3,"version":"7","when":1764094500000,"tag":"0004_repair_product_commercial_columns","breakpoints":true},{"idx":4,"version":"7","when":1764096000000,"tag":"0005_variant_templates_v1","breakpoints":true},{"idx":5,"version":"7","when":1764097500000,"tag":"0006_order_item_variants","breakpoints":true},{"idx":6,"version":"7","when":1764099000000,"tag":"0007_repair_orders_order_items_columns","breakpoints":true},{"idx":7,"version":"7","when":1780358500000,"tag":"0008_rbac_v1_store_shift_scope","breakpoints":true}]}
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1764090000000,
+      "tag": "0000_first_red_ghost",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1764091500000,
+      "tag": "0001_multi_tenant_base_data_pr2",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1764093000000,
+      "tag": "0003_product_variants_v1",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1764094500000,
+      "tag": "0004_repair_product_commercial_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1764096000000,
+      "tag": "0005_variant_templates_v1",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1764097500000,
+      "tag": "0006_order_item_variants",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1764099000000,
+      "tag": "0007_repair_orders_order_items_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780358500000,
+      "tag": "0008_rbac_v1_store_shift_scope",
+      "breakpoints": true
+    }
+  ]
+}
