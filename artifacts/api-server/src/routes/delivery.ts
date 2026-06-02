@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, inArray, notInArray, sql, or, isNull, notExists } from "drizzle-orm";
 import { db, deliveryRoutesTable, deliveryRouteOrdersTable, ordersTable, customersTable, couriersTable, orderItemsTable, productsTable, paymentsTable, cashRegistersTable, cashMovementsTable } from "@workspace/db";
+import { releaseTableIfOrderClosed } from "../lib/table-release";
 import { getOrCreateSettings } from "./settings";
 
 const router: IRouter = Router();
@@ -723,6 +724,7 @@ router.post("/delivery/routes/:id/complete", async (req, res): Promise<void> => 
     await db.update(ordersTable)
       .set({ deliveryStatus: "delivered", status: "closed", closedAt: now })
       .where(inArray(ordersTable.id, nowOrderIds));
+    await Promise.all(nowOrderIds.map((closedOrderId) => releaseTableIfOrderClosed(closedOrderId)));
   }
 
   if (onDeliveryOrderIds.length > 0) {
@@ -1086,6 +1088,7 @@ router.post("/delivery/orders/:id/settle", async (req, res): Promise<void> => {
           closedAt: now,
         })
         .where(eq(ordersTable.id, orderId));
+      await releaseTableIfOrderClosed(orderId, tx as unknown as typeof db);
 
       return payment!;
     });
@@ -1156,6 +1159,7 @@ router.post("/delivery/orders/:orderId/delivered", async (req, res): Promise<voi
       .update(ordersTable)
       .set({ deliveryStatus: "delivered", status: "closed", closedAt: now })
       .where(eq(ordersTable.id, orderId));
+    await releaseTableIfOrderClosed(orderId);
     req.log.info({ orderId }, "delivery order marked as delivered and closed");
   }
 
