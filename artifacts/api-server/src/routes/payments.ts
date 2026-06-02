@@ -16,6 +16,7 @@ import {
   GetReceiptParams,
   GetReceiptResponse,
 } from "@workspace/api-zod";
+import { releaseTableIfOrderClosed } from "../lib/table-release";
 
 const router: IRouter = Router();
 
@@ -38,6 +39,7 @@ router.post("/payments", async (req, res): Promise<void> => {
   }
 
   if (order.status === "closed") {
+    await releaseTableIfOrderClosed(parsed.data.orderId);
     res.status(409).json({ error: "Este pedido já foi pago/finalizado." });
     return;
   }
@@ -97,13 +99,8 @@ router.post("/payments", async (req, res): Promise<void> => {
         .set({ status: "closed", paidAt: new Date() })
         .where(eq(ordersTable.id, parsed.data.orderId));
 
-      // Step 3: release the table if linked
-      if (order.tableId) {
-        await tx
-          .update(tablesTable)
-          .set({ status: "available", currentOrderId: null })
-          .where(eq(tablesTable.id, order.tableId));
-      }
+      // Step 3: release or repoint the table if linked
+      await releaseTableIfOrderClosed(parsed.data.orderId, tx as unknown as typeof db);
 
       // Step 4: register in open cash register with idempotency guard
       const [openRegister] = await tx

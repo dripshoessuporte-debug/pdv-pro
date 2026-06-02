@@ -12,6 +12,7 @@ import {
   UpdateTableResponse,
 } from "@workspace/api-zod";
 import { getDefaultStoreIdOrThrow } from "../lib/store-context";
+import { OPEN_TABLE_ORDER_STATUSES } from "../lib/table-release";
 
 const router: IRouter = Router();
 
@@ -25,12 +26,12 @@ router.get("/tables", async (req, res): Promise<void> => {
       .from(ordersTable)
       .where(and(
         eq(ordersTable.tableId, table.id),
-        inArray(ordersTable.status, ["open", "preparing", "ready"])
+        inArray(ordersTable.status, OPEN_TABLE_ORDER_STATUSES)
       ))
       .orderBy(sql`${ordersTable.createdAt} DESC`);
 
-    const currentOrderId = openOrders[0]?.id ?? table.currentOrderId ?? null;
-    const status = openOrders.length > 0 ? "occupied" : table.status === "occupied" ? "available" : table.status;
+    const currentOrderId = openOrders[0]?.id ?? null;
+    const status = openOrders.length > 0 ? "occupied" : "available";
 
     return {
       ...table,

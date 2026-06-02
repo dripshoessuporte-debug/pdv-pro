@@ -22,6 +22,7 @@ import {
   UpdateDeliveryStatusResponse,
 } from "@workspace/api-zod";
 import { getDefaultStoreIdOrThrow } from "../lib/store-context";
+import { releaseTableIfOrderClosed } from "../lib/table-release";
 
 const router: IRouter = Router();
 
@@ -310,6 +311,10 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
 
   await db.update(ordersTable).set(parsed.data).where(eq(ordersTable.id, params.data.id));
 
+  if (parsed.data.status === "closed" || parsed.data.status === "cancelled") {
+    await releaseTableIfOrderClosed(params.data.id);
+  }
+
   const order = await getOrderWithItems(params.data.id);
   if (!order) {
     res.status(404).json({ error: "Order not found" });
@@ -478,12 +483,7 @@ router.post("/orders/:id/cancel", async (req, res): Promise<void> => {
   }
 
   await db.update(ordersTable).set({ status: "cancelled" }).where(eq(ordersTable.id, params.data.id));
-
-  if (order.tableId) {
-    await db.update(tablesTable)
-      .set({ status: "available", currentOrderId: null })
-      .where(and(eq(tablesTable.id, order.tableId), eq(tablesTable.currentOrderId, params.data.id)));
-  }
+  await releaseTableIfOrderClosed(params.data.id);
 
   const full = await getOrderWithItems(params.data.id);
   res.json(CancelOrderResponse.parse(full));
@@ -515,6 +515,7 @@ router.post("/orders/:id/finalize", async (req, res): Promise<void> => {
 
   // Already fully finalized
   if (order.status === "closed" && (order.type !== "delivery" || ["delivered", null].includes(order.deliveryStatus))) {
+    await releaseTableIfOrderClosed(id);
     res.status(409).json({ error: "Pedido já está finalizado" }); return;
   }
 
@@ -548,12 +549,7 @@ router.post("/orders/:id/finalize", async (req, res): Promise<void> => {
     })
     .where(eq(ordersTable.id, id));
 
-  // Release table if applicable
-  if (order.tableId) {
-    await db.update(tablesTable)
-      .set({ status: "available", currentOrderId: null })
-      .where(eq(tablesTable.id, order.tableId));
-  }
+  await releaseTableIfOrderClosed(id);
 
   req.log.info({ orderId: id }, "order finalized via dar-baixa");
   res.json({ ok: true });
