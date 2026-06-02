@@ -50,6 +50,13 @@
       "when": 1764099000000,
       "tag": "0007_repair_orders_order_items_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780358500000,
+      "tag": "0008_rbac_v1_store_shift_scope",
+      "breakpoints": true
     }
   ]
 }

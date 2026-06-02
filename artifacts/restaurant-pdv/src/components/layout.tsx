@@ -21,6 +21,7 @@ import {
   getGetCurrentCashRegisterQueryKey,
   getGetAlertsQueryKey,
 } from "@workspace/api-client-react";
+import { canAccessPath, getCurrentActor } from "@/lib/rbac";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -46,6 +47,10 @@ function AlertBadge({ count }: { count: number }) {
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  const actor = getCurrentActor();
+  const visibleNavItems = navItems.filter((item) =>
+    canAccessPath(actor.role, item.href),
+  );
   const { data: health } = useHealthCheck();
 
   const { data: cashRegister, isError: noCash } = useGetCurrentCashRegister({
@@ -100,8 +105,10 @@ export function Layout({ children }: { children: ReactNode }) {
           </Link>
         </div>
         <nav className="flex-1 overflow-y-auto p-4 space-y-1.5">
-          {navItems.map((item) => {
-            const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
+          {visibleNavItems.map((item) => {
+            const isActive =
+              location === item.href ||
+              (item.href !== "/" && location.startsWith(item.href));
             const isCash = item.href === "/cash";
             const badge = getBadge(item.href);
             return (
@@ -115,17 +122,21 @@ export function Layout({ children }: { children: ReactNode }) {
                 }`}
               >
                 <span className="flex items-center">
-                  <item.icon className={`w-5 h-5 mr-3 transition-colors ${isActive ? "text-white" : "text-zinc-400 group-hover:text-white"}`} />
+                  <item.icon
+                    className={`w-5 h-5 mr-3 transition-colors ${isActive ? "text-white" : "text-zinc-400 group-hover:text-white"}`}
+                  />
                   {item.label}
                 </span>
                 <span className="flex items-center gap-1.5">
                   {badge > 0 && <AlertBadge count={badge} />}
                   {isCash && (
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                      cashOpen
-                        ? "bg-green-500/15 text-green-300 ring-1 ring-green-400/25"
-                        : "bg-red-500/15 text-red-200 ring-1 ring-red-400/25"
-                    }`}>
+                    <span
+                      className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        cashOpen
+                          ? "bg-green-500/15 text-green-300 ring-1 ring-green-400/25"
+                          : "bg-red-500/15 text-red-200 ring-1 ring-red-400/25"
+                      }`}
+                    >
                       {cashOpen ? "Aberto" : "Fechado"}
                     </span>
                   )}
@@ -136,20 +147,31 @@ export function Layout({ children }: { children: ReactNode }) {
         </nav>
 
         {/* Cash status footer */}
-        <div className={`mx-4 mb-3 px-3.5 py-3 rounded-xl text-xs flex items-center gap-2.5 border ${
-          cashOpen
-            ? "bg-green-500/10 text-green-200 border-green-400/20"
-            : "bg-amber-500/10 text-amber-200 border-amber-400/20"
-        }`}>
-          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${cashOpen ? "bg-green-400" : "bg-amber-400"}`} />
-          {cashOpen ? (
-            <span>Caixa aberto · {cashRegister?.operator}</span>
-          ) : (
-            <Link href="/cash" className="hover:underline">
-              Caixa fechado — clique para abrir
-            </Link>
-          )}
-        </div>
+        {actor.role === "atendente" && (
+          <div className="mx-4 mb-3 rounded-xl border border-blue-400/20 bg-blue-500/10 px-3.5 py-3 text-xs text-blue-100">
+            Esta visualização mostra apenas dados do seu plantão atual.
+          </div>
+        )}
+        {canAccessPath(actor.role, "/cash") && (
+          <div
+            className={`mx-4 mb-3 px-3.5 py-3 rounded-xl text-xs flex items-center gap-2.5 border ${
+              cashOpen
+                ? "bg-green-500/10 text-green-200 border-green-400/20"
+                : "bg-amber-500/10 text-amber-200 border-amber-400/20"
+            }`}
+          >
+            <div
+              className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${cashOpen ? "bg-green-400" : "bg-amber-400"}`}
+            />
+            {cashOpen ? (
+              <span>Caixa aberto · {cashRegister?.operator}</span>
+            ) : (
+              <Link href="/cash" className="hover:underline">
+                Caixa fechado — clique para abrir
+              </Link>
+            )}
+          </div>
+        )}
 
         <div className="p-4 border-t border-white/10 text-sm flex items-center justify-between">
           <div className="flex items-center text-zinc-300">

@@ -12,38 +12,51 @@ import {
   GetCustomerResponse,
   UpdateCustomerResponse,
 } from "@workspace/api-zod";
-import { getDefaultStoreIdOrThrow } from "../lib/store-context";
+import { getCurrentActor } from "../middleware/rbac";
 
 const router: IRouter = Router();
 
-const normalizePhone = (phone?: string | null) => phone?.replace(/\D/g, "") ?? "";
+const normalizePhone = (phone?: string | null) =>
+  phone?.replace(/\D/g, "") ?? "";
 
 router.get("/customers", async (req, res): Promise<void> => {
   const queryParams = ListCustomersQueryParams.safeParse(req.query);
   const search = queryParams.success ? queryParams.data.search : undefined;
 
-  const storeId = await getDefaultStoreIdOrThrow();
+  const { storeId } = await getCurrentActor(req);
 
   let customers;
   if (search) {
-    customers = await db.select().from(customersTable).where(
-      and(
-        eq(customersTable.storeId, storeId),
-        or(
-          ilike(customersTable.name, `%${search}%`),
-          ilike(customersTable.phone, `%${search}%`),
-          ilike(customersTable.email, `%${search}%`)
-        )
+    customers = await db
+      .select()
+      .from(customersTable)
+      .where(
+        and(
+          eq(customersTable.storeId, storeId),
+          or(
+            ilike(customersTable.name, `%${search}%`),
+            ilike(customersTable.phone, `%${search}%`),
+            ilike(customersTable.email, `%${search}%`),
+          ),
+        ),
       )
-    ).orderBy(customersTable.name);
+      .orderBy(customersTable.name);
   } else {
-    customers = await db.select().from(customersTable).where(eq(customersTable.storeId, storeId)).orderBy(customersTable.name);
+    customers = await db
+      .select()
+      .from(customersTable)
+      .where(eq(customersTable.storeId, storeId))
+      .orderBy(customersTable.name);
   }
 
-  res.json(ListCustomersResponse.parse(customers.map((c) => ({
-    ...c,
-    createdAt: c.createdAt.toISOString(),
-  }))));
+  res.json(
+    ListCustomersResponse.parse(
+      customers.map((c) => ({
+        ...c,
+        createdAt: c.createdAt.toISOString(),
+      })),
+    ),
+  );
 });
 
 router.post("/customers", async (req, res): Promise<void> => {
@@ -53,32 +66,60 @@ router.post("/customers", async (req, res): Promise<void> => {
     return;
   }
 
-  const storeId = await getDefaultStoreIdOrThrow();
+  const { storeId } = await getCurrentActor(req);
   const phoneDigits = normalizePhone(parsed.data.phone);
 
   if (phoneDigits) {
-    const storeCustomers = await db.select().from(customersTable).where(eq(customersTable.storeId, storeId));
-    const existing = storeCustomers.find((customer) => normalizePhone(customer.phone) === phoneDigits);
+    const storeCustomers = await db
+      .select()
+      .from(customersTable)
+      .where(eq(customersTable.storeId, storeId));
+    const existing = storeCustomers.find(
+      (customer) => normalizePhone(customer.phone) === phoneDigits,
+    );
 
     if (existing) {
-      const nextNotes = parsed.data.notes && !existing.notes?.includes(parsed.data.notes)
-        ? [existing.notes, parsed.data.notes].filter(Boolean).join("\n")
-        : existing.notes;
+      const nextNotes =
+        parsed.data.notes && !existing.notes?.includes(parsed.data.notes)
+          ? [existing.notes, parsed.data.notes].filter(Boolean).join("\n")
+          : existing.notes;
 
-      const [customer] = await db.update(customersTable).set({
-        name: parsed.data.name || existing.name,
-        phone: parsed.data.phone ?? existing.phone,
-        email: parsed.data.email ?? existing.email,
-        notes: nextNotes,
-      }).where(and(eq(customersTable.id, existing.id), eq(customersTable.storeId, storeId))).returning();
+      const [customer] = await db
+        .update(customersTable)
+        .set({
+          name: parsed.data.name || existing.name,
+          phone: parsed.data.phone ?? existing.phone,
+          email: parsed.data.email ?? existing.email,
+          notes: nextNotes,
+        })
+        .where(
+          and(
+            eq(customersTable.id, existing.id),
+            eq(customersTable.storeId, storeId),
+          ),
+        )
+        .returning();
 
-      res.status(200).json(GetCustomerResponse.parse({ ...customer, createdAt: customer.createdAt.toISOString() }));
+      res.status(200).json(
+        GetCustomerResponse.parse({
+          ...customer,
+          createdAt: customer.createdAt.toISOString(),
+        }),
+      );
       return;
     }
   }
 
-  const [customer] = await db.insert(customersTable).values({ ...parsed.data, storeId }).returning();
-  res.status(201).json(GetCustomerResponse.parse({ ...customer, createdAt: customer.createdAt.toISOString() }));
+  const [customer] = await db
+    .insert(customersTable)
+    .values({ ...parsed.data, storeId })
+    .returning();
+  res.status(201).json(
+    GetCustomerResponse.parse({
+      ...customer,
+      createdAt: customer.createdAt.toISOString(),
+    }),
+  );
 });
 
 router.get("/customers/:id", async (req, res): Promise<void> => {
@@ -88,14 +129,27 @@ router.get("/customers/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const storeId = await getDefaultStoreIdOrThrow();
-  const [customer] = await db.select().from(customersTable).where(and(eq(customersTable.id, params.data.id), eq(customersTable.storeId, storeId)));
+  const { storeId } = await getCurrentActor(req);
+  const [customer] = await db
+    .select()
+    .from(customersTable)
+    .where(
+      and(
+        eq(customersTable.id, params.data.id),
+        eq(customersTable.storeId, storeId),
+      ),
+    );
   if (!customer) {
     res.status(404).json({ error: "Customer not found" });
     return;
   }
 
-  res.json(GetCustomerResponse.parse({ ...customer, createdAt: customer.createdAt.toISOString() }));
+  res.json(
+    GetCustomerResponse.parse({
+      ...customer,
+      createdAt: customer.createdAt.toISOString(),
+    }),
+  );
 });
 
 router.patch("/customers/:id", async (req, res): Promise<void> => {
@@ -111,14 +165,28 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const storeId = await getDefaultStoreIdOrThrow();
-  const [customer] = await db.update(customersTable).set(parsed.data).where(and(eq(customersTable.id, params.data.id), eq(customersTable.storeId, storeId))).returning();
+  const { storeId } = await getCurrentActor(req);
+  const [customer] = await db
+    .update(customersTable)
+    .set(parsed.data)
+    .where(
+      and(
+        eq(customersTable.id, params.data.id),
+        eq(customersTable.storeId, storeId),
+      ),
+    )
+    .returning();
   if (!customer) {
     res.status(404).json({ error: "Customer not found" });
     return;
   }
 
-  res.json(UpdateCustomerResponse.parse({ ...customer, createdAt: customer.createdAt.toISOString() }));
+  res.json(
+    UpdateCustomerResponse.parse({
+      ...customer,
+      createdAt: customer.createdAt.toISOString(),
+    }),
+  );
 });
 
 router.delete("/customers/:id", async (req, res): Promise<void> => {
@@ -128,8 +196,16 @@ router.delete("/customers/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const storeId = await getDefaultStoreIdOrThrow();
-  const [customer] = await db.delete(customersTable).where(and(eq(customersTable.id, params.data.id), eq(customersTable.storeId, storeId))).returning();
+  const { storeId } = await getCurrentActor(req);
+  const [customer] = await db
+    .delete(customersTable)
+    .where(
+      and(
+        eq(customersTable.id, params.data.id),
+        eq(customersTable.storeId, storeId),
+      ),
+    )
+    .returning();
   if (!customer) {
     res.status(404).json({ error: "Customer not found" });
     return;

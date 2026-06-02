@@ -18,6 +18,19 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * Returns the current actor resolved by the backend auth/RBAC context.
+ * @summary Get current RBAC actor
+ */
+export const GetCurrentActorResponse = zod.object({
+  "id": zod.number().nullable(),
+  "storeId": zod.number(),
+  "name": zod.string(),
+  "role": zod.enum(['max_control', 'atendente', 'cozinha', 'motoboy']),
+  "isDevelopmentFallback": zod.boolean()
+})
+
+
+/**
  * @summary List all tables
  */
 export const ListTablesResponseItem = zod.object({

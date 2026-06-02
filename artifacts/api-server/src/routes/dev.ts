@@ -1,6 +1,19 @@
 import { Router, type IRouter } from "express";
-import { db, cashMovementsTable, deliveryRouteOrdersTable, deliveryRoutesTable, kitchenTicketsTable, paymentsTable, orderItemsTable, ordersTable } from "@workspace/db";
-import { requireAdminKey, requireDevRoutesEnabled } from "../middleware/security";
+import {
+  db,
+  cashMovementsTable,
+  deliveryRouteOrdersTable,
+  deliveryRoutesTable,
+  kitchenTicketsTable,
+  paymentsTable,
+  orderItemsTable,
+  ordersTable,
+} from "@workspace/db";
+import {
+  requireAdminKey,
+  requireDevRoutesEnabled,
+} from "../middleware/security";
+import { getCurrentActor } from "../middleware/rbac";
 
 const router: IRouter = Router();
 
@@ -13,7 +26,9 @@ router.use(requireDevRoutesEnabled);
 router.post("/dev/reset", requireAdminKey, async (req, res): Promise<void> => {
   const confirm = req.body?.confirm;
   if (confirm !== "ZERAR") {
-    res.status(400).json({ error: "Envie { confirm: 'ZERAR' } para confirmar." });
+    res
+      .status(400)
+      .json({ error: "Envie { confirm: 'ZERAR' } para confirmar." });
     return;
   }
 
@@ -44,40 +59,50 @@ interface TestOrderSpec {
   total?: number;
 }
 
-router.post("/dev/create-test-orders", requireAdminKey, async (req, res): Promise<void> => {
-  const specs: TestOrderSpec[] = req.body?.orders;
-  if (!Array.isArray(specs) || specs.length === 0) {
-    res.status(400).json({ error: "Envie { orders: [...] } com ao menos 1 pedido." });
-    return;
-  }
+router.post(
+  "/dev/create-test-orders",
+  requireAdminKey,
+  async (req, res): Promise<void> => {
+    const { storeId } = await getCurrentActor(req);
+    const specs: TestOrderSpec[] = req.body?.orders;
+    if (!Array.isArray(specs) || specs.length === 0) {
+      res
+        .status(400)
+        .json({ error: "Envie { orders: [...] } com ao menos 1 pedido." });
+      return;
+    }
 
-  const results: { orderId: number }[] = [];
+    const results: { orderId: number }[] = [];
 
-  for (const spec of specs) {
-    const kitchenAcceptedAt = new Date(Date.now() - spec.minutesAgo * 60_000);
+    for (const spec of specs) {
+      const kitchenAcceptedAt = new Date(Date.now() - spec.minutesAgo * 60_000);
 
-    const [order] = await db
-      .insert(ordersTable)
-      .values({
-        type: "delivery",
-        customerName: spec.name,
-        customerPhone: spec.phone,
-        deliveryCep: spec.cep.replace(/\D/g, "").replace(/^(\d{5})(\d{3})$/, "$1-$2"),
-        deliveryAddress: spec.address,
-        deliveryNeighborhood: spec.neighborhood,
-        deliveryFee: "5.00",
-        totalAmount: String(spec.total ?? 38),
-        paymentTiming: "now",
-        deliveryStatus: "preparing",
-        kitchenAcceptedAt,
-      })
-      .returning({ id: ordersTable.id });
+      const [order] = await db
+        .insert(ordersTable)
+        .values({
+          storeId,
+          type: "delivery",
+          customerName: spec.name,
+          customerPhone: spec.phone,
+          deliveryCep: spec.cep
+            .replace(/\D/g, "")
+            .replace(/^(\d{5})(\d{3})$/, "$1-$2"),
+          deliveryAddress: spec.address,
+          deliveryNeighborhood: spec.neighborhood,
+          deliveryFee: "5.00",
+          totalAmount: String(spec.total ?? 38),
+          paymentTiming: "now",
+          deliveryStatus: "preparing",
+          kitchenAcceptedAt,
+        })
+        .returning({ id: ordersTable.id });
 
-    results.push({ orderId: order.id });
-  }
+      results.push({ orderId: order.id });
+    }
 
-  req.log.info({ count: results.length }, "dev create-test-orders: created");
-  res.json({ created: results.length, results });
-});
+    req.log.info({ count: results.length }, "dev create-test-orders: created");
+    res.json({ created: results.length, results });
+  },
+);
 
 export default router;

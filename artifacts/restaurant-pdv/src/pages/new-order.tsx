@@ -31,9 +31,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Minus, ShoppingCart, Search, MessageSquare, Truck, Banknote, Smartphone, CreditCard, Save } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Plus,
+  Minus,
+  ShoppingCart,
+  Search,
+  MessageSquare,
+  Truck,
+  Banknote,
+  Smartphone,
+  CreditCard,
+  Save,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getCurrentActor } from "@/lib/rbac";
 
 type OrderType = "counter" | "table" | "takeaway" | "delivery";
 
@@ -55,7 +73,12 @@ type CustomerOption = {
   notes?: string | null;
 };
 
-type SavedCustomer = { id: number; name: string; phone?: string | null; notes?: string | null };
+type SavedCustomer = {
+  id: number;
+  name: string;
+  phone?: string | null;
+  notes?: string | null;
+};
 
 const onlyDigits = (value: string) => value.replace(/\D/g, "");
 
@@ -82,11 +105,16 @@ const buildDeliveryAddressNote = ({
 
 const extractErrorMessage = (error: unknown) => {
   if (error && typeof error === "object") {
-    const data = "data" in error ? (error as { data?: unknown }).data : undefined;
+    const data =
+      "data" in error ? (error as { data?: unknown }).data : undefined;
     if (data && typeof data === "object") {
-      const errorText = (data as { error?: unknown; message?: unknown; detail?: unknown }).error
-        ?? (data as { error?: unknown; message?: unknown; detail?: unknown }).message
-        ?? (data as { error?: unknown; message?: unknown; detail?: unknown }).detail;
+      const errorText =
+        (data as { error?: unknown; message?: unknown; detail?: unknown })
+          .error ??
+        (data as { error?: unknown; message?: unknown; detail?: unknown })
+          .message ??
+        (data as { error?: unknown; message?: unknown; detail?: unknown })
+          .detail;
       if (typeof errorText === "string" && errorText.trim()) return errorText;
     }
 
@@ -105,6 +133,9 @@ export default function NewOrder() {
   const params = new URLSearchParams(search);
   const preselectedTableId = params.get("tableId");
 
+  const actor = getCurrentActor();
+  const canUseCustomerDirectory = actor.role === "max_control";
+
   const [orderType, setOrderType] = useState<OrderType>("counter");
   const [tableId, setTableId] = useState(preselectedTableId ?? "");
   const [customerId, setCustomerId] = useState("");
@@ -114,14 +145,30 @@ export default function NewOrder() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [creating, setCreating] = useState(false);
   const [variantModalOpen, setVariantModalOpen] = useState(false);
-  const [variantProduct, setVariantProduct] = useState<{ id: number; name: string; price: number } | null>(null);
-  const [variantOptions, setVariantOptions] = useState<Array<{ id: number; name: string; price: number; active: boolean; available: boolean }>>([]);
-  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
+  const [variantProduct, setVariantProduct] = useState<{
+    id: number;
+    name: string;
+    price: number;
+  } | null>(null);
+  const [variantOptions, setVariantOptions] = useState<
+    Array<{
+      id: number;
+      name: string;
+      price: number;
+      active: boolean;
+      available: boolean;
+    }>
+  >([]);
+  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(
+    null,
+  );
 
   // Delivery / takeaway fields
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [autoSaveCustomer, setAutoSaveCustomer] = useState(true);
+  const [autoSaveCustomer, setAutoSaveCustomer] = useState(
+    canUseCustomerDirectory,
+  );
   const [deliveryCep, setDeliveryCep] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryNeighborhood, setDeliveryNeighborhood] = useState("");
@@ -129,8 +176,12 @@ export default function NewOrder() {
   const [deliveryFee, setDeliveryFee] = useState("");
   const [deliveryNotes, setDeliveryNotes] = useState("");
   // Payment on delivery
-  const [paymentTiming, setPaymentTiming] = useState<"now" | "on_delivery">("now");
-  const [deliveryPaymentMethod, setDeliveryPaymentMethod] = useState<"dinheiro" | "pix" | "cartao">("dinheiro");
+  const [paymentTiming, setPaymentTiming] = useState<"now" | "on_delivery">(
+    "now",
+  );
+  const [deliveryPaymentMethod, setDeliveryPaymentMethod] = useState<
+    "dinheiro" | "pix" | "cartao"
+  >("dinheiro");
   const [needsChange, setNeedsChange] = useState(false);
   const [changeFor, setChangeFor] = useState("");
   const [deliveryPaymentNotes, setDeliveryPaymentNotes] = useState("");
@@ -160,23 +211,43 @@ export default function NewOrder() {
     minimumDeliveryFee: number | null;
     maximumDeliveryFee: number | null;
   } | null>(null);
-  const [cepLookupStatus, setCepLookupStatus] = useState<"idle" | "loading" | "found" | "not_found">("idle");
-  const [distanceCalcStatus, setDistanceCalcStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [cepLookupStatus, setCepLookupStatus] = useState<
+    "idle" | "loading" | "found" | "not_found"
+  >("idle");
+  const [distanceCalcStatus, setDistanceCalcStatus] = useState<
+    "idle" | "loading" | "done" | "error"
+  >("idle");
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: tables } = useListTables({ query: { queryKey: getListTablesQueryKey() } });
-  const { data: customers } = useListCustomers({}, { query: { queryKey: getListCustomersQueryKey({}) } });
-  const { data: categories } = useListCategories({ query: { queryKey: getListCategoriesQueryKey() } });
+  const { data: tables } = useListTables({
+    query: { queryKey: getListTablesQueryKey() },
+  });
+  const { data: customers } = useListCustomers(
+    {},
+    {
+      query: {
+        queryKey: getListCustomersQueryKey({}),
+        enabled: canUseCustomerDirectory,
+      },
+    },
+  );
+  const { data: categories } = useListCategories({
+    query: { queryKey: getListCategoriesQueryKey() },
+  });
 
   const productParams: Record<string, unknown> = { availableOnly: true };
-  if (categoryFilter !== "all") productParams.categoryId = parseInt(categoryFilter);
+  if (categoryFilter !== "all")
+    productParams.categoryId = parseInt(categoryFilter);
   if (productSearch) productParams.search = productSearch;
 
-  const { data: products, isLoading: loadingProducts } = useListProducts(productParams, {
-    query: { queryKey: getListProductsQueryKey(productParams) },
-  });
+  const { data: products, isLoading: loadingProducts } = useListProducts(
+    productParams,
+    {
+      query: { queryKey: getListProductsQueryKey(productParams) },
+    },
+  );
 
   const createOrder = useCreateOrder();
   const addItem = useAddOrderItem();
@@ -196,7 +267,8 @@ export default function NewOrder() {
       .then((r) => r.json())
       .then((s) => {
         // API returns numeric DB columns as strings — parse explicitly
-        const pf = (v: unknown) => (v != null && v !== "" ? parseFloat(String(v)) : null);
+        const pf = (v: unknown) =>
+          v != null && v !== "" ? parseFloat(String(v)) : null;
         const rawMode = String(s.deliveryFeeMode || "manual");
         setStoreSettings({
           deliveryFeeMode: rawMode === "per_km" ? "distance_tier" : rawMode,
@@ -212,7 +284,9 @@ export default function NewOrder() {
           maximumDeliveryFee: pf(s.maximumDeliveryFee),
         });
       })
-      .catch(() => {/* silent — fee calculation just stays manual */});
+      .catch(() => {
+        /* silent — fee calculation just stays manual */
+      });
   }, []);
 
   // ViaCEP lookup when customer CEP has 8 digits
@@ -226,15 +300,32 @@ export default function NewOrder() {
     setCepLookupStatus("loading");
     fetch(`https://viacep.com.br/ws/${digits}/json/`)
       .then((r) => r.json())
-      .then((data: { erro?: boolean; logradouro?: string; bairro?: string; localidade?: string; uf?: string }) => {
-        if (cancelled) return;
-        if (data.erro) { setCepLookupStatus("not_found"); return; }
-        setCepLookupStatus("found");
-        if (!deliveryAddress && data.logradouro) setDeliveryAddress(data.logradouro);
-        if (!deliveryNeighborhood && data.bairro) setDeliveryNeighborhood(data.bairro);
-      })
-      .catch(() => { if (!cancelled) setCepLookupStatus("not_found"); });
-    return () => { cancelled = true; };
+      .then(
+        (data: {
+          erro?: boolean;
+          logradouro?: string;
+          bairro?: string;
+          localidade?: string;
+          uf?: string;
+        }) => {
+          if (cancelled) return;
+          if (data.erro) {
+            setCepLookupStatus("not_found");
+            return;
+          }
+          setCepLookupStatus("found");
+          if (!deliveryAddress && data.logradouro)
+            setDeliveryAddress(data.logradouro);
+          if (!deliveryNeighborhood && data.bairro)
+            setDeliveryNeighborhood(data.bairro);
+        },
+      )
+      .catch(() => {
+        if (!cancelled) setCepLookupStatus("not_found");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [deliveryCep]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-calculate delivery fee — calls the server-side distance endpoint
@@ -242,16 +333,25 @@ export default function NewOrder() {
   useEffect(() => {
     if (orderType !== "delivery") return;
     const mode = storeSettings?.deliveryFeeMode;
-    if (!storeSettings || (mode !== "per_km" && mode !== "distance_tier")) return;
+    if (!storeSettings || (mode !== "per_km" && mode !== "distance_tier"))
+      return;
 
     if (!storeSettings.storeCep) {
-      if (feeAutoCalculated) { setDeliveryFee(""); setFeeAutoCalculated(false); setFeeCalcInfo(null); }
+      if (feeAutoCalculated) {
+        setDeliveryFee("");
+        setFeeAutoCalculated(false);
+        setFeeCalcInfo(null);
+      }
       return;
     }
 
     const digits = deliveryCep.replace(/\D/g, "");
     if (digits.length !== 8) {
-      if (feeAutoCalculated) { setDeliveryFee(""); setFeeAutoCalculated(false); setFeeCalcInfo(null); }
+      if (feeAutoCalculated) {
+        setDeliveryFee("");
+        setFeeAutoCalculated(false);
+        setFeeCalcInfo(null);
+      }
       setDistanceCalcStatus("idle");
       return;
     }
@@ -273,17 +373,30 @@ export default function NewOrder() {
           }),
         });
         if (cancelled) return;
-        if (!res.ok) { setDistanceCalcStatus("error"); return; }
+        if (!res.ok) {
+          setDistanceCalcStatus("error");
+          return;
+        }
 
-        const { distanceKm, source } = await res.json() as { distanceKm: number; source: string };
+        const { distanceKm, source } = (await res.json()) as {
+          distanceKm: number;
+          source: string;
+        };
 
         let fee: number;
         if (mode === "distance_tier") {
-          const baseDist  = storeSettings.baseDeliveryDistanceKm ?? 4;
-          const baseFee   = storeSettings.baseDeliveryFee ?? 0;
+          const baseDist = storeSettings.baseDeliveryDistanceKm ?? 4;
+          const baseFee = storeSettings.baseDeliveryFee ?? 0;
           const addlPerKm = storeSettings.additionalPricePerKm ?? 0;
-          fee = distanceKm <= baseDist ? baseFee : baseFee + (distanceKm - baseDist) * addlPerKm;
-          if (storeSettings.minimumDeliveryFee && fee < storeSettings.minimumDeliveryFee) fee = storeSettings.minimumDeliveryFee;
+          fee =
+            distanceKm <= baseDist
+              ? baseFee
+              : baseFee + (distanceKm - baseDist) * addlPerKm;
+          if (
+            storeSettings.minimumDeliveryFee &&
+            fee < storeSettings.minimumDeliveryFee
+          )
+            fee = storeSettings.minimumDeliveryFee;
           const effMax = storeSettings.maximumDeliveryFee ?? 30;
           if (fee > effMax) fee = effMax;
           fee = Math.round(fee * 100) / 100;
@@ -302,7 +415,11 @@ export default function NewOrder() {
         } else {
           if (!storeSettings.deliveryPricePerKm) return;
           fee = distanceKm * storeSettings.deliveryPricePerKm;
-          if (storeSettings.minimumDeliveryFee && fee < storeSettings.minimumDeliveryFee) fee = storeSettings.minimumDeliveryFee;
+          if (
+            storeSettings.minimumDeliveryFee &&
+            fee < storeSettings.minimumDeliveryFee
+          )
+            fee = storeSettings.minimumDeliveryFee;
           const effMax = storeSettings.maximumDeliveryFee ?? 30;
           if (fee > effMax) fee = effMax;
           fee = Math.round(fee * 100) / 100;
@@ -324,83 +441,137 @@ export default function NewOrder() {
     };
 
     calculate();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [deliveryCep, orderType, storeSettings]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const addToCart = (product: { id: number; name: string; price: number }, variant?: { id: number; name: string; price: number }) => {
+  const addToCart = (
+    product: { id: number; name: string; price: number },
+    variant?: { id: number; name: string; price: number },
+  ) => {
     setCart((prev) => {
-      const existing = prev.find((i) => i.productId === product.id && i.variantId === (variant?.id ?? null));
+      const existing = prev.find(
+        (i) =>
+          i.productId === product.id && i.variantId === (variant?.id ?? null),
+      );
       if (existing) {
         return prev.map((i) =>
-          i.productId === product.id && i.variantId === (variant?.id ?? null) ? { ...i, quantity: i.quantity + 1 } : i
+          i.productId === product.id && i.variantId === (variant?.id ?? null)
+            ? { ...i, quantity: i.quantity + 1 }
+            : i,
         );
       }
-      return [...prev, { productId: product.id, variantId: variant?.id ?? null, name: product.name, variantName: variant?.name ?? null, price: variant?.price ?? product.price, quantity: 1, notes: "" }];
+      return [
+        ...prev,
+        {
+          productId: product.id,
+          variantId: variant?.id ?? null,
+          name: product.name,
+          variantName: variant?.name ?? null,
+          price: variant?.price ?? product.price,
+          quantity: 1,
+          notes: "",
+        },
+      ];
     });
   };
 
   const removeFromCart = (productId: number, variantId: number | null) => {
     setCart((prev) => {
-      const existing = prev.find((i) => i.productId === productId && i.variantId === variantId);
+      const existing = prev.find(
+        (i) => i.productId === productId && i.variantId === variantId,
+      );
       if (existing && existing.quantity > 1) {
-        return prev.map((i) => i.productId === productId && i.variantId === variantId ? { ...i, quantity: i.quantity - 1 } : i);
+        return prev.map((i) =>
+          i.productId === productId && i.variantId === variantId
+            ? { ...i, quantity: i.quantity - 1 }
+            : i,
+        );
       }
-      return prev.filter((i) => !(i.productId === productId && i.variantId === variantId));
+      return prev.filter(
+        (i) => !(i.productId === productId && i.variantId === variantId),
+      );
     });
   };
 
-  const updateItemNotes = (productId: number, variantId: number | null, notes: string) => {
-    setCart((prev) => prev.map((i) => i.productId === productId && i.variantId === variantId ? { ...i, notes } : i));
+  const updateItemNotes = (
+    productId: number,
+    variantId: number | null,
+    notes: string,
+  ) => {
+    setCart((prev) =>
+      prev.map((i) =>
+        i.productId === productId && i.variantId === variantId
+          ? { ...i, notes }
+          : i,
+      ),
+    );
   };
 
   const cartSubtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
-  const parsedFee = orderType === "delivery" ? (parseFloat(deliveryFee) || 0) : 0;
+  const parsedFee = orderType === "delivery" ? parseFloat(deliveryFee) || 0 : 0;
   const cartTotal = cartSubtotal + parsedFee;
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
 
-  const selectedCustomer = customers?.find((c) => String(c.id) === customerId) as CustomerOption | undefined;
+  const customerOptions = canUseCustomerDirectory ? customers : [];
+  const selectedCustomer = customerOptions?.find(
+    (c) => String(c.id) === customerId,
+  ) as CustomerOption | undefined;
   const customerFormHasData = Boolean(
-    customerName.trim()
-      || customerPhone.trim()
-      || deliveryAddress.trim()
-      || deliveryNeighborhood.trim()
-      || deliveryReference.trim()
+    customerName.trim() ||
+    customerPhone.trim() ||
+    deliveryAddress.trim() ||
+    deliveryNeighborhood.trim() ||
+    deliveryReference.trim(),
   );
-  const canAutoSaveCustomer = autoSaveCustomer && !customerId && customerFormHasData && Boolean(customerName.trim() && customerPhone.trim());
+  const canAutoSaveCustomer =
+    autoSaveCustomer &&
+    !customerId &&
+    customerFormHasData &&
+    Boolean(customerName.trim() && customerPhone.trim());
 
   const selectCustomer = (value: string) => {
     const nextCustomerId = value === "none" ? "" : value;
     setCustomerId(nextCustomerId);
 
-    const customer = customers?.find((c) => String(c.id) === nextCustomerId);
+    const customer = customerOptions?.find(
+      (c) => String(c.id) === nextCustomerId,
+    );
     if (!customer) return;
 
     if (!customerName.trim()) setCustomerName(customer.name);
-    if (!customerPhone.trim() && customer.phone) setCustomerPhone(customer.phone);
+    if (!customerPhone.trim() && customer.phone)
+      setCustomerPhone(customer.phone);
   };
 
   const saveCustomerForOrder = async (): Promise<number | undefined> => {
     if (customerId) return parseInt(customerId);
-    if (!canAutoSaveCustomer) return undefined;
+    if (!canUseCustomerDirectory || !canAutoSaveCustomer) return undefined;
 
     const phoneDigits = onlyDigits(customerPhone);
-    const addressNote = orderType === "delivery"
-      ? buildDeliveryAddressNote({
-        cep: deliveryCep,
-        address: deliveryAddress,
-        neighborhood: deliveryNeighborhood,
-        reference: deliveryReference,
-      })
-      : "";
+    const addressNote =
+      orderType === "delivery"
+        ? buildDeliveryAddressNote({
+            cep: deliveryCep,
+            address: deliveryAddress,
+            neighborhood: deliveryNeighborhood,
+            reference: deliveryReference,
+          })
+        : "";
 
     const existingCustomer = phoneDigits
-      ? customers?.find((customer) => customer.phone && onlyDigits(customer.phone) === phoneDigits)
+      ? customerOptions?.find(
+          (customer) =>
+            customer.phone && onlyDigits(customer.phone) === phoneDigits,
+        )
       : undefined;
 
     if (existingCustomer) {
-      const nextNotes = addressNote && !existingCustomer.notes?.includes(addressNote)
-        ? [existingCustomer.notes, addressNote].filter(Boolean).join("\n")
-        : existingCustomer.notes ?? undefined;
+      const nextNotes =
+        addressNote && !existingCustomer.notes?.includes(addressNote)
+          ? [existingCustomer.notes, addressNote].filter(Boolean).join("\n")
+          : (existingCustomer.notes ?? undefined);
 
       const updated = await new Promise<SavedCustomer>((resolve, reject) => {
         updateCustomer.mutate(
@@ -408,11 +579,15 @@ export default function NewOrder() {
             id: existingCustomer.id,
             data: {
               name: customerName.trim() || existingCustomer.name,
-              phone: customerPhone.trim() || existingCustomer.phone || undefined,
+              phone:
+                customerPhone.trim() || existingCustomer.phone || undefined,
               ...(nextNotes ? { notes: nextNotes } : {}),
             },
           },
-          { onSuccess: (customer) => resolve(customer), onError: (e) => reject(e) }
+          {
+            onSuccess: (customer) => resolve(customer),
+            onError: (e) => reject(e),
+          },
         );
       });
 
@@ -429,7 +604,10 @@ export default function NewOrder() {
             ...(addressNote ? { notes: addressNote } : {}),
           },
         },
-        { onSuccess: (customer) => resolve(customer), onError: (e) => reject(e) }
+        {
+          onSuccess: (customer) => resolve(customer),
+          onError: (e) => reject(e),
+        },
       );
     });
 
@@ -439,7 +617,10 @@ export default function NewOrder() {
 
   const handleCreate = async () => {
     if (cart.length === 0) {
-      toast({ title: "Adicione pelo menos um item ao pedido", variant: "destructive" });
+      toast({
+        title: "Adicione pelo menos um item ao pedido",
+        variant: "destructive",
+      });
       return;
     }
     if (orderType === "table" && !tableId) {
@@ -448,19 +629,31 @@ export default function NewOrder() {
     }
     if (orderType === "delivery") {
       if (!customerName.trim()) {
-        toast({ title: "Nome do cliente é obrigatório para delivery", variant: "destructive" });
+        toast({
+          title: "Nome do cliente é obrigatório para delivery",
+          variant: "destructive",
+        });
         return;
       }
       if (!customerPhone.trim()) {
-        toast({ title: "Telefone é obrigatório para delivery", variant: "destructive" });
+        toast({
+          title: "Telefone é obrigatório para delivery",
+          variant: "destructive",
+        });
         return;
       }
       if (!deliveryAddress.trim()) {
-        toast({ title: "Endereço é obrigatório para delivery", variant: "destructive" });
+        toast({
+          title: "Endereço é obrigatório para delivery",
+          variant: "destructive",
+        });
         return;
       }
       if (!deliveryNeighborhood.trim()) {
-        toast({ title: "Bairro é obrigatório para delivery", variant: "destructive" });
+        toast({
+          title: "Bairro é obrigatório para delivery",
+          variant: "destructive",
+        });
         return;
       }
     }
@@ -483,8 +676,10 @@ export default function NewOrder() {
         if (deliveryCep.trim()) orderData.deliveryCep = deliveryCep.trim();
         orderData.deliveryAddress = deliveryAddress.trim();
         orderData.deliveryNeighborhood = deliveryNeighborhood.trim();
-        if (deliveryReference.trim()) orderData.deliveryReference = deliveryReference.trim();
-        if (deliveryNotes.trim()) orderData.deliveryNotes = deliveryNotes.trim();
+        if (deliveryReference.trim())
+          orderData.deliveryReference = deliveryReference.trim();
+        if (deliveryNotes.trim())
+          orderData.deliveryNotes = deliveryNotes.trim();
         orderData.deliveryFee = parsedFee;
         orderData.paymentTiming = paymentTiming;
         if (paymentTiming === "on_delivery") {
@@ -493,18 +688,24 @@ export default function NewOrder() {
           if (needsChange && changeFor.trim()) {
             orderData.changeFor = parseFloat(changeFor.replace(",", "."));
           }
-          if (deliveryPaymentNotes.trim()) orderData.deliveryPaymentNotes = deliveryPaymentNotes.trim();
+          if (deliveryPaymentNotes.trim())
+            orderData.deliveryPaymentNotes = deliveryPaymentNotes.trim();
         }
       } else {
         // Balcão, viagem e mesa: identificação avulsa opcional, sem exigir telefone/endereço
         if (customerName.trim()) orderData.customerName = customerName.trim();
-        if (orderType === "takeaway" && customerPhone.trim()) orderData.customerPhone = customerPhone.trim();
+        if (orderType === "takeaway" && customerPhone.trim())
+          orderData.customerPhone = customerPhone.trim();
       }
 
       const order = await new Promise<{ id: number }>((resolve, reject) => {
         createOrder.mutate(
-          { data: orderData as unknown as Parameters<typeof createOrder.mutate>[0]["data"] },
-          { onSuccess: (o) => resolve(o), onError: (e) => reject(e) }
+          {
+            data: orderData as unknown as Parameters<
+              typeof createOrder.mutate
+            >[0]["data"],
+          },
+          { onSuccess: (o) => resolve(o), onError: (e) => reject(e) },
         );
       });
 
@@ -516,11 +717,13 @@ export default function NewOrder() {
               data: {
                 productId: item.productId,
                 quantity: item.quantity,
-                ...(item.variantId != null ? { variantId: item.variantId } : {}),
+                ...(item.variantId != null
+                  ? { variantId: item.variantId }
+                  : {}),
                 ...(item.notes.trim() ? { notes: item.notes.trim() } : {}),
               },
             },
-            { onSuccess: () => resolve(), onError: (e) => reject(e) }
+            { onSuccess: () => resolve(), onError: (e) => reject(e) },
           );
         });
       }
@@ -531,7 +734,11 @@ export default function NewOrder() {
       toast({ title: "Pedido criado com sucesso!" });
       setLocation(`/orders/${order.id}`);
     } catch (error) {
-      toast({ title: "Erro ao criar pedido", description: extractErrorMessage(error), variant: "destructive" });
+      toast({
+        title: "Erro ao criar pedido",
+        description: extractErrorMessage(error),
+        variant: "destructive",
+      });
     } finally {
       setCreating(false);
     }
@@ -544,9 +751,19 @@ export default function NewOrder() {
     { value: "delivery", label: "🚚 Delivery" },
   ];
 
-  const handleProductClick = async (product: { id: number; name: string; price: number }) => {
+  const handleProductClick = async (product: {
+    id: number;
+    name: string;
+    price: number;
+  }) => {
     const response = await fetch(`/api/menu/products/${product.id}/variants`);
-    const variants = await response.json() as Array<{ id: number; name: string; price: number; active: boolean; available: boolean }>;
+    const variants = (await response.json()) as Array<{
+      id: number;
+      name: string;
+      price: number;
+      active: boolean;
+      available: boolean;
+    }>;
     const activeVariants = variants.filter((v) => v.active && v.available);
     if (activeVariants.length === 0) return addToCart(product);
     setVariantProduct(product);
@@ -560,7 +777,9 @@ export default function NewOrder() {
       <div className="space-y-8 pb-24 lg:pb-28">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Novo Pedido</h1>
-          <p className="text-muted-foreground mt-1">Configure o pedido e adicione itens</p>
+          <p className="text-muted-foreground mt-1">
+            Configure o pedido e adicione itens
+          </p>
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:items-start">
@@ -570,7 +789,9 @@ export default function NewOrder() {
               <CardContent className="p-5 space-y-5 sm:p-6">
                 {/* Tipo de pedido */}
                 <div>
-                  <Label className="mb-2 block text-sm font-medium">Tipo de Pedido</Label>
+                  <Label className="mb-2 block text-sm font-medium">
+                    Tipo de Pedido
+                  </Label>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {ORDER_TYPES.map((t) => (
                       <Button
@@ -593,17 +814,22 @@ export default function NewOrder() {
                 {orderType === "table" && (
                   <div>
                     <Label>Mesa *</Label>
-                    <Select value={tableId || "none"} onValueChange={(v) => setTableId(v === "none" ? "" : v)}>
+                    <Select
+                      value={tableId || "none"}
+                      onValueChange={(v) => setTableId(v === "none" ? "" : v)}
+                    >
                       <SelectTrigger data-testid="select-table">
                         <SelectValue placeholder="Selecionar mesa disponível" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Selecionar mesa</SelectItem>
-                        {tables?.filter((t) => t.status === "available").map((t) => (
-                          <SelectItem key={t.id} value={String(t.id)}>
-                            Mesa {t.number} · {t.capacity} lugares
-                          </SelectItem>
-                        ))}
+                        {tables
+                          ?.filter((t) => t.status === "available")
+                          .map((t) => (
+                            <SelectItem key={t.id} value={String(t.id)}>
+                              Mesa {t.number} · {t.capacity} lugares
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -615,13 +841,18 @@ export default function NewOrder() {
                     <div>
                       <Label>Nome do cliente (opcional)</Label>
                       <Input
-                        placeholder={orderType === "table" ? "Ex: João / aniversariante" : "Ex: Maria"}
+                        placeholder={
+                          orderType === "table"
+                            ? "Ex: João / aniversariante"
+                            : "Ex: Maria"
+                        }
                         value={customerName}
                         onChange={(e) => setCustomerName(e.target.value)}
                         data-testid="input-customer-name"
                       />
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Identifica a comanda sem criar cadastro quando não houver telefone.
+                        Identifica a comanda sem criar cadastro quando não
+                        houver telefone.
                       </p>
                     </div>
                   </div>
@@ -677,7 +908,9 @@ export default function NewOrder() {
                         <Label className="flex items-center justify-between">
                           <span>Taxa de Entrega (R$)</span>
                           {feeAutoCalculated && (
-                            <span className="text-xs font-normal text-green-600 dark:text-green-400">📍 automática</span>
+                            <span className="text-xs font-normal text-green-600 dark:text-green-400">
+                              📍 automática
+                            </span>
                           )}
                         </Label>
                         <Input
@@ -686,54 +919,95 @@ export default function NewOrder() {
                           min="0"
                           placeholder="0,00"
                           value={deliveryFee}
-                          onChange={(e) => { setDeliveryFee(e.target.value); setFeeAutoCalculated(false); setFeeCalcInfo(null); }}
+                          onChange={(e) => {
+                            setDeliveryFee(e.target.value);
+                            setFeeAutoCalculated(false);
+                            setFeeCalcInfo(null);
+                          }}
                           data-testid="input-delivery-fee"
                         />
                       </div>
                     </div>
 
                     {/* Aviso / detalhes do cálculo automático */}
-                    {(storeSettings?.deliveryFeeMode === "per_km" || storeSettings?.deliveryFeeMode === "distance_tier") && (
+                    {(storeSettings?.deliveryFeeMode === "per_km" ||
+                      storeSettings?.deliveryFeeMode === "distance_tier") && (
                       <>
                         {!storeSettings.storeCep && (
                           <p className="text-xs text-[#D91F16] dark:text-red-300 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 rounded px-3 py-2">
-                            ⚠️ Configure o CEP da loja em Configurações para calcular a taxa automaticamente.
+                            ⚠️ Configure o CEP da loja em Configurações para
+                            calcular a taxa automaticamente.
                           </p>
                         )}
-                        {storeSettings.storeCep && deliveryCep.replace(/\D/g, "").length > 0 && deliveryCep.replace(/\D/g, "").length < 8 && (
-                          <p className="text-xs text-muted-foreground">
-                            Digite os 8 dígitos do CEP para calcular automaticamente.
-                          </p>
-                        )}
-                        {cepLookupStatus === "loading" && distanceCalcStatus !== "loading" && (
-                          <p className="text-xs text-muted-foreground animate-pulse">Buscando endereço pelo CEP...</p>
-                        )}
+                        {storeSettings.storeCep &&
+                          deliveryCep.replace(/\D/g, "").length > 0 &&
+                          deliveryCep.replace(/\D/g, "").length < 8 && (
+                            <p className="text-xs text-muted-foreground">
+                              Digite os 8 dígitos do CEP para calcular
+                              automaticamente.
+                            </p>
+                          )}
+                        {cepLookupStatus === "loading" &&
+                          distanceCalcStatus !== "loading" && (
+                            <p className="text-xs text-muted-foreground animate-pulse">
+                              Buscando endereço pelo CEP...
+                            </p>
+                          )}
                         {distanceCalcStatus === "loading" && (
-                          <p className="text-xs text-muted-foreground animate-pulse">Calculando distância...</p>
+                          <p className="text-xs text-muted-foreground animate-pulse">
+                            Calculando distância...
+                          </p>
                         )}
                         {cepLookupStatus === "not_found" && (
-                          <p className="text-xs text-red-500">CEP não encontrado no ViaCEP. Preencha o endereço manualmente.</p>
+                          <p className="text-xs text-red-500">
+                            CEP não encontrado no ViaCEP. Preencha o endereço
+                            manualmente.
+                          </p>
                         )}
                         {distanceCalcStatus === "error" && (
-                          <p className="text-xs text-[#D91F16] dark:text-red-300">Não foi possível calcular a distância. Verifique o CEP ou preencha a taxa manualmente.</p>
+                          <p className="text-xs text-[#D91F16] dark:text-red-300">
+                            Não foi possível calcular a distância. Verifique o
+                            CEP ou preencha a taxa manualmente.
+                          </p>
                         )}
                         {feeCalcInfo && (
                           <div className="text-xs bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded px-3 py-2 space-y-1 text-green-800 dark:text-green-300">
                             <div className="flex justify-between">
-                              <span className="text-green-600 dark:text-green-400">CEP da loja</span>
-                              <span className="font-mono font-semibold">{feeCalcInfo.storeCep.replace(/^(\d{5})(\d{3})$/, "$1-$2")}</span>
+                              <span className="text-green-600 dark:text-green-400">
+                                CEP da loja
+                              </span>
+                              <span className="font-mono font-semibold">
+                                {feeCalcInfo.storeCep.replace(
+                                  /^(\d{5})(\d{3})$/,
+                                  "$1-$2",
+                                )}
+                              </span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-green-600 dark:text-green-400">CEP do cliente</span>
-                              <span className="font-mono font-semibold">{deliveryCep.replace(/\D/g, "").replace(/^(\d{5})(\d{3})$/, "$1-$2")}</span>
+                              <span className="text-green-600 dark:text-green-400">
+                                CEP do cliente
+                              </span>
+                              <span className="font-mono font-semibold">
+                                {deliveryCep
+                                  .replace(/\D/g, "")
+                                  .replace(/^(\d{5})(\d{3})$/, "$1-$2")}
+                              </span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-green-600 dark:text-green-400">Distância</span>
-                              <span className="font-semibold">{feeCalcInfo.distanceKm} km</span>
+                              <span className="text-green-600 dark:text-green-400">
+                                Distância
+                              </span>
+                              <span className="font-semibold">
+                                {feeCalcInfo.distanceKm} km
+                              </span>
                             </div>
                             <div className="flex justify-between border-t border-green-200 dark:border-green-700 pt-1 mt-0.5">
-                              <span className="font-semibold text-green-700 dark:text-green-200">Taxa calculada</span>
-                              <span className="font-black text-green-700 dark:text-green-200">R$ {feeCalcInfo.fee.toFixed(2)}</span>
+                              <span className="font-semibold text-green-700 dark:text-green-200">
+                                Taxa calculada
+                              </span>
+                              <span className="font-black text-green-700 dark:text-green-200">
+                                R$ {feeCalcInfo.fee.toFixed(2)}
+                              </span>
                             </div>
                           </div>
                         )}
@@ -758,7 +1032,9 @@ export default function NewOrder() {
                         <Input
                           placeholder="Bairro"
                           value={deliveryNeighborhood}
-                          onChange={(e) => setDeliveryNeighborhood(e.target.value)}
+                          onChange={(e) =>
+                            setDeliveryNeighborhood(e.target.value)
+                          }
                           data-testid="input-delivery-neighborhood"
                         />
                       </div>
@@ -794,12 +1070,19 @@ export default function NewOrder() {
                       <div className="grid grid-cols-2 gap-2">
                         {[
                           { value: "now", label: "💳 Pagou agora" },
-                          { value: "on_delivery", label: "💰 Pagar na entrega" },
+                          {
+                            value: "on_delivery",
+                            label: "💰 Pagar na entrega",
+                          },
                         ].map((opt) => (
                           <button
                             key={opt.value}
                             type="button"
-                            onClick={() => setPaymentTiming(opt.value as "now" | "on_delivery")}
+                            onClick={() =>
+                              setPaymentTiming(
+                                opt.value as "now" | "on_delivery",
+                              )
+                            }
                             className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
                               paymentTiming === opt.value
                                 ? "bg-[#FF2A1F] text-white border-[#FF2A1F]"
@@ -819,14 +1102,30 @@ export default function NewOrder() {
                             <Label>Forma de pagamento</Label>
                             <div className="grid grid-cols-1 gap-2 mt-1 sm:grid-cols-3">
                               {[
-                                { value: "dinheiro", label: "Dinheiro", Icon: Banknote },
-                                { value: "pix", label: "Pix", Icon: Smartphone },
-                                { value: "cartao", label: "Cartão", Icon: CreditCard },
+                                {
+                                  value: "dinheiro",
+                                  label: "Dinheiro",
+                                  Icon: Banknote,
+                                },
+                                {
+                                  value: "pix",
+                                  label: "Pix",
+                                  Icon: Smartphone,
+                                },
+                                {
+                                  value: "cartao",
+                                  label: "Cartão",
+                                  Icon: CreditCard,
+                                },
                               ].map(({ value, label, Icon }) => (
                                 <button
                                   key={value}
                                   type="button"
-                                  onClick={() => setDeliveryPaymentMethod(value as "dinheiro" | "pix" | "cartao")}
+                                  onClick={() =>
+                                    setDeliveryPaymentMethod(
+                                      value as "dinheiro" | "pix" | "cartao",
+                                    )
+                                  }
                                   className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg border text-xs font-medium transition-colors ${
                                     deliveryPaymentMethod === value
                                       ? "bg-[#FF2A1F] text-white border-[#FF2A1F]"
@@ -875,7 +1174,9 @@ export default function NewOrder() {
                                     step="0.01"
                                     placeholder="Ex: 50,00"
                                     value={changeFor}
-                                    onChange={(e) => setChangeFor(e.target.value)}
+                                    onChange={(e) =>
+                                      setChangeFor(e.target.value)
+                                    }
                                     data-testid="input-change-for"
                                   />
                                 </div>
@@ -888,7 +1189,9 @@ export default function NewOrder() {
                             <Input
                               placeholder="Ex: tem troco de 10, paga em débito..."
                               value={deliveryPaymentNotes}
-                              onChange={(e) => setDeliveryPaymentNotes(e.target.value)}
+                              onChange={(e) =>
+                                setDeliveryPaymentNotes(e.target.value)
+                              }
                               data-testid="input-delivery-payment-notes"
                             />
                           </div>
@@ -928,55 +1231,77 @@ export default function NewOrder() {
                 )}
 
                 {/* Cliente registrado / auto-salvamento */}
-                <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <Label>{orderType === "delivery" || orderType === "takeaway" ? "Cliente cadastrado (opcional)" : "Cliente (opcional)"}</Label>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {selectedCustomer
-                          ? `Pedido vinculado a ${selectedCustomer.name}${selectedCustomer.phone ? ` · ${selectedCustomer.phone}` : ""}.`
-                          : "Selecione um cliente existente ou deixe sem cliente identificado quando permitido."}
-                      </p>
+                {canUseCustomerDirectory ? (
+                  <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <Label>
+                          {orderType === "delivery" || orderType === "takeaway"
+                            ? "Cliente cadastrado (opcional)"
+                            : "Cliente (opcional)"}
+                        </Label>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {selectedCustomer
+                            ? `Pedido vinculado a ${selectedCustomer.name}${selectedCustomer.phone ? ` · ${selectedCustomer.phone}` : ""}.`
+                            : "Selecione um cliente existente ou deixe sem cliente identificado quando permitido."}
+                        </p>
+                      </div>
+                      <Save className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
                     </div>
-                    <Save className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
-                  </div>
-                  <Select value={customerId || "none"} onValueChange={selectCustomer}>
-                    <SelectTrigger data-testid="select-customer">
-                      <SelectValue placeholder="Selecionar cliente" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Sem cliente identificado</SelectItem>
-                      {customers?.map((c) => (
-                        <SelectItem key={c.id} value={String(c.id)}>
-                          {c.name}{c.phone ? ` · ${c.phone}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  {!customerId && customerFormHasData && (
-                    <button
-                      type="button"
-                      onClick={() => setAutoSaveCustomer((value) => !value)}
-                      className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left text-sm transition-colors ${
-                        autoSaveCustomer
-                          ? "border-green-300 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950/30 dark:text-green-200"
-                          : "border-border bg-background text-muted-foreground"
-                      }`}
-                      data-testid="button-auto-save-customer"
+                    <Select
+                      value={customerId || "none"}
+                      onValueChange={selectCustomer}
                     >
-                      <span className={`mt-0.5 h-4 w-4 rounded border ${autoSaveCustomer ? "border-green-600 bg-green-600" : "border-muted-foreground"}`} />
-                      <span>
-                        <span className="block font-medium">Salvar cliente automaticamente</span>
-                        <span className="block text-xs opacity-80">
-                          {canAutoSaveCustomer
-                            ? "Ao confirmar, o sistema busca pelo telefone nesta loja, atualiza o cadastro encontrado ou cria um novo cliente."
-                            : "Informe nome e telefone para salvar automaticamente; caso contrário o pedido segue sem cliente identificado quando permitido."}
+                      <SelectTrigger data-testid="select-customer">
+                        <SelectValue placeholder="Selecionar cliente" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">
+                          Sem cliente identificado
+                        </SelectItem>
+                        {customerOptions?.map((c) => (
+                          <SelectItem key={c.id} value={String(c.id)}>
+                            {c.name}
+                            {c.phone ? ` · ${c.phone}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    {!customerId && customerFormHasData && (
+                      <button
+                        type="button"
+                        onClick={() => setAutoSaveCustomer((value) => !value)}
+                        className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left text-sm transition-colors ${
+                          autoSaveCustomer
+                            ? "border-green-300 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950/30 dark:text-green-200"
+                            : "border-border bg-background text-muted-foreground"
+                        }`}
+                        data-testid="button-auto-save-customer"
+                      >
+                        <span
+                          className={`mt-0.5 h-4 w-4 rounded border ${autoSaveCustomer ? "border-green-600 bg-green-600" : "border-muted-foreground"}`}
+                        />
+                        <span>
+                          <span className="block font-medium">
+                            Salvar cliente automaticamente
+                          </span>
+                          <span className="block text-xs opacity-80">
+                            {canAutoSaveCustomer
+                              ? "Ao confirmar, o sistema busca pelo telefone nesta loja, atualiza o cadastro encontrado ou cria um novo cliente."
+                              : "Informe nome e telefone para salvar automaticamente; caso contrário o pedido segue sem cliente identificado quando permitido."}
+                          </span>
                         </span>
-                      </span>
-                    </button>
-                  )}
-                </div>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+                    Cliente cadastrado fica desativado para atendente nesta V1;
+                    o pedido ainda usa nome e telefone informados no
+                    delivery/retirada.
+                  </div>
+                )}
 
                 {/* Observação geral */}
                 <div>
@@ -1017,7 +1342,9 @@ export default function NewOrder() {
                   <Button
                     key={cat.id}
                     size="sm"
-                    variant={categoryFilter === String(cat.id) ? "default" : "outline"}
+                    variant={
+                      categoryFilter === String(cat.id) ? "default" : "outline"
+                    }
                     onClick={() => setCategoryFilter(String(cat.id))}
                     data-testid={`filter-cat-${cat.id}`}
                   >
@@ -1028,33 +1355,45 @@ export default function NewOrder() {
 
               {loadingProducts ? (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-20" />)}
+                  {[1, 2, 3, 4].map((i) => (
+                    <Skeleton key={i} className="h-20" />
+                  ))}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 md:grid-cols-3">
-                  {products?.filter((p) => p.available).map((product) => {
-                    const inCart = cart.find((i) => i.productId === product.id);
-                    return (
-                      <Card
-                        key={product.id}
-                        className={`cursor-pointer select-none rounded-xl border transition-all hover:-translate-y-0.5 hover:shadow-md ${inCart ? "ring-2 ring-primary bg-primary/5" : ""}`}
-                        onClick={() => void handleProductClick(product)}
-                        data-testid={`card-product-${product.id}`}
-                      >
-                        <CardContent className="flex min-h-24 flex-col justify-between p-4">
-                          <p className="font-medium text-sm line-clamp-2 mb-3 leading-snug">{product.name}</p>
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-primary font-bold text-sm">R$ {product.price.toFixed(2)}</span>
-                            {inCart ? (
-                              <Badge className="text-xs">{inCart.quantity}x</Badge>
-                            ) : (
-                              <Plus className="w-4 h-4 text-muted-foreground" />
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                  {products
+                    ?.filter((p) => p.available)
+                    .map((product) => {
+                      const inCart = cart.find(
+                        (i) => i.productId === product.id,
+                      );
+                      return (
+                        <Card
+                          key={product.id}
+                          className={`cursor-pointer select-none rounded-xl border transition-all hover:-translate-y-0.5 hover:shadow-md ${inCart ? "ring-2 ring-primary bg-primary/5" : ""}`}
+                          onClick={() => void handleProductClick(product)}
+                          data-testid={`card-product-${product.id}`}
+                        >
+                          <CardContent className="flex min-h-24 flex-col justify-between p-4">
+                            <p className="font-medium text-sm line-clamp-2 mb-3 leading-snug">
+                              {product.name}
+                            </p>
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-primary font-bold text-sm">
+                                R$ {product.price.toFixed(2)}
+                              </span>
+                              {inCart ? (
+                                <Badge className="text-xs">
+                                  {inCart.quantity}x
+                                </Badge>
+                              ) : (
+                                <Plus className="w-4 h-4 text-muted-foreground" />
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   {products?.filter((p) => p.available).length === 0 && (
                     <div className="col-span-3 text-center py-8 text-muted-foreground text-sm">
                       Nenhum produto encontrado
@@ -1078,17 +1417,29 @@ export default function NewOrder() {
                 {cart.length === 0 ? (
                   <div className="text-center text-muted-foreground py-8">
                     <ShoppingCart className="w-10 h-10 mx-auto mb-2 opacity-20" />
-                    <p className="text-sm">Clique nos produtos para adicionar</p>
+                    <p className="text-sm">
+                      Clique nos produtos para adicionar
+                    </p>
                   </div>
                 ) : (
                   <div className="mb-4 max-h-[45vh] space-y-4 overflow-y-auto pr-1 lg:max-h-[calc(100vh-22rem)]">
                     {cart.map((item) => (
-                      <div key={`${item.productId}-${item.variantId ?? "base"}`} data-testid={`cart-item-${item.productId}-${item.variantId ?? "base"}`} className="border-b pb-3 last:border-0">
+                      <div
+                        key={`${item.productId}-${item.variantId ?? "base"}`}
+                        data-testid={`cart-item-${item.productId}-${item.variantId ?? "base"}`}
+                        className="border-b pb-3 last:border-0"
+                      >
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{item.name}{item.variantName ? ` — ${item.variantName}` : ""}</p>
+                            <p className="text-sm font-medium truncate">
+                              {item.name}
+                              {item.variantName ? ` — ${item.variantName}` : ""}
+                            </p>
                             <p className="text-xs text-muted-foreground">
-                              {item.quantity}x R$ {item.price.toFixed(2)} = <span className="font-semibold text-foreground">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                              {item.quantity}x R$ {item.price.toFixed(2)} ={" "}
+                              <span className="font-semibold text-foreground">
+                                R$ {(item.price * item.quantity).toFixed(2)}
+                              </span>
                             </p>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
@@ -1096,16 +1447,35 @@ export default function NewOrder() {
                               size="sm"
                               variant="outline"
                               className="h-7 w-7 p-0"
-                              onClick={() => removeFromCart(item.productId, item.variantId)}
+                              onClick={() =>
+                                removeFromCart(item.productId, item.variantId)
+                              }
                             >
                               <Minus className="w-3 h-3" />
                             </Button>
-                            <span className="text-sm font-bold w-6 text-center">{item.quantity}</span>
+                            <span className="text-sm font-bold w-6 text-center">
+                              {item.quantity}
+                            </span>
                             <Button
                               size="sm"
                               variant="outline"
                               className="h-7 w-7 p-0"
-                              onClick={() => addToCart({ id: item.productId, name: item.name, price: item.price }, item.variantId != null ? { id: item.variantId, name: item.variantName ?? "", price: item.price } : undefined)}
+                              onClick={() =>
+                                addToCart(
+                                  {
+                                    id: item.productId,
+                                    name: item.name,
+                                    price: item.price,
+                                  },
+                                  item.variantId != null
+                                    ? {
+                                        id: item.variantId,
+                                        name: item.variantName ?? "",
+                                        price: item.price,
+                                      }
+                                    : undefined,
+                                )
+                              }
                             >
                               <Plus className="w-3 h-3" />
                             </Button>
@@ -1116,7 +1486,13 @@ export default function NewOrder() {
                           <Input
                             placeholder="Observação (ex: sem sal)"
                             value={item.notes}
-                            onChange={(e) => updateItemNotes(item.productId, item.variantId, e.target.value)}
+                            onChange={(e) =>
+                              updateItemNotes(
+                                item.productId,
+                                item.variantId,
+                                e.target.value,
+                              )
+                            }
                             className="h-6 text-xs px-2 py-0"
                             data-testid={`cart-item-notes-${item.productId}`}
                           />
@@ -1136,14 +1512,22 @@ export default function NewOrder() {
                     {orderType === "delivery" && (
                       <div className="flex justify-between text-sm text-muted-foreground">
                         <span>Taxa de entrega</span>
-                        <span className={parsedFee > 0 ? "text-[#D91F16] dark:text-red-300 font-medium" : ""}>
+                        <span
+                          className={
+                            parsedFee > 0
+                              ? "text-[#D91F16] dark:text-red-300 font-medium"
+                              : ""
+                          }
+                        >
                           {parsedFee > 0 ? `R$ ${parsedFee.toFixed(2)}` : "—"}
                         </span>
                       </div>
                     )}
                     <div className="flex justify-between font-bold text-xl border-t pt-1.5 mt-1">
                       <span>Total</span>
-                      <span className="text-primary">R$ {cartTotal.toFixed(2)}</span>
+                      <span className="text-primary">
+                        R$ {cartTotal.toFixed(2)}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -1158,8 +1542,8 @@ export default function NewOrder() {
                   {creating
                     ? "Criando pedido..."
                     : cart.length === 0
-                    ? "Adicione itens"
-                    : `Confirmar Pedido · R$ ${cartTotal.toFixed(2)}`}
+                      ? "Adicione itens"
+                      : `Confirmar Pedido · R$ ${cartTotal.toFixed(2)}`}
                 </Button>
               </CardContent>
             </Card>
@@ -1169,7 +1553,10 @@ export default function NewOrder() {
       <Dialog open={variantModalOpen} onOpenChange={setVariantModalOpen}>
         <DialogContent className="flex max-h-[85vh] max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
           <DialogHeader className="border-b px-6 py-5 pr-12">
-            <DialogTitle className="text-xl">Escolha a variação{variantProduct ? ` · ${variantProduct.name}` : ""}</DialogTitle>
+            <DialogTitle className="text-xl">
+              Escolha a variação
+              {variantProduct ? ` · ${variantProduct.name}` : ""}
+            </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-6 py-5">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1185,12 +1572,18 @@ export default function NewOrder() {
                   >
                     <div className="flex h-full flex-col justify-between gap-4">
                       <div className="flex items-start justify-between gap-3">
-                        <span className="text-base font-semibold leading-snug text-foreground">{v.name}</span>
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                        <span className="text-base font-semibold leading-snug text-foreground">
+                          {v.name}
+                        </span>
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                        >
                           {selected ? "Selecionada" : "Opção"}
                         </span>
                       </div>
-                      <span className="text-2xl font-bold text-primary">R$ {v.price.toFixed(2)}</span>
+                      <span className="text-2xl font-bold text-primary">
+                        R$ {v.price.toFixed(2)}
+                      </span>
                     </div>
                   </button>
                 );
@@ -1198,13 +1591,26 @@ export default function NewOrder() {
             </div>
           </div>
           <DialogFooter className="gap-2 border-t bg-background px-6 py-4 sm:justify-between sm:space-x-0">
-            <Button type="button" variant="outline" onClick={() => setVariantModalOpen(false)}>Cancelar</Button>
-            <Button disabled={selectedVariantId == null || !variantProduct} onClick={() => {
-              const variant = variantOptions.find((v) => v.id === selectedVariantId);
-              if (!variant || !variantProduct) return;
-              addToCart(variantProduct, variant);
-              setVariantModalOpen(false);
-            }}>Adicionar ao pedido</Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setVariantModalOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={selectedVariantId == null || !variantProduct}
+              onClick={() => {
+                const variant = variantOptions.find(
+                  (v) => v.id === selectedVariantId,
+                );
+                if (!variant || !variantProduct) return;
+                addToCart(variantProduct, variant);
+                setVariantModalOpen(false);
+              }}
+            >
+              Adicionar ao pedido
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

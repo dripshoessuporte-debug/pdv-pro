@@ -17,8 +17,24 @@ import {
   GetReceiptResponse,
 } from "@workspace/api-zod";
 import { releaseTableIfOrderClosed } from "../lib/table-release";
+import { requireOpenShift } from "../middleware/rbac";
 
 const router: IRouter = Router();
+
+function assertOrderInCurrentShift(
+  order: { cashRegisterId: number | null; createdAt: Date },
+  scope: {
+    actor: { role: string };
+    cashRegisterId: number | null;
+    openedAt: Date | null;
+  },
+): boolean {
+  if (scope.actor.role !== "atendente") return true;
+  if (!scope.cashRegisterId || !scope.openedAt) return false;
+  if (order.cashRegisterId != null)
+    return order.cashRegisterId === scope.cashRegisterId;
+  return order.createdAt >= scope.openedAt;
+}
 
 router.post("/payments", async (req, res): Promise<void> => {
   const parsed = CreatePaymentBody.safeParse(req.body);
@@ -27,14 +43,29 @@ router.post("/payments", async (req, res): Promise<void> => {
     return;
   }
 
-  // Pre-check order exists — outside transaction for a fast early exit
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
+
+  // Pre-check order exists in this store — outside transaction for a fast early exit.
   const [order] = await db
     .select()
     .from(ordersTable)
-    .where(eq(ordersTable.id, parsed.data.orderId));
+    .where(
+      and(
+        eq(ordersTable.id, parsed.data.orderId),
+        eq(ordersTable.storeId, scope.actor.storeId),
+      ),
+    );
 
   if (!order) {
     res.status(404).json({ error: "Pedido não encontrado." });
+    return;
+  }
+
+  if (!assertOrderInCurrentShift(order, scope)) {
+    res.status(403).json({
+      error: "Esta visualização mostra apenas dados do seu plantão atual.",
+    });
     return;
   }
 
@@ -54,7 +85,9 @@ router.post("/payments", async (req, res): Promise<void> => {
     .limit(1);
 
   if (existingPayment) {
-    res.status(409).json({ error: "Este pedido já possui pagamento registrado." });
+    res
+      .status(409)
+      .json({ error: "Este pedido já possui pagamento registrado." });
     return;
   }
 
@@ -65,20 +98,45 @@ router.post("/payments", async (req, res): Promise<void> => {
       // SELECT … FOR UPDATE acquires a row-level lock so concurrent transactions
       // must wait until this one commits — prevents the double-payment race.
       const [freshOrder] = await tx
-        .select({ status: ordersTable.status, tableId: ordersTable.tableId })
+        .select({
+          status: ordersTable.status,
+          tableId: ordersTable.tableId,
+          cashRegisterId: ordersTable.cashRegisterId,
+          createdAt: ordersTable.createdAt,
+        })
         .from(ordersTable)
-        .where(eq(ordersTable.id, parsed.data.orderId))
+        .where(
+          and(
+            eq(ordersTable.id, parsed.data.orderId),
+            eq(ordersTable.storeId, scope.actor.storeId),
+          ),
+        )
         .for("update");
 
       if (!freshOrder || freshOrder.status === "closed") {
-        const err = new Error("Este pedido já foi pago/finalizado.") as Error & { alreadyPaid: true };
+        const err = new Error(
+          "Este pedido já foi pago/finalizado.",
+        ) as Error & { alreadyPaid: true };
         err.alreadyPaid = true;
         throw err;
       }
 
+      if (!assertOrderInCurrentShift(freshOrder, scope)) {
+        const err = new Error(
+          "Esta visualização mostra apenas dados do seu plantão atual.",
+        ) as Error & { forbiddenShift: true };
+        err.forbiddenShift = true;
+        throw err;
+      }
+
       let change: string | null = null;
-      if (parsed.data.method === "cash" && parsed.data.amountTendered !== undefined) {
-        change = String(Math.max(0, parsed.data.amountTendered - parsed.data.amount));
+      if (
+        parsed.data.method === "cash" &&
+        parsed.data.amountTendered !== undefined
+      ) {
+        change = String(
+          Math.max(0, parsed.data.amountTendered - parsed.data.amount),
+        );
       }
 
       // Step 1: create payment record
@@ -97,16 +155,32 @@ router.post("/payments", async (req, res): Promise<void> => {
       await tx
         .update(ordersTable)
         .set({ status: "closed", paidAt: new Date() })
-        .where(eq(ordersTable.id, parsed.data.orderId));
+        .where(
+          and(
+            eq(ordersTable.id, parsed.data.orderId),
+            eq(ordersTable.storeId, scope.actor.storeId),
+          ),
+        );
 
       // Step 3: release or repoint the table if linked
-      await releaseTableIfOrderClosed(parsed.data.orderId, tx as unknown as typeof db);
+      await releaseTableIfOrderClosed(
+        parsed.data.orderId,
+        tx as unknown as typeof db,
+      );
 
       // Step 4: register in open cash register with idempotency guard
       const [openRegister] = await tx
         .select({ id: cashRegistersTable.id })
         .from(cashRegistersTable)
-        .where(eq(cashRegistersTable.status, "open"))
+        .where(
+          and(
+            eq(cashRegistersTable.storeId, scope.actor.storeId),
+            eq(cashRegistersTable.status, "open"),
+            ...(scope.actor.role === "atendente" && scope.cashRegisterId
+              ? [eq(cashRegistersTable.id, scope.cashRegisterId)]
+              : []),
+          ),
+        )
         .orderBy(sql`${cashRegistersTable.openedAt} DESC`)
         .limit(1);
 
@@ -117,8 +191,8 @@ router.post("/payments", async (req, res): Promise<void> => {
           .where(
             and(
               eq(cashMovementsTable.orderId, parsed.data.orderId),
-              eq(cashMovementsTable.type, "payment")
-            )
+              eq(cashMovementsTable.type, "payment"),
+            ),
           )
           .limit(1);
 
@@ -137,8 +211,22 @@ router.post("/payments", async (req, res): Promise<void> => {
       return newPayment!;
     });
   } catch (err) {
-    if (err && typeof err === "object" && (err as { alreadyPaid?: boolean }).alreadyPaid) {
+    if (
+      err &&
+      typeof err === "object" &&
+      (err as { alreadyPaid?: boolean }).alreadyPaid
+    ) {
       res.status(409).json({ error: "Este pedido já foi pago/finalizado." });
+      return;
+    }
+    if (
+      err &&
+      typeof err === "object" &&
+      (err as { forbiddenShift?: boolean }).forbiddenShift
+    ) {
+      res.status(403).json({
+        error: "Esta visualização mostra apenas dados do seu plantão atual.",
+      });
       return;
     }
     throw err;
@@ -159,6 +247,9 @@ router.get("/payments/:orderId/receipt", async (req, res): Promise<void> => {
     return;
   }
 
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
+
   const [order] = await db
     .select({
       id: ordersTable.id,
@@ -172,14 +263,27 @@ router.get("/payments/:orderId/receipt", async (req, res): Promise<void> => {
       totalAmount: ordersTable.totalAmount,
       createdAt: ordersTable.createdAt,
       updatedAt: ordersTable.updatedAt,
+      cashRegisterId: ordersTable.cashRegisterId,
     })
     .from(ordersTable)
     .leftJoin(tablesTable, eq(ordersTable.tableId, tablesTable.id))
     .leftJoin(customersTable, eq(ordersTable.customerId, customersTable.id))
-    .where(eq(ordersTable.id, params.data.orderId));
+    .where(
+      and(
+        eq(ordersTable.id, params.data.orderId),
+        eq(ordersTable.storeId, scope.actor.storeId),
+      ),
+    );
 
   if (!order) {
     res.status(404).json({ error: "Pedido não encontrado." });
+    return;
+  }
+
+  if (!assertOrderInCurrentShift(order, scope)) {
+    res.status(403).json({
+      error: "Esta visualização mostra apenas dados do seu plantão atual.",
+    });
     return;
   }
 
@@ -223,7 +327,8 @@ router.get("/payments/:orderId/receipt", async (req, res): Promise<void> => {
     payment: {
       ...payment,
       amount: parseFloat(String(payment.amount)),
-      change: payment.change !== null ? parseFloat(String(payment.change)) : null,
+      change:
+        payment.change !== null ? parseFloat(String(payment.change)) : null,
       createdAt: payment.createdAt.toISOString(),
     },
     items: items.map((item) => ({

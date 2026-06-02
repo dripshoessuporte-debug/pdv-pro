@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication and current actor operations
   - name: tables
     description: Table management
   - name: customers
@@ -40,6 +42,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+
+  /auth/me:
+    get:
+      operationId: getCurrentActor
+      tags: [auth]
+      summary: Get current RBAC actor
+      description: Returns the current actor resolved by the backend auth/RBAC context.
+      responses:
+        "200":
+          description: Current actor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentActor"
+        "401":
+          description: Authentication required
+        "403":
+          description: Forbidden
 
   # Tables
   /tables:
@@ -1232,6 +1253,23 @@ components:
       required:
         - status
 
+
+    CurrentActor:
+      type: object
+      required: [id, storeId, name, role, isDevelopmentFallback]
+      properties:
+        id:
+          type: [integer, "null"]
+        storeId:
+          type: integer
+        name:
+          type: string
+        role:
+          type: string
+          enum: [max_control, atendente, cozinha, motoboy]
+        isDevelopmentFallback:
+          type: boolean
+
     # Tables
     Table:
       type: object
@@ -1248,6 +1286,10 @@ components:
           enum: [available, occupied, reserved]
         currentOrderId:
           type: ["integer", "null"]
+        openOrdersCount:
+          type: integer
+        hasMultipleOpenOrders:
+          type: boolean
         createdAt:
           type: string
 

@@ -2,18 +2,27 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, storeSettingsTable } from "@workspace/db";
 import { isOrsConfigured } from "../lib/openrouteservice";
+import { getCurrentActor } from "../middleware/rbac";
 
 const router: IRouter = Router();
 
-async function getOrCreateSettings() {
-  const [existing] = await db.select().from(storeSettingsTable).limit(1);
+async function getOrCreateSettings(storeId = 1) {
+  const [existing] = await db
+    .select()
+    .from(storeSettingsTable)
+    .where(eq(storeSettingsTable.storeId, storeId))
+    .limit(1);
   if (existing) return existing;
-  const [created] = await db.insert(storeSettingsTable).values({}).returning();
+  const [created] = await db
+    .insert(storeSettingsTable)
+    .values({ storeId })
+    .returning();
   return created;
 }
 
-router.get("/settings", async (_req, res): Promise<void> => {
-  const settings = await getOrCreateSettings();
+router.get("/settings", async (req, res): Promise<void> => {
+  const { storeId } = await getCurrentActor(req);
+  const settings = await getOrCreateSettings(storeId);
   res.json({ ...settings, orsConfigured: isOrsConfigured() });
 });
 
@@ -43,19 +52,31 @@ router.put("/settings", async (req, res): Promise<void> => {
     useDistanceCache,
   } = req.body ?? {};
 
-  const settings = await getOrCreateSettings();
+  const { storeId } = await getCurrentActor(req);
+  const settings = await getOrCreateSettings(storeId);
 
   const updates: Record<string, unknown> = {};
   if (storeName !== undefined) updates.storeName = String(storeName);
-  if (storePhone !== undefined) updates.storePhone = storePhone ? String(storePhone) : null;
-  if (storeEmail !== undefined) updates.storeEmail = storeEmail ? String(storeEmail) : null;
-  if (storeCep !== undefined) updates.storeCep = storeCep ? String(storeCep) : null;
-  if (storeAddress !== undefined) updates.storeAddress = storeAddress ? String(storeAddress) : null;
-  if (storeNumber !== undefined) updates.storeNumber = storeNumber ? String(storeNumber) : null;
-  if (storeNeighborhood !== undefined) updates.storeNeighborhood = storeNeighborhood ? String(storeNeighborhood) : null;
-  if (storeCity !== undefined) updates.storeCity = storeCity ? String(storeCity) : "";
-  if (storeState !== undefined) updates.storeState = storeState ? String(storeState) : "";
-  if (storeCountry !== undefined) updates.storeCountry = storeCountry ? String(storeCountry) : "Brasil";
+  if (storePhone !== undefined)
+    updates.storePhone = storePhone ? String(storePhone) : null;
+  if (storeEmail !== undefined)
+    updates.storeEmail = storeEmail ? String(storeEmail) : null;
+  if (storeCep !== undefined)
+    updates.storeCep = storeCep ? String(storeCep) : null;
+  if (storeAddress !== undefined)
+    updates.storeAddress = storeAddress ? String(storeAddress) : null;
+  if (storeNumber !== undefined)
+    updates.storeNumber = storeNumber ? String(storeNumber) : null;
+  if (storeNeighborhood !== undefined)
+    updates.storeNeighborhood = storeNeighborhood
+      ? String(storeNeighborhood)
+      : null;
+  if (storeCity !== undefined)
+    updates.storeCity = storeCity ? String(storeCity) : "";
+  if (storeState !== undefined)
+    updates.storeState = storeState ? String(storeState) : "";
+  if (storeCountry !== undefined)
+    updates.storeCountry = storeCountry ? String(storeCountry) : "Brasil";
   if (deliveryDispatchTimeMinutes !== undefined) {
     const v = parseInt(String(deliveryDispatchTimeMinutes), 10);
     if (!isNaN(v) && v >= 1) updates.deliveryDispatchTimeMinutes = v;
@@ -64,10 +85,16 @@ router.put("/settings", async (req, res): Promise<void> => {
     const v = parseInt(String(maxOrdersPerRoute), 10);
     if (!isNaN(v) && v >= 1 && v <= 10) updates.maxOrdersPerRoute = v;
   }
-  if (routeGroupingMode !== undefined && ["neighborhood", "distance", "hybrid"].includes(String(routeGroupingMode))) {
+  if (
+    routeGroupingMode !== undefined &&
+    ["neighborhood", "distance", "hybrid"].includes(String(routeGroupingMode))
+  ) {
     updates.routeGroupingMode = String(routeGroupingMode);
   }
-  if (deliveryFeeMode !== undefined && ["manual", "per_km", "distance_tier"].includes(String(deliveryFeeMode))) {
+  if (
+    deliveryFeeMode !== undefined &&
+    ["manual", "per_km", "distance_tier"].includes(String(deliveryFeeMode))
+  ) {
     updates.deliveryFeeMode = String(deliveryFeeMode);
   }
   if (deliveryPricePerKm !== undefined) {
@@ -96,10 +123,12 @@ router.put("/settings", async (req, res): Promise<void> => {
   }
   if (distanceProvider !== undefined) {
     const valid = ["approximate_cep", "openrouteservice"];
-    if (valid.includes(String(distanceProvider))) updates.distanceProvider = String(distanceProvider);
+    if (valid.includes(String(distanceProvider)))
+      updates.distanceProvider = String(distanceProvider);
   }
   if (useDistanceCache !== undefined) {
-    updates.useDistanceCache = String(useDistanceCache) === "false" ? "false" : "true";
+    updates.useDistanceCache =
+      String(useDistanceCache) === "false" ? "false" : "true";
   }
 
   if (Object.keys(updates).length === 0) {

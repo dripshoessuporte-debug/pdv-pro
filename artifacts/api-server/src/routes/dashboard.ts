@@ -1,6 +1,16 @@
 import { Router, type IRouter } from "express";
 import { eq, and, sql, gte } from "drizzle-orm";
-import { db, ordersTable, tablesTable, kitchenTicketsTable, orderItemsTable, productsTable, categoriesTable, customersTable, paymentsTable } from "@workspace/db";
+import {
+  db,
+  ordersTable,
+  tablesTable,
+  kitchenTicketsTable,
+  orderItemsTable,
+  productsTable,
+  categoriesTable,
+  customersTable,
+  paymentsTable,
+} from "@workspace/db";
 
 import {
   GetDashboardSummaryResponse,
@@ -8,10 +18,12 @@ import {
   GetSalesByCategoryResponse,
 } from "@workspace/api-zod";
 import { getOperationalSessionStart } from "../lib/operational-session";
+import { getCurrentActor } from "../middleware/rbac";
 
 const router: IRouter = Router();
 
-router.get("/dashboard/summary", async (_req, res): Promise<void> => {
+router.get("/dashboard/summary", async (req, res): Promise<void> => {
+  const actor = await getCurrentActor(req);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const operationalStart = await getOperationalSessionStart();
@@ -19,18 +31,30 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   const [revenueToday] = await db
     .select({ total: sql<string>`coalesce(sum(${paymentsTable.amount}), 0)` })
     .from(paymentsTable)
-    .where(and(gte(paymentsTable.createdAt, operationalStart), eq(paymentsTable.status, "approved")));
+    .where(
+      and(
+        gte(paymentsTable.createdAt, operationalStart),
+        eq(paymentsTable.status, "approved"),
+      ),
+    );
 
   const [countToday] = await db
     .select({ count: sql<number>`count(*)` })
     .from(ordersTable)
-    .where(and(gte(ordersTable.createdAt, today), sql`${ordersTable.status} != 'cancelled'`));
+    .where(
+      and(
+        eq(ordersTable.storeId, actor.storeId),
+        gte(ordersTable.createdAt, today),
+        sql`${ordersTable.status} != 'cancelled'`,
+      ),
+    );
 
   const [openOrders] = await db
     .select({ count: sql<number>`count(*)` })
     .from(ordersTable)
     .where(
       and(
+        eq(ordersTable.storeId, actor.storeId),
         gte(ordersTable.createdAt, operationalStart),
         sql`${ordersTable.status} in ('open', 'preparing', 'ready')`,
         sql`NOT (
@@ -38,24 +62,39 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
           AND ${ordersTable.deliveryStatus} IN (
             'out_for_delivery', 'delivered', 'awaiting_settlement', 'closed', 'cancelled'
           )
-        )`
-      )
+        )`,
+      ),
     );
 
   const [awaitingSettlement] = await db
     .select({ count: sql<number>`count(*)` })
     .from(ordersTable)
-    .where(eq(ordersTable.deliveryStatus, "awaiting_settlement"));
+    .where(
+      and(
+        eq(ordersTable.storeId, actor.storeId),
+        eq(ordersTable.deliveryStatus, "awaiting_settlement"),
+      ),
+    );
 
   const [occupiedTables] = await db
     .select({ count: sql<number>`count(*)` })
     .from(tablesTable)
-    .where(eq(tablesTable.status, "occupied"));
+    .where(
+      and(
+        eq(tablesTable.storeId, actor.storeId),
+        eq(tablesTable.status, "occupied"),
+      ),
+    );
 
   const [availableTables] = await db
     .select({ count: sql<number>`count(*)` })
     .from(tablesTable)
-    .where(eq(tablesTable.status, "available"));
+    .where(
+      and(
+        eq(tablesTable.storeId, actor.storeId),
+        eq(tablesTable.status, "available"),
+      ),
+    );
 
   const [pendingTickets] = await db
     .select({ count: sql<number>`count(*)` })
@@ -64,8 +103,9 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
     .where(
       and(
         eq(kitchenTicketsTable.status, "pending"),
-        gte(ordersTable.createdAt, operationalStart)
-      )
+        eq(ordersTable.storeId, actor.storeId),
+        gte(ordersTable.createdAt, operationalStart),
+      ),
     );
 
   const summary = {
@@ -81,7 +121,8 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   res.json(GetDashboardSummaryResponse.parse(summary));
 });
 
-router.get("/dashboard/recent-orders", async (_req, res): Promise<void> => {
+router.get("/dashboard/recent-orders", async (req, res): Promise<void> => {
+  const actor = await getCurrentActor(req);
   const operationalStart = await getOperationalSessionStart();
   const orders = await db
     .select({
@@ -89,7 +130,9 @@ router.get("/dashboard/recent-orders", async (_req, res): Promise<void> => {
       tableId: ordersTable.tableId,
       tableNumber: tablesTable.number,
       customerId: ordersTable.customerId,
-      customerName: sql<string | null>`coalesce(${ordersTable.customerName}, ${customersTable.name})`,
+      customerName: sql<
+        string | null
+      >`coalesce(${ordersTable.customerName}, ${customersTable.name})`,
       status: ordersTable.status,
       type: ordersTable.type,
       notes: ordersTable.notes,
@@ -101,44 +144,55 @@ router.get("/dashboard/recent-orders", async (_req, res): Promise<void> => {
     .from(ordersTable)
     .leftJoin(tablesTable, eq(ordersTable.tableId, tablesTable.id))
     .leftJoin(customersTable, eq(ordersTable.customerId, customersTable.id))
-    .where(gte(ordersTable.createdAt, operationalStart))
+    .where(
+      and(
+        eq(ordersTable.storeId, actor.storeId),
+        gte(ordersTable.createdAt, operationalStart),
+      ),
+    )
     .orderBy(sql`${ordersTable.createdAt} DESC`)
     .limit(10);
 
-  const ordersWithItems = await Promise.all(orders.map(async (order) => {
-    const items = await db
-      .select({
-        id: orderItemsTable.id,
-        orderId: orderItemsTable.orderId,
-        productId: orderItemsTable.productId,
-        productName: productsTable.name,
-        quantity: orderItemsTable.quantity,
-        unitPrice: orderItemsTable.unitPrice,
-        totalPrice: orderItemsTable.totalPrice,
-        notes: orderItemsTable.notes,
-      })
-      .from(orderItemsTable)
-      .leftJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
-      .where(eq(orderItemsTable.orderId, order.id));
+  const ordersWithItems = await Promise.all(
+    orders.map(async (order) => {
+      const items = await db
+        .select({
+          id: orderItemsTable.id,
+          orderId: orderItemsTable.orderId,
+          productId: orderItemsTable.productId,
+          productName: productsTable.name,
+          quantity: orderItemsTable.quantity,
+          unitPrice: orderItemsTable.unitPrice,
+          totalPrice: orderItemsTable.totalPrice,
+          notes: orderItemsTable.notes,
+        })
+        .from(orderItemsTable)
+        .leftJoin(
+          productsTable,
+          eq(orderItemsTable.productId, productsTable.id),
+        )
+        .where(eq(orderItemsTable.orderId, order.id));
 
-    return {
-      ...order,
-      totalAmount: parseFloat(String(order.totalAmount)),
-      deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
-      createdAt: order.createdAt.toISOString(),
-      updatedAt: order.updatedAt.toISOString(),
-      items: items.map((item) => ({
-        ...item,
-        unitPrice: parseFloat(String(item.unitPrice)),
-        totalPrice: parseFloat(String(item.totalPrice)),
-      })),
-    };
-  }));
+      return {
+        ...order,
+        totalAmount: parseFloat(String(order.totalAmount)),
+        deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
+        createdAt: order.createdAt.toISOString(),
+        updatedAt: order.updatedAt.toISOString(),
+        items: items.map((item) => ({
+          ...item,
+          unitPrice: parseFloat(String(item.unitPrice)),
+          totalPrice: parseFloat(String(item.totalPrice)),
+        })),
+      };
+    }),
+  );
 
   res.json(GetRecentOrdersResponse.parse(ordersWithItems));
 });
 
-router.get("/dashboard/sales-by-category", async (_req, res): Promise<void> => {
+router.get("/dashboard/sales-by-category", async (req, res): Promise<void> => {
+  const actor = await getCurrentActor(req);
   const operationalStart = await getOperationalSessionStart();
 
   const rows = await db
@@ -155,10 +209,11 @@ router.get("/dashboard/sales-by-category", async (_req, res): Promise<void> => {
     .leftJoin(paymentsTable, eq(paymentsTable.orderId, ordersTable.id))
     .where(
       and(
+        eq(categoriesTable.storeId, actor.storeId),
         gte(ordersTable.createdAt, operationalStart),
         gte(paymentsTable.createdAt, operationalStart),
-        eq(paymentsTable.status, "approved")
-      )
+        eq(paymentsTable.status, "approved"),
+      ),
     )
     .groupBy(categoriesTable.id, categoriesTable.name)
     .orderBy(sql`sum(${orderItemsTable.totalPrice}) DESC NULLS LAST`);

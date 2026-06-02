@@ -1,44 +1,90 @@
 import { Router, type IRouter } from "express";
-import { eq, and, inArray, notInArray, sql, or, isNull, notExists } from "drizzle-orm";
-import { db, deliveryRoutesTable, deliveryRouteOrdersTable, ordersTable, customersTable, couriersTable, orderItemsTable, productsTable, paymentsTable, cashRegistersTable, cashMovementsTable } from "@workspace/db";
+import {
+  eq,
+  and,
+  inArray,
+  notInArray,
+  sql,
+  or,
+  isNull,
+  notExists,
+} from "drizzle-orm";
+import {
+  db,
+  deliveryRoutesTable,
+  deliveryRouteOrdersTable,
+  ordersTable,
+  customersTable,
+  couriersTable,
+  orderItemsTable,
+  productsTable,
+  paymentsTable,
+  cashRegistersTable,
+  cashMovementsTable,
+} from "@workspace/db";
 import { releaseTableIfOrderClosed } from "../lib/table-release";
+import { getCurrentActor, requireOpenShift } from "../middleware/rbac";
 import { getOrCreateSettings } from "./settings";
 
 const router: IRouter = Router();
 
 const ROUTE_COLORS = [
-  "#ef4444", "#3b82f6", "#22c55e", "#f97316",
-  "#a855f7", "#ec4899", "#14b8a6", "#eab308",
+  "#ef4444",
+  "#3b82f6",
+  "#22c55e",
+  "#f97316",
+  "#a855f7",
+  "#ec4899",
+  "#14b8a6",
+  "#eab308",
 ];
 
 // ─── Eligible delivery statuses for routing ───────────────────────────────────
 
-const LOGISTICALLY_ELIGIBLE_DELIVERY_STATUSES = ["pending", "preparing", "ready"] as const;
+const LOGISTICALLY_ELIGIBLE_DELIVERY_STATUSES = [
+  "pending",
+  "preparing",
+  "ready",
+] as const;
 
-function deliveryOrderCanEnterRouteWhereClause() {
-  return and(
+function deliveryOrderCanEnterRouteWhereClause(
+  storeId?: number,
+  openedAt?: Date | null,
+) {
+  const conditions = [
     eq(ordersTable.type, "delivery"),
     notInArray(ordersTable.status, ["cancelled", "closed"]),
-    inArray(ordersTable.deliveryStatus, [...LOGISTICALLY_ELIGIBLE_DELIVERY_STATUSES]),
+    inArray(ordersTable.deliveryStatus, [
+      ...LOGISTICALLY_ELIGIBLE_DELIVERY_STATUSES,
+    ]),
     notExists(
       db
         .select({ id: deliveryRouteOrdersTable.id })
         .from(deliveryRouteOrdersTable)
-        .where(eq(deliveryRouteOrdersTable.orderId, ordersTable.id))
-    )
-  );
+        .where(eq(deliveryRouteOrdersTable.orderId, ordersTable.id)),
+    ),
+  ];
+  if (storeId) conditions.push(eq(ordersTable.storeId, storeId));
+  if (openedAt) conditions.push(sql`${ordersTable.createdAt} >= ${openedAt}`);
+  return and(...conditions);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function buildMapsUrl(
   storeAddress: string,
-  orders: Array<{ deliveryAddress: string | null; deliveryNeighborhood: string | null; deliveryCep: string | null; storeCity: string | null }>
+  orders: Array<{
+    deliveryAddress: string | null;
+    deliveryNeighborhood: string | null;
+    deliveryCep: string | null;
+    storeCity: string | null;
+  }>,
 ): string {
   const origin = encodeURIComponent(storeAddress);
   const addresses = orders.map((o) => {
-    const parts = [o.deliveryAddress, o.deliveryNeighborhood, o.storeCity].filter(Boolean)
-      
+    const parts = [o.deliveryAddress, o.deliveryNeighborhood, o.storeCity]
+      .filter(Boolean)
+
       .join(", ");
     return parts || (o.deliveryCep ?? "");
   });
@@ -54,11 +100,23 @@ function buildMapsUrl(
   return waypoints ? `${base}&waypoints=${waypoints}` : base;
 }
 
-async function getRouteWithOrders(routeId: number) {
+async function getRouteWithOrders(
+  routeId: number,
+  storeId?: number,
+  courierUserId?: number | null,
+) {
   const [route] = await db
     .select()
     .from(deliveryRoutesTable)
-    .where(eq(deliveryRoutesTable.id, routeId));
+    .where(
+      and(
+        eq(deliveryRoutesTable.id, routeId),
+        ...(storeId ? [eq(deliveryRoutesTable.storeId, storeId)] : []),
+        ...(courierUserId
+          ? [eq(deliveryRoutesTable.courierId, courierUserId)]
+          : []),
+      ),
+    );
 
   if (!route) return null;
 
@@ -91,23 +149,27 @@ async function getRouteWithOrders(routeId: number) {
 
   // Fetch items for all orders in this route
   const orderIds = routeOrders.map((o) => o.orderId);
-  const allItems = orderIds.length > 0
-    ? await db
-        .select({
-          orderId: orderItemsTable.orderId,
-          productId: orderItemsTable.productId,
-          productName: productsTable.name,
-          quantity: orderItemsTable.quantity,
-          unitPrice: orderItemsTable.unitPrice,
-        })
-        .from(orderItemsTable)
-        .leftJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
-        .where(inArray(orderItemsTable.orderId, orderIds))
-    : [];
+  const allItems =
+    orderIds.length > 0
+      ? await db
+          .select({
+            orderId: orderItemsTable.orderId,
+            productId: orderItemsTable.productId,
+            productName: productsTable.name,
+            quantity: orderItemsTable.quantity,
+            unitPrice: orderItemsTable.unitPrice,
+          })
+          .from(orderItemsTable)
+          .leftJoin(
+            productsTable,
+            eq(orderItemsTable.productId, productsTable.id),
+          )
+          .where(inArray(orderItemsTable.orderId, orderIds))
+      : [];
 
   const totalDeliveryFee = routeOrders.reduce(
     (sum, o) => sum + parseFloat(String(o.deliveryFee ?? "0")),
-    0
+    0,
   );
 
   // Total to receive on delivery (payment_timing = on_delivery)
@@ -117,7 +179,12 @@ async function getRouteWithOrders(routeId: number) {
 
   // Total change needed (sum of (changeFor - totalAmount) where changeFor > totalAmount)
   const totalChangeNeeded = routeOrders
-    .filter((o) => o.paymentTiming === "on_delivery" && o.needsChange === "true" && o.changeFor)
+    .filter(
+      (o) =>
+        o.paymentTiming === "on_delivery" &&
+        o.needsChange === "true" &&
+        o.changeFor,
+    )
     .reduce((sum, o) => {
       const changeFor = parseFloat(String(o.changeFor ?? "0"));
       const total = parseFloat(String(o.totalAmount ?? "0"));
@@ -137,7 +204,9 @@ async function getRouteWithOrders(routeId: number) {
     orders: routeOrders.map((o) => ({
       ...o,
       deliveryFee: parseFloat(String(o.deliveryFee ?? "0")),
-      estimatedDistanceKm: o.estimatedDistanceKm ? parseFloat(String(o.estimatedDistanceKm)) : null,
+      estimatedDistanceKm: o.estimatedDistanceKm
+        ? parseFloat(String(o.estimatedDistanceKm))
+        : null,
       totalAmount: parseFloat(String(o.totalAmount ?? "0")),
       changeFor: o.changeFor ? parseFloat(String(o.changeFor)) : null,
       orderCreatedAt: o.orderCreatedAt?.toISOString() ?? null,
@@ -197,7 +266,8 @@ function proximityToStore(storeCep: string, orderCep: string): number {
  */
 function orderPairScore(a: EligibleOrder, b: EligibleOrder): number {
   // CEP prefix similarity: each matching digit is worth 10 points
-  const cepScore = cepPrefixMatchLength(a.deliveryCep ?? "", b.deliveryCep ?? "") * 10;
+  const cepScore =
+    cepPrefixMatchLength(a.deliveryCep ?? "", b.deliveryCep ?? "") * 10;
 
   const na = (a.deliveryNeighborhood ?? "").trim().toLowerCase();
   const nb = (b.deliveryNeighborhood ?? "").trim().toLowerCase();
@@ -255,13 +325,16 @@ function kitchenTimeMs(o: EligibleOrder): number {
 function generateRoutePlan(
   orders: EligibleOrder[],
   maxPerRoute: number,
-  storeCep: string
+  storeCep: string,
 ): Array<{ mainNeighborhood: string; orders: EligibleOrder[] }> {
   const assigned = new Set<number>();
-  const routes: Array<{ mainNeighborhood: string; orders: EligibleOrder[] }> = [];
+  const routes: Array<{ mainNeighborhood: string; orders: EligibleOrder[] }> =
+    [];
 
   // Sort oldest-first so the most urgent orders seed routes first
-  const byUrgency = [...orders].sort((a, b) => kitchenTimeMs(a) - kitchenTimeMs(b));
+  const byUrgency = [...orders].sort(
+    (a, b) => kitchenTimeMs(a) - kitchenTimeMs(b),
+  );
 
   for (const seed of byUrgency) {
     if (assigned.has(seed.id)) continue;
@@ -295,7 +368,7 @@ function generateRoutePlan(
         // Geographic score vs every current batch member; keep the maximum
         const score = batch.reduce(
           (max, batchMember) => Math.max(max, orderPairScore(batchMember, o)),
-          0
+          0,
         );
         if (score > bestScore) {
           bestScore = score;
@@ -320,7 +393,7 @@ function generateRoutePlan(
       neighborhoodCounts.set(n, (neighborhoodCounts.get(n) ?? 0) + 1);
     }
     const mainNeighborhood = [...neighborhoodCounts.entries()].sort(
-      (a, b) => b[1] - a[1]
+      (a, b) => b[1] - a[1],
     )[0][0];
 
     // Sort stops: closest to store first, then by CEP
@@ -328,7 +401,9 @@ function generateRoutePlan(
       const sA = proximityToStore(storeCep, a.deliveryCep ?? "");
       const sB = proximityToStore(storeCep, b.deliveryCep ?? "");
       if (sB !== sA) return sB - sA;
-      return normalizeCep(a.deliveryCep ?? "").localeCompare(normalizeCep(b.deliveryCep ?? ""));
+      return normalizeCep(a.deliveryCep ?? "").localeCompare(
+        normalizeCep(b.deliveryCep ?? ""),
+      );
     });
 
     routes.push({ mainNeighborhood, orders: sortedBatch });
@@ -343,7 +418,7 @@ async function recalcRoute(
   routeId: number,
   storeOrigin: string,
   storeCity: string | null,
-  dispatchMinutes: number
+  dispatchMinutes: number,
 ): Promise<boolean> {
   const rows = await db
     .select({
@@ -354,12 +429,17 @@ async function recalcRoute(
       createdAt: ordersTable.createdAt,
     })
     .from(deliveryRouteOrdersTable)
-    .innerJoin(ordersTable, eq(deliveryRouteOrdersTable.orderId, ordersTable.id))
+    .innerJoin(
+      ordersTable,
+      eq(deliveryRouteOrdersTable.orderId, ordersTable.id),
+    )
     .where(eq(deliveryRouteOrdersTable.routeId, routeId))
     .orderBy(deliveryRouteOrdersTable.stopOrder);
 
   if (rows.length === 0) {
-    await db.delete(deliveryRoutesTable).where(eq(deliveryRoutesTable.id, routeId));
+    await db
+      .delete(deliveryRoutesTable)
+      .where(eq(deliveryRoutesTable.id, routeId));
     return false;
   }
 
@@ -368,49 +448,89 @@ async function recalcRoute(
     const n = (r.deliveryNeighborhood ?? "Outros").trim();
     nCounts.set(n, (nCounts.get(n) ?? 0) + 1);
   }
-  const mainNeighborhood = [...nCounts.entries()].sort((a, b) => b[1] - a[1])[0][0];
-  const includedNeighborhoods = [...new Set(rows.map((r) => (r.deliveryNeighborhood ?? "Outros").trim()))];
+  const mainNeighborhood = [...nCounts.entries()].sort(
+    (a, b) => b[1] - a[1],
+  )[0][0];
+  const includedNeighborhoods = [
+    ...new Set(rows.map((r) => (r.deliveryNeighborhood ?? "Outros").trim())),
+  ];
 
   const earliest = Math.min(
-    ...rows.map((r) => (r.kitchenAcceptedAt?.getTime() ?? r.createdAt.getTime()))
+    ...rows.map((r) => r.kitchenAcceptedAt?.getTime() ?? r.createdAt.getTime()),
   );
   const dispatchDeadline = new Date(earliest + dispatchMinutes * 60_000);
 
-  const mapsUrl = buildMapsUrl(storeOrigin, rows.map((r) => ({ ...r, storeCity })));
+  const mapsUrl = buildMapsUrl(
+    storeOrigin,
+    rows.map((r) => ({ ...r, storeCity })),
+  );
 
-  await db.update(deliveryRoutesTable).set({
-    mainNeighborhood,
-    includedNeighborhoods: JSON.stringify(includedNeighborhoods),
-    mapsUrl,
-    dispatchDeadline,
-  }).where(eq(deliveryRoutesTable.id, routeId));
+  await db
+    .update(deliveryRoutesTable)
+    .set({
+      mainNeighborhood,
+      includedNeighborhoods: JSON.stringify(includedNeighborhoods),
+      mapsUrl,
+      dispatchDeadline,
+    })
+    .where(eq(deliveryRoutesTable.id, routeId));
 
   return true;
 }
 
 // ─── GET /delivery/routes ─────────────────────────────────────────────────────
 
-router.get("/delivery/routes", async (_req, res): Promise<void> => {
+router.get("/delivery/routes", async (req, res): Promise<void> => {
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
+  const actor = scope.actor;
+  const conditions = [eq(deliveryRoutesTable.storeId, actor.storeId)];
+  if (actor.role === "motoboy" && actor.id)
+    conditions.push(eq(deliveryRoutesTable.courierId, actor.id));
+  if (actor.role === "atendente" && scope.openedAt)
+    conditions.push(sql`${deliveryRoutesTable.createdAt} >= ${scope.openedAt}`);
+
   const routes = await db
     .select()
     .from(deliveryRoutesTable)
+    .where(and(...conditions))
     .orderBy(sql`${deliveryRoutesTable.createdAt} DESC`);
 
-  const full = await Promise.all(routes.map((r) => getRouteWithOrders(r.id)));
+  const full = await Promise.all(
+    routes.map((r) =>
+      getRouteWithOrders(
+        r.id,
+        actor.storeId,
+        actor.role === "motoboy" ? actor.id : null,
+      ),
+    ),
+  );
   res.json(full.filter(Boolean));
 });
 
 // ─── POST /delivery/routes/generate ──────────────────────────────────────────
 
 router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
-  const settings = await getOrCreateSettings();
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
+  const actor = scope.actor;
+  const settings = await getOrCreateSettings(actor.storeId);
   const maxPerRoute = settings.maxOrdersPerRoute;
 
   // Build store origin string from settings
-  const storeOriginParts = [settings.storeAddress, settings.storeNumber, settings.storeNeighborhood, settings.storeCity, settings.storeState, settings.storeCountry].filter(Boolean);
+  const storeOriginParts = [
+    settings.storeAddress,
+    settings.storeNumber,
+    settings.storeNeighborhood,
+    settings.storeCity,
+    settings.storeState,
+    settings.storeCountry,
+  ].filter(Boolean);
   const storeOrigin = storeOriginParts.join(", ");
   if (!settings.storeCity || !settings.storeState) {
-    req.log.warn("Configure cidade e estado da loja para melhorar cálculo de entrega e rotas.");
+    req.log.warn(
+      "Configure cidade e estado da loja para melhorar cálculo de entrega e rotas.",
+    );
   }
 
   // Eligible orders: only logistic whitelist deliveryStatus values.
@@ -427,7 +547,10 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     })
     .from(ordersTable)
     .where(
-      deliveryOrderCanEnterRouteWhereClause()
+      deliveryOrderCanEnterRouteWhereClause(
+        actor.storeId,
+        actor.role === "atendente" ? scope.openedAt : null,
+      ),
     );
 
   if (eligibleOrders.length === 0) {
@@ -435,12 +558,21 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     return;
   }
 
-  const plan = generateRoutePlan(eligibleOrders as EligibleOrder[], maxPerRoute, settings.storeCep ?? "");
+  const plan = generateRoutePlan(
+    eligibleOrders as EligibleOrder[],
+    maxPerRoute,
+    settings.storeCep ?? "",
+  );
 
   const existingToday = await db
     .select({ id: deliveryRoutesTable.id })
     .from(deliveryRoutesTable)
-    .where(sql`DATE(${deliveryRoutesTable.createdAt}) = CURRENT_DATE`);
+    .where(
+      and(
+        eq(deliveryRoutesTable.storeId, actor.storeId),
+        sql`DATE(${deliveryRoutesTable.createdAt}) = CURRENT_DATE`,
+      ),
+    );
 
   let colorIndex = existingToday.length % ROUTE_COLORS.length;
   let routeNumber = existingToday.length + 1;
@@ -449,7 +581,11 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
   const createdRoutes: number[] = [];
 
   for (const { mainNeighborhood, orders } of plan) {
-    const includedNeighborhoods = [...new Set(orders.map((o) => (o.deliveryNeighborhood ?? "Outros").trim()))];
+    const includedNeighborhoods = [
+      ...new Set(
+        orders.map((o) => (o.deliveryNeighborhood ?? "Outros").trim()),
+      ),
+    ];
     const color = ROUTE_COLORS[colorIndex % ROUTE_COLORS.length];
     const name = `Rota ${routeNumber} — ${mainNeighborhood}`;
 
@@ -458,7 +594,9 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
 
     // Dispatch deadline = earliest order's kitchen time + dispatchMinutes
     const earliest = Math.min(
-      ...sortedOrders.map((o) => (o.kitchenAcceptedAt?.getTime() ?? o.createdAt.getTime()))
+      ...sortedOrders.map(
+        (o) => o.kitchenAcceptedAt?.getTime() ?? o.createdAt.getTime(),
+      ),
     );
     const dispatchDeadline = new Date(earliest + dispatchMinutes * 60_000);
 
@@ -467,19 +605,23 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
       sortedOrders.map((o) => ({
         ...o,
         storeCity: settings.storeCity,
-      }))
+      })),
     );
 
-    const [route] = await db.insert(deliveryRoutesTable).values({
-      name,
-      mainNeighborhood,
-      includedNeighborhoods: JSON.stringify(includedNeighborhoods),
-      status: "available",
-      color,
-      storeOrigin,
-      mapsUrl,
-      dispatchDeadline,
-    }).returning();
+    const [route] = await db
+      .insert(deliveryRoutesTable)
+      .values({
+        storeId: actor.storeId,
+        name,
+        mainNeighborhood,
+        includedNeighborhoods: JSON.stringify(includedNeighborhoods),
+        status: "available",
+        color,
+        storeOrigin,
+        mapsUrl,
+        dispatchDeadline,
+      })
+      .returning();
 
     for (let i = 0; i < sortedOrders.length; i++) {
       await db.insert(deliveryRouteOrdersTable).values({
@@ -494,14 +636,19 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     createdRoutes.push(route.id);
   }
 
-  const full = await Promise.all(createdRoutes.map((id) => getRouteWithOrders(id)));
+  const full = await Promise.all(
+    createdRoutes.map((id) => getRouteWithOrders(id)),
+  );
   res.json({ created: full.length, routes: full.filter(Boolean) });
 });
 
 // ─── GET /delivery/orders/pending ─────────────────────────────────────────────
 
-router.get("/delivery/orders/pending", async (_req, res): Promise<void> => {
-  const settings = await getOrCreateSettings();
+router.get("/delivery/orders/pending", async (req, res): Promise<void> => {
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
+  const actor = scope.actor;
+  const settings = await getOrCreateSettings(actor.storeId);
 
   const orders = await db
     .select({
@@ -524,7 +671,10 @@ router.get("/delivery/orders/pending", async (_req, res): Promise<void> => {
     .from(ordersTable)
     .leftJoin(customersTable, eq(ordersTable.customerId, customersTable.id))
     .where(
-      deliveryOrderCanEnterRouteWhereClause()
+      deliveryOrderCanEnterRouteWhereClause(
+        actor.storeId,
+        actor.role === "atendente" ? scope.openedAt : null,
+      ),
     )
     .orderBy(sql`${ordersTable.createdAt} ASC`);
 
@@ -557,8 +707,12 @@ router.get("/delivery/orders/pending", async (_req, res): Promise<void> => {
 // NOTE: static path must come before /:id routes
 
 router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
+  const actor = await getCurrentActor(req);
   const orderId = parseInt(String(req.body?.orderId ?? ""), 10);
-  if (isNaN(orderId)) { res.status(400).json({ error: "orderId required" }); return; }
+  if (isNaN(orderId)) {
+    res.status(400).json({ error: "orderId required" });
+    return;
+  }
 
   const [order] = await db
     .select({
@@ -571,34 +725,64 @@ router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
       createdAt: ordersTable.createdAt,
     })
     .from(ordersTable)
-    .where(eq(ordersTable.id, orderId));
-  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+    .where(
+      and(eq(ordersTable.id, orderId), eq(ordersTable.storeId, actor.storeId)),
+    );
+  if (!order) {
+    res.status(404).json({ error: "Order not found" });
+    return;
+  }
 
-  const settings = await getOrCreateSettings();
-  const storeOriginParts = [settings.storeAddress, settings.storeNumber, settings.storeNeighborhood, settings.storeCity, settings.storeState, settings.storeCountry].filter(Boolean);
+  const settings = await getOrCreateSettings(actor.storeId);
+  const storeOriginParts = [
+    settings.storeAddress,
+    settings.storeNumber,
+    settings.storeNeighborhood,
+    settings.storeCity,
+    settings.storeState,
+    settings.storeCountry,
+  ].filter(Boolean);
   const storeOrigin = storeOriginParts.join(", ");
 
   // Remove from any existing active route
   const existingAssignments = await db
-    .select({ id: deliveryRouteOrdersTable.id, routeId: deliveryRouteOrdersTable.routeId })
+    .select({
+      id: deliveryRouteOrdersTable.id,
+      routeId: deliveryRouteOrdersTable.routeId,
+    })
     .from(deliveryRouteOrdersTable)
-    .innerJoin(deliveryRoutesTable, eq(deliveryRouteOrdersTable.routeId, deliveryRoutesTable.id))
+    .innerJoin(
+      deliveryRoutesTable,
+      eq(deliveryRouteOrdersTable.routeId, deliveryRoutesTable.id),
+    )
     .where(
       and(
         eq(deliveryRouteOrdersTable.orderId, orderId),
-        notInArray(deliveryRoutesTable.status, ["completed"])
-      )
+        notInArray(deliveryRoutesTable.status, ["completed"]),
+      ),
     );
 
   for (const asgn of existingAssignments) {
-    await db.delete(deliveryRouteOrdersTable).where(eq(deliveryRouteOrdersTable.id, asgn.id));
-    const rem = await db.select().from(deliveryRouteOrdersTable)
+    await db
+      .delete(deliveryRouteOrdersTable)
+      .where(eq(deliveryRouteOrdersTable.id, asgn.id));
+    const rem = await db
+      .select()
+      .from(deliveryRouteOrdersTable)
       .where(eq(deliveryRouteOrdersTable.routeId, asgn.routeId))
       .orderBy(deliveryRouteOrdersTable.stopOrder);
     for (let i = 0; i < rem.length; i++) {
-      await db.update(deliveryRouteOrdersTable).set({ stopOrder: i + 1 }).where(eq(deliveryRouteOrdersTable.id, rem[i].id));
+      await db
+        .update(deliveryRouteOrdersTable)
+        .set({ stopOrder: i + 1 })
+        .where(eq(deliveryRouteOrdersTable.id, rem[i].id));
     }
-    await recalcRoute(asgn.routeId, storeOrigin, settings.storeCity ?? null, settings.deliveryDispatchTimeMinutes);
+    await recalcRoute(
+      asgn.routeId,
+      storeOrigin,
+      settings.storeCity ?? null,
+      settings.deliveryDispatchTimeMinutes,
+    );
   }
 
   const existingToday = await db
@@ -611,53 +795,100 @@ router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
   const mainNeighborhood = (order.deliveryNeighborhood ?? "Entrega").trim();
   const name = `Rota ${routeNumber} — ${mainNeighborhood} ⚡`;
 
-  const startTime = order.kitchenAcceptedAt?.getTime() ?? order.createdAt.getTime();
-  const dispatchDeadline = new Date(startTime + settings.deliveryDispatchTimeMinutes * 60_000);
-  const mapsUrl = buildMapsUrl(storeOrigin, [{ ...order, storeCity: settings.storeCity }]);
+  const startTime =
+    order.kitchenAcceptedAt?.getTime() ?? order.createdAt.getTime();
+  const dispatchDeadline = new Date(
+    startTime + settings.deliveryDispatchTimeMinutes * 60_000,
+  );
+  const mapsUrl = buildMapsUrl(storeOrigin, [
+    { ...order, storeCity: settings.storeCity },
+  ]);
 
-  const [newRoute] = await db.insert(deliveryRoutesTable).values({
-    name,
-    mainNeighborhood,
-    includedNeighborhoods: JSON.stringify([mainNeighborhood]),
-    status: "available",
-    color,
-    storeOrigin,
-    mapsUrl,
-    dispatchDeadline,
-  }).returning();
+  const [newRoute] = await db
+    .insert(deliveryRoutesTable)
+    .values({
+      storeId: actor.storeId,
+      name,
+      mainNeighborhood,
+      includedNeighborhoods: JSON.stringify([mainNeighborhood]),
+      status: "available",
+      color,
+      storeOrigin,
+      mapsUrl,
+      dispatchDeadline,
+    })
+    .returning();
 
-  await db.insert(deliveryRouteOrdersTable).values({ routeId: newRoute.id, orderId, stopOrder: 1 });
+  await db
+    .insert(deliveryRouteOrdersTable)
+    .values({ routeId: newRoute.id, orderId, stopOrder: 1 });
 
-  res.json(await getRouteWithOrders(newRoute.id));
+  res.json(await getRouteWithOrders(newRoute.id, actor.storeId));
 });
 
 // ─── POST /delivery/routes/:id/assign ────────────────────────────────────────
 
 router.post("/delivery/routes/:id/assign", async (req, res): Promise<void> => {
   const routeId = parseInt(req.params.id ?? "", 10);
-  if (isNaN(routeId)) { res.status(400).json({ error: "Invalid route id" }); return; }
-
-  const rawCourierName = typeof req.body?.courierName === "string" ? req.body.courierName.trim() : "";
-  const courierId = typeof req.body?.courierId === "number" ? req.body.courierId : null;
-  if (!rawCourierName && !courierId) {
-    res.status(400).json({ error: "courierId or courierName is required" }); return;
+  if (isNaN(routeId)) {
+    res.status(400).json({ error: "Invalid route id" });
+    return;
   }
 
-  const [route] = await db.select().from(deliveryRoutesTable).where(eq(deliveryRoutesTable.id, routeId));
-  if (!route) { res.status(404).json({ error: "Route not found" }); return; }
+  const rawCourierName =
+    typeof req.body?.courierName === "string"
+      ? req.body.courierName.trim()
+      : "";
+  const courierId =
+    typeof req.body?.courierId === "number" ? req.body.courierId : null;
+  if (!rawCourierName && !courierId) {
+    res.status(400).json({ error: "courierId or courierName is required" });
+    return;
+  }
+
+  const actor = await getCurrentActor(req);
+  const [route] = await db
+    .select()
+    .from(deliveryRoutesTable)
+    .where(
+      and(
+        eq(deliveryRoutesTable.id, routeId),
+        eq(deliveryRoutesTable.storeId, actor.storeId),
+      ),
+    );
+  if (!route) {
+    res.status(404).json({ error: "Route not found" });
+    return;
+  }
   if (route.status !== "available") {
-    res.status(400).json({ error: `Cannot assign route in status '${route.status}'` }); return;
+    res
+      .status(400)
+      .json({ error: `Cannot assign route in status '${route.status}'` });
+    return;
   }
 
   let courierName = rawCourierName;
   if (courierId && !courierName) {
-    const [c] = await db.select({ name: couriersTable.name }).from(couriersTable).where(eq(couriersTable.id, courierId)).limit(1);
-    if (!c) { res.status(404).json({ error: "Motoboy não encontrado" }); return; }
+    const [c] = await db
+      .select({ name: couriersTable.name })
+      .from(couriersTable)
+      .where(eq(couriersTable.id, courierId))
+      .limit(1);
+    if (!c) {
+      res.status(404).json({ error: "Motoboy não encontrado" });
+      return;
+    }
     courierName = c.name;
   }
 
-  await db.update(deliveryRoutesTable)
-    .set({ status: "in_progress", courierId, courierName, startedAt: new Date() })
+  await db
+    .update(deliveryRoutesTable)
+    .set({
+      status: "in_progress",
+      courierId,
+      courierName,
+      startedAt: new Date(),
+    })
     .where(eq(deliveryRoutesTable.id, routeId));
 
   // Ao assumir rota, todos os pedidos vinculados saem do fluxo pré-rota.
@@ -675,290 +906,440 @@ router.post("/delivery/routes/:id/assign", async (req, res): Promise<void> => {
     .map((ro) => ro.orderId);
 
   if (routableOrderIds.length > 0) {
-    await db.update(ordersTable)
+    await db
+      .update(ordersTable)
       .set({ deliveryStatus: "out_for_delivery" })
       .where(inArray(ordersTable.id, routableOrderIds));
   }
 
-  res.json(await getRouteWithOrders(routeId));
+  res.json(await getRouteWithOrders(routeId, actor.storeId));
 });
 
 // ─── POST /delivery/routes/:id/complete ──────────────────────────────────────
 
-router.post("/delivery/routes/:id/complete", async (req, res): Promise<void> => {
-  const routeId = parseInt(req.params.id ?? "", 10);
-  if (isNaN(routeId)) { res.status(400).json({ error: "Invalid route id" }); return; }
+router.post(
+  "/delivery/routes/:id/complete",
+  async (req, res): Promise<void> => {
+    const actor = await getCurrentActor(req);
+    const routeId = parseInt(req.params.id ?? "", 10);
+    if (isNaN(routeId)) {
+      res.status(400).json({ error: "Invalid route id" });
+      return;
+    }
 
-  const [route] = await db.select().from(deliveryRoutesTable).where(eq(deliveryRoutesTable.id, routeId));
-  if (!route) { res.status(404).json({ error: "Route not found" }); return; }
-  if (route.status !== "in_progress") {
-    res.status(400).json({ error: `Cannot complete route in status '${route.status}'` }); return;
-  }
+    const [route] = await db
+      .select()
+      .from(deliveryRoutesTable)
+      .where(
+        and(
+          eq(deliveryRoutesTable.id, routeId),
+          eq(deliveryRoutesTable.storeId, actor.storeId),
+        ),
+      );
+    if (!route) {
+      res.status(404).json({ error: "Route not found" });
+      return;
+    }
+    if (route.status !== "in_progress") {
+      res
+        .status(400)
+        .json({ error: `Cannot complete route in status '${route.status}'` });
+      return;
+    }
 
-  const now = new Date();
+    const now = new Date();
 
-  await db.update(deliveryRoutesTable)
-    .set({ status: "completed", completedAt: now })
-    .where(eq(deliveryRoutesTable.id, routeId));
+    await db
+      .update(deliveryRoutesTable)
+      .set({ status: "completed", completedAt: now })
+      .where(eq(deliveryRoutesTable.id, routeId));
 
-  const routeOrders = await db
-    .select({
-      orderId: deliveryRouteOrdersTable.orderId,
-      paymentTiming: ordersTable.paymentTiming,
-    })
-    .from(deliveryRouteOrdersTable)
-    .leftJoin(ordersTable, eq(deliveryRouteOrdersTable.orderId, ordersTable.id))
-    .where(eq(deliveryRouteOrdersTable.routeId, routeId));
+    const routeOrders = await db
+      .select({
+        orderId: deliveryRouteOrdersTable.orderId,
+        paymentTiming: ordersTable.paymentTiming,
+      })
+      .from(deliveryRouteOrdersTable)
+      .leftJoin(
+        ordersTable,
+        eq(deliveryRouteOrdersTable.orderId, ordersTable.id),
+      )
+      .where(eq(deliveryRouteOrdersTable.routeId, routeId));
 
-  // Orders already paid (paymentTiming=now): close them out immediately
-  const nowOrderIds = routeOrders
-    .filter((o) => o.paymentTiming !== "on_delivery")
-    .map((o) => o.orderId);
+    // Orders already paid (paymentTiming=now): close them out immediately
+    const nowOrderIds = routeOrders
+      .filter((o) => o.paymentTiming !== "on_delivery")
+      .map((o) => o.orderId);
 
-  // Orders to be paid on delivery: move to awaiting_settlement — do NOT close
-  const onDeliveryOrderIds = routeOrders
-    .filter((o) => o.paymentTiming === "on_delivery")
-    .map((o) => o.orderId);
+    // Orders to be paid on delivery: move to awaiting_settlement — do NOT close
+    const onDeliveryOrderIds = routeOrders
+      .filter((o) => o.paymentTiming === "on_delivery")
+      .map((o) => o.orderId);
 
-  if (nowOrderIds.length > 0) {
-    await db.update(ordersTable)
-      .set({ deliveryStatus: "delivered", status: "closed", closedAt: now })
-      .where(inArray(ordersTable.id, nowOrderIds));
-    await Promise.all(nowOrderIds.map((closedOrderId) => releaseTableIfOrderClosed(closedOrderId)));
-  }
+    if (nowOrderIds.length > 0) {
+      await db
+        .update(ordersTable)
+        .set({ deliveryStatus: "delivered", status: "closed", closedAt: now })
+        .where(inArray(ordersTable.id, nowOrderIds));
+      await Promise.all(
+        nowOrderIds.map((closedOrderId) =>
+          releaseTableIfOrderClosed(closedOrderId),
+        ),
+      );
+    }
 
-  if (onDeliveryOrderIds.length > 0) {
-    await db.update(ordersTable)
-      .set({ deliveryStatus: "awaiting_settlement", paidAt: null })
-      .where(inArray(ordersTable.id, onDeliveryOrderIds));
-  }
+    if (onDeliveryOrderIds.length > 0) {
+      await db
+        .update(ordersTable)
+        .set({ deliveryStatus: "awaiting_settlement", paidAt: null })
+        .where(inArray(ordersTable.id, onDeliveryOrderIds));
+    }
 
-  res.json(await getRouteWithOrders(routeId));
-});
+    res.json(await getRouteWithOrders(routeId, actor.storeId));
+  },
+);
 
 // ─── POST /delivery/routes/:id/adjust-time ────────────────────────────────────
 
-router.post("/delivery/routes/:id/adjust-time", async (req, res): Promise<void> => {
-  const routeId = parseInt(req.params.id ?? "", 10);
-  if (isNaN(routeId)) { res.status(400).json({ error: "Invalid route id" }); return; }
+router.post(
+  "/delivery/routes/:id/adjust-time",
+  async (req, res): Promise<void> => {
+    const routeId = parseInt(req.params.id ?? "", 10);
+    if (isNaN(routeId)) {
+      res.status(400).json({ error: "Invalid route id" });
+      return;
+    }
 
-  const minutesDelta = parseInt(String(req.body?.minutesDelta ?? ""), 10);
-  if (isNaN(minutesDelta)) { res.status(400).json({ error: "minutesDelta must be a number" }); return; }
+    const minutesDelta = parseInt(String(req.body?.minutesDelta ?? ""), 10);
+    if (isNaN(minutesDelta)) {
+      res.status(400).json({ error: "minutesDelta must be a number" });
+      return;
+    }
 
-  const [route] = await db.select().from(deliveryRoutesTable).where(eq(deliveryRoutesTable.id, routeId));
-  if (!route) { res.status(404).json({ error: "Route not found" }); return; }
+    const [route] = await db
+      .select()
+      .from(deliveryRoutesTable)
+      .where(eq(deliveryRoutesTable.id, routeId));
+    if (!route) {
+      res.status(404).json({ error: "Route not found" });
+      return;
+    }
 
-  const currentDeadline = route.dispatchDeadline ?? new Date();
-  const newDeadline = new Date(currentDeadline.getTime() + minutesDelta * 60_000);
+    const currentDeadline = route.dispatchDeadline ?? new Date();
+    const newDeadline = new Date(
+      currentDeadline.getTime() + minutesDelta * 60_000,
+    );
 
-  await db.update(deliveryRoutesTable)
-    .set({ dispatchDeadline: newDeadline })
-    .where(eq(deliveryRoutesTable.id, routeId));
+    await db
+      .update(deliveryRoutesTable)
+      .set({ dispatchDeadline: newDeadline })
+      .where(eq(deliveryRoutesTable.id, routeId));
 
-  res.json(await getRouteWithOrders(routeId));
-});
+    res.json(await getRouteWithOrders(routeId));
+  },
+);
 
 // ─── POST /delivery/routes/:id/add-order ─────────────────────────────────────
 // Add a pending (not yet routed) delivery order directly to this route
 
-router.post("/delivery/routes/:id/add-order", async (req, res): Promise<void> => {
-  const routeId = parseInt(req.params.id ?? "", 10);
-  if (isNaN(routeId)) { res.status(400).json({ error: "Invalid route id" }); return; }
+router.post(
+  "/delivery/routes/:id/add-order",
+  async (req, res): Promise<void> => {
+    const actor = await getCurrentActor(req);
+    const routeId = parseInt(req.params.id ?? "", 10);
+    if (isNaN(routeId)) {
+      res.status(400).json({ error: "Invalid route id" });
+      return;
+    }
 
-  const orderId = parseInt(String(req.body?.orderId ?? ""), 10);
-  if (isNaN(orderId)) { res.status(400).json({ error: "orderId required" }); return; }
+    const orderId = parseInt(String(req.body?.orderId ?? ""), 10);
+    if (isNaN(orderId)) {
+      res.status(400).json({ error: "orderId required" });
+      return;
+    }
 
-  const [route] = await db.select().from(deliveryRoutesTable).where(eq(deliveryRoutesTable.id, routeId));
-  if (!route) { res.status(404).json({ error: "Route not found" }); return; }
-  if (route.status === "completed") { res.status(400).json({ error: "Cannot add order to a completed route" }); return; }
+    const [route] = await db
+      .select()
+      .from(deliveryRoutesTable)
+      .where(eq(deliveryRoutesTable.id, routeId));
+    if (!route) {
+      res.status(404).json({ error: "Route not found" });
+      return;
+    }
+    if (route.status === "completed") {
+      res.status(400).json({ error: "Cannot add order to a completed route" });
+      return;
+    }
 
-  const [order] = await db
-    .select({ id: ordersTable.id, type: ordersTable.type, deliveryStatus: ordersTable.deliveryStatus, kitchenAcceptedAt: ordersTable.kitchenAcceptedAt })
-    .from(ordersTable)
-    .where(eq(ordersTable.id, orderId));
-  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
-  if (order.type !== "delivery") { res.status(400).json({ error: "Order is not a delivery order" }); return; }
+    const [order] = await db
+      .select({
+        id: ordersTable.id,
+        type: ordersTable.type,
+        deliveryStatus: ordersTable.deliveryStatus,
+        kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
+      })
+      .from(ordersTable)
+      .where(eq(ordersTable.id, orderId));
+    if (!order) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+    if (order.type !== "delivery") {
+      res.status(400).json({ error: "Order is not a delivery order" });
+      return;
+    }
 
-  // Check not already in an active route
-  const existingAssignment = await db
-    .select({ id: deliveryRouteOrdersTable.id })
-    .from(deliveryRouteOrdersTable)
-    .innerJoin(deliveryRoutesTable, eq(deliveryRouteOrdersTable.routeId, deliveryRoutesTable.id))
-    .where(
-      and(
-        eq(deliveryRouteOrdersTable.orderId, orderId),
-        notInArray(deliveryRoutesTable.status, ["completed"])
+    // Check not already in an active route
+    const existingAssignment = await db
+      .select({ id: deliveryRouteOrdersTable.id })
+      .from(deliveryRouteOrdersTable)
+      .innerJoin(
+        deliveryRoutesTable,
+        eq(deliveryRouteOrdersTable.routeId, deliveryRoutesTable.id),
       )
+      .where(
+        and(
+          eq(deliveryRouteOrdersTable.orderId, orderId),
+          notInArray(deliveryRoutesTable.status, ["completed"]),
+        ),
+      );
+    if (existingAssignment.length > 0) {
+      res.status(400).json({ error: "Order is already in an active route" });
+      return;
+    }
+
+    const settings = await getOrCreateSettings(actor.storeId);
+    const storeOriginParts = [
+      settings.storeAddress,
+      settings.storeNumber,
+      settings.storeNeighborhood,
+      settings.storeCity,
+      settings.storeState,
+      settings.storeCountry,
+    ].filter(Boolean);
+    const storeOrigin = storeOriginParts.join(", ");
+
+    // Add to end of route
+    const currentOrders = await db
+      .select({ id: deliveryRouteOrdersTable.id })
+      .from(deliveryRouteOrdersTable)
+      .where(eq(deliveryRouteOrdersTable.routeId, routeId));
+
+    await db.insert(deliveryRouteOrdersTable).values({
+      routeId,
+      orderId,
+      stopOrder: currentOrders.length + 1,
+    });
+
+    // Ensure order has kitchenAcceptedAt set if missing
+    if (!order.kitchenAcceptedAt) {
+      await db
+        .update(ordersTable)
+        .set({ kitchenAcceptedAt: new Date() })
+        .where(eq(ordersTable.id, orderId));
+    }
+
+    await recalcRoute(
+      routeId,
+      storeOrigin,
+      settings.storeCity ?? null,
+      settings.deliveryDispatchTimeMinutes,
     );
-  if (existingAssignment.length > 0) { res.status(400).json({ error: "Order is already in an active route" }); return; }
 
-  const settings = await getOrCreateSettings();
-  const storeOriginParts = [settings.storeAddress, settings.storeNumber, settings.storeNeighborhood, settings.storeCity, settings.storeState, settings.storeCountry].filter(Boolean);
-  const storeOrigin = storeOriginParts.join(", ");
-
-  // Add to end of route
-  const currentOrders = await db
-    .select({ id: deliveryRouteOrdersTable.id })
-    .from(deliveryRouteOrdersTable)
-    .where(eq(deliveryRouteOrdersTable.routeId, routeId));
-
-  await db.insert(deliveryRouteOrdersTable).values({
-    routeId,
-    orderId,
-    stopOrder: currentOrders.length + 1,
-  });
-
-  // Ensure order has kitchenAcceptedAt set if missing
-  if (!order.kitchenAcceptedAt) {
-    await db.update(ordersTable).set({ kitchenAcceptedAt: new Date() }).where(eq(ordersTable.id, orderId));
-  }
-
-  await recalcRoute(routeId, storeOrigin, settings.storeCity ?? null, settings.deliveryDispatchTimeMinutes);
-
-  res.json(await getRouteWithOrders(routeId));
-});
+    res.json(await getRouteWithOrders(routeId));
+  },
+);
 
 // ─── POST /delivery/routes/:id/move-order ────────────────────────────────────
 
-router.post("/delivery/routes/:id/move-order", async (req, res): Promise<void> => {
-  const routeId = parseInt(req.params.id ?? "", 10);
-  if (isNaN(routeId)) { res.status(400).json({ error: "Invalid route id" }); return; }
+router.post(
+  "/delivery/routes/:id/move-order",
+  async (req, res): Promise<void> => {
+    const actor = await getCurrentActor(req);
+    const routeId = parseInt(req.params.id ?? "", 10);
+    if (isNaN(routeId)) {
+      res.status(400).json({ error: "Invalid route id" });
+      return;
+    }
 
-  const orderId = parseInt(String(req.body?.orderId ?? ""), 10);
-  if (isNaN(orderId)) { res.status(400).json({ error: "orderId required" }); return; }
+    const orderId = parseInt(String(req.body?.orderId ?? ""), 10);
+    if (isNaN(orderId)) {
+      res.status(400).json({ error: "orderId required" });
+      return;
+    }
 
-  const targetRouteIdRaw = req.body?.targetRouteId;
-  const targetRouteId = targetRouteIdRaw != null ? parseInt(String(targetRouteIdRaw), 10) : null;
+    const targetRouteIdRaw = req.body?.targetRouteId;
+    const targetRouteId =
+      targetRouteIdRaw != null ? parseInt(String(targetRouteIdRaw), 10) : null;
 
-  const [assignment] = await db
-    .select({ id: deliveryRouteOrdersTable.id })
-    .from(deliveryRouteOrdersTable)
-    .where(
-      and(
-        eq(deliveryRouteOrdersTable.routeId, routeId),
-        eq(deliveryRouteOrdersTable.orderId, orderId)
-      )
-    );
-  if (!assignment) { res.status(404).json({ error: "Order not in this route" }); return; }
+    const [assignment] = await db
+      .select({ id: deliveryRouteOrdersTable.id })
+      .from(deliveryRouteOrdersTable)
+      .where(
+        and(
+          eq(deliveryRouteOrdersTable.routeId, routeId),
+          eq(deliveryRouteOrdersTable.orderId, orderId),
+        ),
+      );
+    if (!assignment) {
+      res.status(404).json({ error: "Order not in this route" });
+      return;
+    }
 
-  const settings = await getOrCreateSettings();
-  const storeOriginParts = [settings.storeAddress, settings.storeNumber, settings.storeNeighborhood, settings.storeCity, settings.storeState, settings.storeCountry].filter(Boolean);
-  const storeOrigin = storeOriginParts.join(", ");
+    const settings = await getOrCreateSettings(actor.storeId);
+    const storeOriginParts = [
+      settings.storeAddress,
+      settings.storeNumber,
+      settings.storeNeighborhood,
+      settings.storeCity,
+      settings.storeState,
+      settings.storeCountry,
+    ].filter(Boolean);
+    const storeOrigin = storeOriginParts.join(", ");
 
-  // Remove from source route
-  await db.delete(deliveryRouteOrdersTable).where(eq(deliveryRouteOrdersTable.id, assignment.id));
+    // Remove from source route
+    await db
+      .delete(deliveryRouteOrdersTable)
+      .where(eq(deliveryRouteOrdersTable.id, assignment.id));
 
-  // Renumber remaining stops
-  const remaining = await db
-    .select()
-    .from(deliveryRouteOrdersTable)
-    .where(eq(deliveryRouteOrdersTable.routeId, routeId))
-    .orderBy(deliveryRouteOrdersTable.stopOrder);
-  for (let i = 0; i < remaining.length; i++) {
-    await db.update(deliveryRouteOrdersTable).set({ stopOrder: i + 1 }).where(eq(deliveryRouteOrdersTable.id, remaining[i].id));
-  }
-
-  const sourceStillExists = await recalcRoute(routeId, storeOrigin, settings.storeCity ?? null, settings.deliveryDispatchTimeMinutes);
-
-  // Optionally add to target route
-  if (targetRouteId !== null && !isNaN(targetRouteId)) {
-    const existingInTarget = await db
+    // Renumber remaining stops
+    const remaining = await db
       .select()
       .from(deliveryRouteOrdersTable)
-      .where(eq(deliveryRouteOrdersTable.routeId, targetRouteId));
-    await db.insert(deliveryRouteOrdersTable).values({
-      routeId: targetRouteId,
-      orderId,
-      stopOrder: existingInTarget.length + 1,
-    });
-    await recalcRoute(targetRouteId, storeOrigin, settings.storeCity ?? null, settings.deliveryDispatchTimeMinutes);
-  }
+      .where(eq(deliveryRouteOrdersTable.routeId, routeId))
+      .orderBy(deliveryRouteOrdersTable.stopOrder);
+    for (let i = 0; i < remaining.length; i++) {
+      await db
+        .update(deliveryRouteOrdersTable)
+        .set({ stopOrder: i + 1 })
+        .where(eq(deliveryRouteOrdersTable.id, remaining[i].id));
+    }
 
-  const sourceRoute = sourceStillExists ? await getRouteWithOrders(routeId) : null;
-  const targetRoute = (targetRouteId !== null && !isNaN(targetRouteId)) ? await getRouteWithOrders(targetRouteId) : null;
+    const sourceStillExists = await recalcRoute(
+      routeId,
+      storeOrigin,
+      settings.storeCity ?? null,
+      settings.deliveryDispatchTimeMinutes,
+    );
 
-  res.json({ sourceRoute, targetRoute });
-});
+    // Optionally add to target route
+    if (targetRouteId !== null && !isNaN(targetRouteId)) {
+      const existingInTarget = await db
+        .select()
+        .from(deliveryRouteOrdersTable)
+        .where(eq(deliveryRouteOrdersTable.routeId, targetRouteId));
+      await db.insert(deliveryRouteOrdersTable).values({
+        routeId: targetRouteId,
+        orderId,
+        stopOrder: existingInTarget.length + 1,
+      });
+      await recalcRoute(
+        targetRouteId,
+        storeOrigin,
+        settings.storeCity ?? null,
+        settings.deliveryDispatchTimeMinutes,
+      );
+    }
+
+    const sourceRoute = sourceStillExists
+      ? await getRouteWithOrders(routeId)
+      : null;
+    const targetRoute =
+      targetRouteId !== null && !isNaN(targetRouteId)
+        ? await getRouteWithOrders(targetRouteId)
+        : null;
+
+    res.json({ sourceRoute, targetRoute });
+  },
+);
 
 // ─── GET /delivery/orders/awaiting-settlement ─────────────────────────────────
 // Lista pedidos entregues aguardando baixa financeira (on_delivery, sem payment).
 
-router.get("/delivery/orders/awaiting-settlement", async (_req, res): Promise<void> => {
-  const orders = await db
-    .select({
-      id: ordersTable.id,
-      customerName: ordersTable.customerName,
-      customerPhone: ordersTable.customerPhone,
-      deliveryAddress: ordersTable.deliveryAddress,
-      deliveryNeighborhood: ordersTable.deliveryNeighborhood,
-      deliveryCep: ordersTable.deliveryCep,
-      totalAmount: ordersTable.totalAmount,
-      deliveryFee: ordersTable.deliveryFee,
-      deliveryStatus: ordersTable.deliveryStatus,
-      paymentTiming: ordersTable.paymentTiming,
-      deliveryPaymentMethod: ordersTable.deliveryPaymentMethod,
-      needsChange: ordersTable.needsChange,
-      changeFor: ordersTable.changeFor,
-      deliveryPaymentNotes: ordersTable.deliveryPaymentNotes,
-      createdAt: ordersTable.createdAt,
-    })
-    .from(ordersTable)
-    .where(
-      and(
-        eq(ordersTable.type, "delivery"),
-        eq(ordersTable.deliveryStatus, "awaiting_settlement"),
-        eq(ordersTable.paymentTiming, "on_delivery"),
-        isNull(ordersTable.paidAt)
+router.get(
+  "/delivery/orders/awaiting-settlement",
+  async (_req, res): Promise<void> => {
+    const orders = await db
+      .select({
+        id: ordersTable.id,
+        customerName: ordersTable.customerName,
+        customerPhone: ordersTable.customerPhone,
+        deliveryAddress: ordersTable.deliveryAddress,
+        deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+        deliveryCep: ordersTable.deliveryCep,
+        totalAmount: ordersTable.totalAmount,
+        deliveryFee: ordersTable.deliveryFee,
+        deliveryStatus: ordersTable.deliveryStatus,
+        paymentTiming: ordersTable.paymentTiming,
+        deliveryPaymentMethod: ordersTable.deliveryPaymentMethod,
+        needsChange: ordersTable.needsChange,
+        changeFor: ordersTable.changeFor,
+        deliveryPaymentNotes: ordersTable.deliveryPaymentNotes,
+        createdAt: ordersTable.createdAt,
+      })
+      .from(ordersTable)
+      .where(
+        and(
+          eq(ordersTable.type, "delivery"),
+          eq(ordersTable.deliveryStatus, "awaiting_settlement"),
+          eq(ordersTable.paymentTiming, "on_delivery"),
+          isNull(ordersTable.paidAt),
+        ),
       )
-    )
-    .orderBy(sql`${ordersTable.createdAt} ASC`);
+      .orderBy(sql`${ordersTable.createdAt} ASC`);
 
-  // Fetch route/courier info for each order
-  const orderIds = orders.map((o) => o.id);
-  const routeAssignments = orderIds.length > 0
-    ? await db
-        .select({
-          orderId: deliveryRouteOrdersTable.orderId,
-          routeName: deliveryRoutesTable.name,
-          courierName: deliveryRoutesTable.courierName,
-        })
-        .from(deliveryRouteOrdersTable)
-        .leftJoin(deliveryRoutesTable, eq(deliveryRouteOrdersTable.routeId, deliveryRoutesTable.id))
-        .where(inArray(deliveryRouteOrdersTable.orderId, orderIds))
-    : [];
+    // Fetch route/courier info for each order
+    const orderIds = orders.map((o) => o.id);
+    const routeAssignments =
+      orderIds.length > 0
+        ? await db
+            .select({
+              orderId: deliveryRouteOrdersTable.orderId,
+              routeName: deliveryRoutesTable.name,
+              courierName: deliveryRoutesTable.courierName,
+            })
+            .from(deliveryRouteOrdersTable)
+            .leftJoin(
+              deliveryRoutesTable,
+              eq(deliveryRouteOrdersTable.routeId, deliveryRoutesTable.id),
+            )
+            .where(inArray(deliveryRouteOrdersTable.orderId, orderIds))
+        : [];
 
-  const routeMap = new Map(routeAssignments.map((r) => [r.orderId, r]));
+    const routeMap = new Map(routeAssignments.map((r) => [r.orderId, r]));
 
-  const result = orders.map((o) => {
-    const route = routeMap.get(o.id);
-    const totalAmount = parseFloat(String(o.totalAmount ?? "0"));
-    const changeFor = o.changeFor ? parseFloat(String(o.changeFor)) : null;
-    return {
-      id: o.id,
-      customerName: o.customerName ?? null,
-      customerPhone: o.customerPhone ?? null,
-      deliveryAddress: o.deliveryAddress ?? null,
-      deliveryNeighborhood: o.deliveryNeighborhood ?? null,
-      deliveryCep: o.deliveryCep ?? null,
-      totalAmount,
-      deliveryFee: parseFloat(String(o.deliveryFee ?? "0")),
-      deliveryStatus: o.deliveryStatus,
-      paymentTiming: o.paymentTiming,
-      deliveryPaymentMethod: o.deliveryPaymentMethod ?? null,
-      needsChange: o.needsChange === "true",
-      changeFor,
-      expectedChange: (o.needsChange === "true" && changeFor !== null)
-        ? Math.max(0, changeFor - totalAmount)
-        : null,
-      deliveryPaymentNotes: o.deliveryPaymentNotes ?? null,
-      routeName: route?.routeName ?? null,
-      courierName: route?.courierName ?? null,
-      createdAt: o.createdAt.toISOString(),
-    };
-  });
+    const result = orders.map((o) => {
+      const route = routeMap.get(o.id);
+      const totalAmount = parseFloat(String(o.totalAmount ?? "0"));
+      const changeFor = o.changeFor ? parseFloat(String(o.changeFor)) : null;
+      return {
+        id: o.id,
+        customerName: o.customerName ?? null,
+        customerPhone: o.customerPhone ?? null,
+        deliveryAddress: o.deliveryAddress ?? null,
+        deliveryNeighborhood: o.deliveryNeighborhood ?? null,
+        deliveryCep: o.deliveryCep ?? null,
+        totalAmount,
+        deliveryFee: parseFloat(String(o.deliveryFee ?? "0")),
+        deliveryStatus: o.deliveryStatus,
+        paymentTiming: o.paymentTiming,
+        deliveryPaymentMethod: o.deliveryPaymentMethod ?? null,
+        needsChange: o.needsChange === "true",
+        changeFor,
+        expectedChange:
+          o.needsChange === "true" && changeFor !== null
+            ? Math.max(0, changeFor - totalAmount)
+            : null,
+        deliveryPaymentNotes: o.deliveryPaymentNotes ?? null,
+        routeName: route?.routeName ?? null,
+        courierName: route?.courierName ?? null,
+        createdAt: o.createdAt.toISOString(),
+      };
+    });
 
-  res.json(result);
-});
+    res.json(result);
+  },
+);
 
 // ─── POST /delivery/orders/:id/settle ─────────────────────────────────────────
 // Registra a baixa financeira de um pedido entregue com pagamento na entrega.
@@ -970,13 +1351,20 @@ router.post("/delivery/orders/:id/settle", async (req, res): Promise<void> => {
     return;
   }
 
-  const rawMethod = typeof req.body?.method === "string" ? req.body.method.trim() : "";
-  const amountReceived = typeof req.body?.amountReceived === "number" ? req.body.amountReceived : null;
-  const notes = typeof req.body?.notes === "string" ? req.body.notes.trim() : null;
+  const rawMethod =
+    typeof req.body?.method === "string" ? req.body.method.trim() : "";
+  const amountReceived =
+    typeof req.body?.amountReceived === "number"
+      ? req.body.amountReceived
+      : null;
+  const notes =
+    typeof req.body?.notes === "string" ? req.body.notes.trim() : null;
 
   const VALID_METHODS = ["cash", "pix", "credit_card", "debit_card", "voucher"];
   if (!VALID_METHODS.includes(rawMethod)) {
-    res.status(400).json({ error: `Método inválido. Use: ${VALID_METHODS.join(", ")}` });
+    res
+      .status(400)
+      .json({ error: `Método inválido. Use: ${VALID_METHODS.join(", ")}` });
     return;
   }
 
@@ -999,12 +1387,16 @@ router.post("/delivery/orders/:id/settle", async (req, res): Promise<void> => {
   }
 
   if (order.deliveryStatus !== "awaiting_settlement") {
-    res.status(409).json({ error: `Pedido não está aguardando baixa (status atual: ${order.deliveryStatus})` });
+    res.status(409).json({
+      error: `Pedido não está aguardando baixa (status atual: ${order.deliveryStatus})`,
+    });
     return;
   }
 
   if (order.paymentTiming !== "on_delivery") {
-    res.status(400).json({ error: "Apenas pedidos com pagamento na entrega podem ser baixados aqui" });
+    res.status(400).json({
+      error: "Apenas pedidos com pagamento na entrega podem ser baixados aqui",
+    });
     return;
   }
 
@@ -1012,18 +1404,24 @@ router.post("/delivery/orders/:id/settle", async (req, res): Promise<void> => {
 
   if (rawMethod === "cash") {
     if (amountReceived === null || isNaN(amountReceived)) {
-      res.status(400).json({ error: "Para pagamento em dinheiro, informe o valor recebido (amountReceived)" });
+      res.status(400).json({
+        error:
+          "Para pagamento em dinheiro, informe o valor recebido (amountReceived)",
+      });
       return;
     }
     if (amountReceived < totalAmount) {
-      res.status(400).json({ error: `Valor recebido (R$ ${amountReceived.toFixed(2)}) menor que o total do pedido (R$ ${totalAmount.toFixed(2)})` });
+      res.status(400).json({
+        error: `Valor recebido (R$ ${amountReceived.toFixed(2)}) menor que o total do pedido (R$ ${totalAmount.toFixed(2)})`,
+      });
       return;
     }
   }
 
-  const change = rawMethod === "cash" && amountReceived !== null
-    ? Math.max(0, amountReceived - totalAmount)
-    : null;
+  const change =
+    rawMethod === "cash" && amountReceived !== null
+      ? Math.max(0, amountReceived - totalAmount)
+      : null;
 
   try {
     const result = await db.transaction(async (tx) => {
@@ -1035,7 +1433,9 @@ router.post("/delivery/orders/:id/settle", async (req, res): Promise<void> => {
         .limit(1);
 
       if (existing) {
-        const err = new Error("Pagamento deste pedido já foi registrado.") as Error & { duplicate: true };
+        const err = new Error(
+          "Pagamento deste pedido já foi registrado.",
+        ) as Error & { duplicate: true };
         err.duplicate = true;
         throw err;
       }
@@ -1049,7 +1449,9 @@ router.post("/delivery/orders/:id/settle", async (req, res): Promise<void> => {
         .limit(1);
 
       if (!openRegister) {
-        const err = new Error("Abra o caixa antes de registrar recebimentos de entrega.") as Error & { noCash: true };
+        const err = new Error(
+          "Abra o caixa antes de registrar recebimentos de entrega.",
+        ) as Error & { noCash: true };
         err.noCash = true;
         throw err;
       }
@@ -1102,11 +1504,15 @@ router.post("/delivery/orders/:id/settle", async (req, res): Promise<void> => {
   } catch (err) {
     if (err && typeof err === "object") {
       if ((err as { duplicate?: boolean }).duplicate) {
-        res.status(409).json({ error: "Pagamento deste pedido já foi registrado." });
+        res
+          .status(409)
+          .json({ error: "Pagamento deste pedido já foi registrado." });
         return;
       }
       if ((err as { noCash?: boolean }).noCash) {
-        res.status(409).json({ error: "Abra o caixa antes de registrar recebimentos de entrega." });
+        res.status(409).json({
+          error: "Abra o caixa antes de registrar recebimentos de entrega.",
+        });
         return;
       }
     }
@@ -1118,52 +1524,60 @@ router.post("/delivery/orders/:id/settle", async (req, res): Promise<void> => {
 // Marca um pedido de delivery individual como entregue.
 // Para on_delivery: move para awaiting_settlement. Para now: fecha direto.
 
-router.post("/delivery/orders/:orderId/delivered", async (req, res): Promise<void> => {
-  const orderId = parseInt(req.params.orderId, 10);
-  if (isNaN(orderId)) {
-    res.status(400).json({ error: "orderId inválido" });
-    return;
-  }
+router.post(
+  "/delivery/orders/:orderId/delivered",
+  async (req, res): Promise<void> => {
+    const orderId = parseInt(req.params.orderId, 10);
+    if (isNaN(orderId)) {
+      res.status(400).json({ error: "orderId inválido" });
+      return;
+    }
 
-  const [order] = await db
-    .select({
-      id: ordersTable.id,
-      type: ordersTable.type,
-      deliveryStatus: ordersTable.deliveryStatus,
-      paymentTiming: ordersTable.paymentTiming,
-    })
-    .from(ordersTable)
-    .where(eq(ordersTable.id, orderId))
-    .limit(1);
+    const [order] = await db
+      .select({
+        id: ordersTable.id,
+        type: ordersTable.type,
+        deliveryStatus: ordersTable.deliveryStatus,
+        paymentTiming: ordersTable.paymentTiming,
+      })
+      .from(ordersTable)
+      .where(eq(ordersTable.id, orderId))
+      .limit(1);
 
-  if (!order) {
-    res.status(404).json({ error: "Pedido não encontrado" });
-    return;
-  }
+    if (!order) {
+      res.status(404).json({ error: "Pedido não encontrado" });
+      return;
+    }
 
-  if (order.type !== "delivery") {
-    res.status(400).json({ error: "Apenas pedidos de delivery podem ser baixados aqui" });
-    return;
-  }
+    if (order.type !== "delivery") {
+      res
+        .status(400)
+        .json({ error: "Apenas pedidos de delivery podem ser baixados aqui" });
+      return;
+    }
 
-  const now = new Date();
+    const now = new Date();
 
-  if (order.paymentTiming === "on_delivery") {
-    await db
-      .update(ordersTable)
-      .set({ deliveryStatus: "awaiting_settlement" })
-      .where(eq(ordersTable.id, orderId));
-    req.log.info({ orderId }, "delivery order moved to awaiting_settlement");
-  } else {
-    await db
-      .update(ordersTable)
-      .set({ deliveryStatus: "delivered", status: "closed", closedAt: now })
-      .where(eq(ordersTable.id, orderId));
-    await releaseTableIfOrderClosed(orderId);
-    req.log.info({ orderId }, "delivery order marked as delivered and closed");
-  }
+    if (order.paymentTiming === "on_delivery") {
+      await db
+        .update(ordersTable)
+        .set({ deliveryStatus: "awaiting_settlement" })
+        .where(eq(ordersTable.id, orderId));
+      req.log.info({ orderId }, "delivery order moved to awaiting_settlement");
+    } else {
+      await db
+        .update(ordersTable)
+        .set({ deliveryStatus: "delivered", status: "closed", closedAt: now })
+        .where(eq(ordersTable.id, orderId));
+      await releaseTableIfOrderClosed(orderId);
+      req.log.info(
+        { orderId },
+        "delivery order marked as delivered and closed",
+      );
+    }
 
-  res.json({ ok: true });
-});
+    res.json({ ok: true });
+  },
+);
 
 export default router;

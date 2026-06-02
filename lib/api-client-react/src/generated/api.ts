@@ -35,6 +35,7 @@ import type {
   CategoryUpdate,
   CreateVariantTemplateBody,
   CreateVariantTemplateOptionBody,
+  CurrentActor,
   Customer,
   CustomerInput,
   CustomerUpdate,
@@ -151,6 +152,84 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getHealthCheckQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetCurrentActorUrl = () => {
+
+
+
+
+  return `/api/auth/me`
+}
+
+/**
+ * Returns the current actor resolved by the backend auth/RBAC context.
+ * @summary Get current RBAC actor
+ */
+export const getCurrentActor = async ( options?: RequestInit): Promise<CurrentActor> => {
+
+  return customFetch<CurrentActor>(getGetCurrentActorUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCurrentActorQueryKey = () => {
+    return [
+    `/api/auth/me`
+    ] as const;
+    }
+
+
+export const getGetCurrentActorQueryOptions = <TData = Awaited<ReturnType<typeof getCurrentActor>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentActor>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCurrentActorQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCurrentActor>>> = ({ signal }) => getCurrentActor({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCurrentActor>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCurrentActorQueryResult = NonNullable<Awaited<ReturnType<typeof getCurrentActor>>>
+export type GetCurrentActorQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get current RBAC actor
+ */
+
+export function useGetCurrentActor<TData = Awaited<ReturnType<typeof getCurrentActor>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentActor>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCurrentActorQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
