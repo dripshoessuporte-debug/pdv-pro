@@ -32,10 +32,12 @@ const router: IRouter = Router();
 
 // ─── Categories ───────────────────────────────────────────────────────────────
 
-router.get("/menu/categories", async (_req, res): Promise<void> => {
+router.get("/menu/categories", async (req, res): Promise<void> => {
+  const { storeId } = await getCurrentActor(req);
   const categories = await db
     .select()
     .from(categoriesTable)
+    .where(eq(categoriesTable.storeId, storeId))
     .orderBy(categoriesTable.sortOrder, categoriesTable.name);
   res.json(ListCategoriesResponse.parse(categories));
 });
@@ -187,7 +189,8 @@ router.get("/menu/products", async (req, res): Promise<void> => {
           includeInactive: undefined,
         };
 
-  const conditions = [];
+  const { storeId } = await getCurrentActor(req);
+  const conditions = [eq(productsTable.storeId, storeId)];
 
   // By default, hide inactive (soft-deleted) products unless explicitly requested
   if (!includeInactive) {
@@ -310,6 +313,7 @@ router.post("/menu/products", async (req, res): Promise<void> => {
 });
 
 router.get("/menu/products/:id", async (req, res): Promise<void> => {
+  const { storeId } = await getCurrentActor(req);
   const params = GetProductParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -320,7 +324,12 @@ router.get("/menu/products/:id", async (req, res): Promise<void> => {
     .select(selectProductRow)
     .from(productsTable)
     .leftJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
-    .where(eq(productsTable.id, params.data.id));
+    .where(
+      and(
+        eq(productsTable.id, params.data.id),
+        eq(productsTable.storeId, storeId),
+      ),
+    );
 
   if (!row) {
     res.status(404).json({ error: "Produto não encontrado." });
@@ -473,13 +482,34 @@ router.delete("/menu/products/:id", async (req, res): Promise<void> => {
 });
 
 router.get("/menu/products/:id/variants", async (req, res): Promise<void> => {
+  const { storeId } = await getCurrentActor(req);
   const params = GetProductParams.safeParse(req.params);
   if (!params.success)
     return void res.status(400).json({ error: params.error.message });
+  const [product] = await db
+    .select({ id: productsTable.id })
+    .from(productsTable)
+    .where(
+      and(
+        eq(productsTable.id, params.data.id),
+        eq(productsTable.storeId, storeId),
+      ),
+    )
+    .limit(1);
+  if (!product) {
+    res.status(404).json({ error: "Produto não encontrado." });
+    return;
+  }
+
   const rows = await db
     .select()
     .from(productVariantsTable)
-    .where(eq(productVariantsTable.productId, params.data.id))
+    .where(
+      and(
+        eq(productVariantsTable.productId, params.data.id),
+        eq(productVariantsTable.storeId, storeId),
+      ),
+    )
     .orderBy(productVariantsTable.sortOrder, productVariantsTable.id);
   res.json(rows.map((r) => ({ ...r, price: parseFloat(r.price) })));
 });

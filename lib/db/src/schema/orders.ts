@@ -20,7 +20,6 @@ export const ordersTable = pgTable(
     id: serial("id").primaryKey(),
     storeId: integer("store_id")
       .notNull()
-      .default(1)
       .references(() => storesTable.id),
     cashRegisterId: integer("cash_register_id"),
     tableId: integer("table_id").references(() => tablesTable.id),

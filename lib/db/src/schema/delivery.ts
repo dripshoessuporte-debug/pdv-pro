@@ -16,7 +16,6 @@ export const deliveryRoutesTable = pgTable(
     id: serial("id").primaryKey(),
     storeId: integer("store_id")
       .notNull()
-      .default(1)
       .references(() => storesTable.id),
     name: text("name").notNull(),
     mainNeighborhood: text("main_neighborhood").notNull(),

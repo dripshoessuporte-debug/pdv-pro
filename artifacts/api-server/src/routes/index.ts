@@ -20,11 +20,12 @@ import { attachCurrentActor, rbacRouteGuard } from "../middleware/rbac";
 
 const router: IRouter = Router();
 
+router.use(healthRouter);
+
 router.use(attachCurrentActor);
 router.get("/auth/me", (req, res) => res.json(req.actor));
 router.use(rbacRouteGuard);
 
-router.use(healthRouter);
 router.use(tablesRouter);
 router.use(customersRouter);
 router.use(menuRouter);

@@ -567,7 +567,12 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
   const existingToday = await db
     .select({ id: deliveryRoutesTable.id })
     .from(deliveryRoutesTable)
-    .where(sql`DATE(${deliveryRoutesTable.createdAt}) = CURRENT_DATE`);
+    .where(
+      and(
+        eq(deliveryRoutesTable.storeId, actor.storeId),
+        sql`DATE(${deliveryRoutesTable.createdAt}) = CURRENT_DATE`,
+      ),
+    );
 
   let colorIndex = existingToday.length % ROUTE_COLORS.length;
   let routeNumber = existingToday.length + 1;
@@ -720,7 +725,9 @@ router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
       createdAt: ordersTable.createdAt,
     })
     .from(ordersTable)
-    .where(eq(ordersTable.id, orderId));
+    .where(
+      and(eq(ordersTable.id, orderId), eq(ordersTable.storeId, actor.storeId)),
+    );
   if (!order) {
     res.status(404).json({ error: "Order not found" });
     return;
@@ -800,6 +807,7 @@ router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
   const [newRoute] = await db
     .insert(deliveryRoutesTable)
     .values({
+      storeId: actor.storeId,
       name,
       mainNeighborhood,
       includedNeighborhoods: JSON.stringify([mainNeighborhood]),
@@ -815,7 +823,7 @@ router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
     .insert(deliveryRouteOrdersTable)
     .values({ routeId: newRoute.id, orderId, stopOrder: 1 });
 
-  res.json(await getRouteWithOrders(newRoute.id));
+  res.json(await getRouteWithOrders(newRoute.id, actor.storeId));
 });
 
 // ─── POST /delivery/routes/:id/assign ────────────────────────────────────────

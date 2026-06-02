@@ -38,12 +38,6 @@ BEGIN
   UPDATE "delivery_routes" SET "store_id" = default_store_id WHERE "store_id" IS NULL;
 END $$;
 --> statement-breakpoint
-ALTER TABLE "cash_registers" ALTER COLUMN "store_id" SET DEFAULT 1;
---> statement-breakpoint
-ALTER TABLE "orders" ALTER COLUMN "store_id" SET DEFAULT 1;
---> statement-breakpoint
-ALTER TABLE "delivery_routes" ALTER COLUMN "store_id" SET DEFAULT 1;
---> statement-breakpoint
 ALTER TABLE "cash_registers" ALTER COLUMN "store_id" SET NOT NULL;
 --> statement-breakpoint
 ALTER TABLE "orders" ALTER COLUMN "store_id" SET NOT NULL;

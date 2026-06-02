@@ -223,30 +223,43 @@ export function requireStoreAccess(): RequestHandler {
   };
 }
 
+function canAtendenteAccess(method: string, path: string): boolean {
+  if (/^\/orders(?:\/|$)/.test(path)) return true;
+  if (/^\/tables(?:\/|$)/.test(path)) return true;
+  if (/^\/kitchen(?:\/|$)/.test(path)) return true;
+  if (/^\/delivery(?:\/|$)/.test(path)) return true;
+  if (/^\/couriers(?:\/|$)/.test(path)) return true;
+  if (/^\/alerts(?:\/|$)/.test(path)) return true;
+  if (/^\/payments(?:\/|$)/.test(path)) return true;
+  if (path === "/cash/current") return true;
+
+  if (method !== "GET") return false;
+  if (path === "/menu/categories") return true;
+  if (path === "/menu/products") return true;
+  if (/^\/menu\/products\/\d+$/.test(path)) return true;
+  if (/^\/menu\/products\/\d+\/variants$/.test(path)) return true;
+
+  return false;
+}
+
 export const rbacRouteGuard: RequestHandler = async (req, res, next) => {
   const actor = await resolveCurrentActor(req);
   const path = req.path;
+  const method = req.method.toUpperCase();
 
   const allowedByRole: Record<ActorRole, RegExp[]> = {
     max_control: [/.*/],
-    atendente: [
-      /^\/orders(?:\/|$)/,
-      /^\/tables(?:\/|$)/,
-      /^\/kitchen(?:\/|$)/,
-      /^\/delivery(?:\/|$)/,
-      /^\/couriers(?:\/|$)/,
-      /^\/alerts(?:\/|$)/,
-      /^\/cash\/current$/,
-    ],
-    cozinha: [/^\/kitchen(?:\/|$)/, /^\/health(?:\/|$)/],
-    motoboy: [
-      /^\/delivery(?:\/|$)/,
-      /^\/couriers(?:\/|$)/,
-      /^\/health(?:\/|$)/,
-    ],
+    atendente: [],
+    cozinha: [/^\/kitchen(?:\/|$)/],
+    motoboy: [/^\/delivery(?:\/|$)/, /^\/couriers(?:\/|$)/],
   };
 
-  if (!allowedByRole[actor.role].some((pattern) => pattern.test(path))) {
+  const allowed =
+    actor.role === "atendente"
+      ? canAtendenteAccess(method, path)
+      : allowedByRole[actor.role].some((pattern) => pattern.test(path));
+
+  if (!allowed) {
     res
       .status(403)
       .json({ error: "Você não tem permissão para acessar esta área." });

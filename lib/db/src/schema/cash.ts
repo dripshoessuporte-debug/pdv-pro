@@ -18,7 +18,6 @@ export const cashRegistersTable = pgTable(
     id: serial("id").primaryKey(),
     storeId: integer("store_id")
       .notNull()
-      .default(1)
       .references(() => storesTable.id),
     operatorUserId: integer("operator_user_id").references(() => usersTable.id),
     operator: text("operator").notNull(),
