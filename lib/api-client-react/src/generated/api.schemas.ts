@@ -9,6 +9,25 @@ export interface HealthStatus {
   status: string;
 }
 
+export type CurrentActorRole = typeof CurrentActorRole[keyof typeof CurrentActorRole];
+
+
+export const CurrentActorRole = {
+  max_control: 'max_control',
+  atendente: 'atendente',
+  cozinha: 'cozinha',
+  motoboy: 'motoboy',
+} as const;
+
+export interface CurrentActor {
+  /** @nullable */
+  id: number | null;
+  storeId: number;
+  name: string;
+  role: CurrentActorRole;
+  isDevelopmentFallback: boolean;
+}
+
 export type TableStatus = typeof TableStatus[keyof typeof TableStatus];
 
 

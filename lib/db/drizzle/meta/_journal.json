@@ -43,6 +43,13 @@
       "when": 1764097500000,
       "tag": "0006_order_item_variants",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780358500000,
+      "tag": "0008_rbac_v1_store_shift_scope",
+      "breakpoints": true
     }
   ]
 }

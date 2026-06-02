@@ -1,54 +1,89 @@
-import { pgTable, serial, integer, text, numeric, timestamp } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  serial,
+  integer,
+  text,
+  numeric,
+  timestamp,
+  index,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { customersTable } from "./customers";
 import { tablesTable } from "./tables";
 import { productsTable, productVariantsTable } from "./menu";
+import { storesTable } from "./tenancy";
 
-export const ordersTable = pgTable("orders", {
-  id: serial("id").primaryKey(),
-  tableId: integer("table_id").references(() => tablesTable.id),
-  customerId: integer("customer_id").references(() => customersTable.id),
-  status: text("status").notNull().default("open"),
-  type: text("type").notNull().default("counter"),
-  notes: text("notes"),
-  totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),
-  // Delivery / takeaway fields
-  customerName: text("customer_name"),
-  customerPhone: text("customer_phone"),
-  deliveryCep: text("delivery_cep"),
-  deliveryAddress: text("delivery_address"),
-  deliveryNeighborhood: text("delivery_neighborhood"),
-  deliveryReference: text("delivery_reference"),
-  deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 }).notNull().default("0"),
-  deliveryNotes: text("delivery_notes"),
-  deliveryStatus: text("delivery_status"), // null for non-delivery orders
-  // Payment on delivery fields
-  paymentTiming: text("payment_timing").notNull().default("now"), // now | on_delivery
-  deliveryPaymentMethod: text("delivery_payment_method"), // dinheiro | pix | cartao
-  needsChange: text("needs_change"), // "true" | "false" (stored as text for simplicity)
-  changeFor: numeric("change_for", { precision: 10, scale: 2 }),
-  deliveryPaymentNotes: text("delivery_payment_notes"),
-  kitchenAcceptedAt: timestamp("kitchen_accepted_at", { withTimezone: true }),
-  readyAt: timestamp("ready_at", { withTimezone: true }),
-  paidAt: timestamp("paid_at", { withTimezone: true }),
-  closedAt: timestamp("closed_at", { withTimezone: true }),
-  // External / integration fields
-  source: text("source"), // null=manual | ifood | whatsapp | site | totem | garcom | api_externa
-  externalOrderId: text("external_order_id"),
-  rawPayload: text("raw_payload"), // JSON string for audit
-  integrationStatus: text("integration_status"), // received | processing | completed | failed
-  estimatedDistanceKm: numeric("estimated_distance_km", { precision: 10, scale: 2 }),
-  deliveryFeeCalculated: text("delivery_fee_calculated"), // "true" | "false"
-  deliveryFeeSource: text("delivery_fee_source"), // manual | automatic | external_api
-  deliveryDistanceSource: text("delivery_distance_source"), // approximate_cep | openrouteservice | external_api
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+export const ordersTable = pgTable(
+  "orders",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id")
+      .notNull()
+      .default(1)
+      .references(() => storesTable.id),
+    cashRegisterId: integer("cash_register_id"),
+    tableId: integer("table_id").references(() => tablesTable.id),
+    customerId: integer("customer_id").references(() => customersTable.id),
+    status: text("status").notNull().default("open"),
+    type: text("type").notNull().default("counter"),
+    notes: text("notes"),
+    totalAmount: numeric("total_amount", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0"),
+    // Delivery / takeaway fields
+    customerName: text("customer_name"),
+    customerPhone: text("customer_phone"),
+    deliveryCep: text("delivery_cep"),
+    deliveryAddress: text("delivery_address"),
+    deliveryNeighborhood: text("delivery_neighborhood"),
+    deliveryReference: text("delivery_reference"),
+    deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0"),
+    deliveryNotes: text("delivery_notes"),
+    deliveryStatus: text("delivery_status"), // null for non-delivery orders
+    // Payment on delivery fields
+    paymentTiming: text("payment_timing").notNull().default("now"), // now | on_delivery
+    deliveryPaymentMethod: text("delivery_payment_method"), // dinheiro | pix | cartao
+    needsChange: text("needs_change"), // "true" | "false" (stored as text for simplicity)
+    changeFor: numeric("change_for", { precision: 10, scale: 2 }),
+    deliveryPaymentNotes: text("delivery_payment_notes"),
+    kitchenAcceptedAt: timestamp("kitchen_accepted_at", { withTimezone: true }),
+    readyAt: timestamp("ready_at", { withTimezone: true }),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    // External / integration fields
+    source: text("source"), // null=manual | ifood | whatsapp | site | totem | garcom | api_externa
+    externalOrderId: text("external_order_id"),
+    rawPayload: text("raw_payload"), // JSON string for audit
+    integrationStatus: text("integration_status"), // received | processing | completed | failed
+    estimatedDistanceKm: numeric("estimated_distance_km", {
+      precision: 10,
+      scale: 2,
+    }),
+    deliveryFeeCalculated: text("delivery_fee_calculated"), // "true" | "false"
+    deliveryFeeSource: text("delivery_fee_source"), // manual | automatic | external_api
+    deliveryDistanceSource: text("delivery_distance_source"), // approximate_cep | openrouteservice | external_api
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("orders_store_id_idx").on(table.storeId),
+    index("orders_cash_register_id_idx").on(table.cashRegisterId),
+  ],
+);
 
 export const orderItemsTable = pgTable("order_items", {
   id: serial("id").primaryKey(),
-  orderId: integer("order_id").notNull().references(() => ordersTable.id),
+  orderId: integer("order_id")
+    .notNull()
+    .references(() => ordersTable.id),
   productId: integer("product_id").references(() => productsTable.id),
   variantId: integer("variant_id").references(() => productVariantsTable.id),
   variantName: text("variant_name"),
@@ -60,10 +95,16 @@ export const orderItemsTable = pgTable("order_items", {
   notes: text("notes"),
 });
 
-export const insertOrderSchema = createInsertSchema(ordersTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertOrderSchema = createInsertSchema(ordersTable).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type Order = typeof ordersTable.$inferSelect;
 
-export const insertOrderItemSchema = createInsertSchema(orderItemsTable).omit({ id: true });
+export const insertOrderItemSchema = createInsertSchema(orderItemsTable).omit({
+  id: true,
+});
 export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
 export type OrderItem = typeof orderItemsTable.$inferSelect;

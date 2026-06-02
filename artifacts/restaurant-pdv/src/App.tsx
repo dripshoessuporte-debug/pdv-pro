@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -16,25 +16,109 @@ import Cash from "@/pages/cash";
 import Routes from "@/pages/routes";
 import Motoboys from "@/pages/motoboys";
 import SettingsPage from "@/pages/settings";
+import {
+  ProtectedRoute,
+  getCurrentActor,
+  defaultPathForRole,
+} from "@/lib/rbac";
 
 const queryClient = new QueryClient();
 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/orders/new" component={NewOrder} />
-      <Route path="/orders/:id" component={OrderDetail} />
-      <Route path="/orders" component={Orders} />
-      <Route path="/tables" component={Tables} />
-      <Route path="/kitchen" component={Kitchen} />
-      <Route path="/menu" component={Menu} />
-      <Route path="/customers" component={Customers} />
-      <Route path="/payments/:orderId" component={Payment} />
-      <Route path="/cash" component={Cash} />
-      <Route path="/routes" component={Routes} />
-      <Route path="/motoboys" component={Motoboys} />
-      <Route path="/settings" component={SettingsPage} />
+      <Route path="/">
+        {() => {
+          const actor = getCurrentActor();
+          if (actor.role !== "max_control")
+            return <Redirect to={defaultPathForRole(actor.role)} />;
+          return <Dashboard />;
+        }}
+      </Route>
+      <Route path="/orders/new">
+        {() => (
+          <ProtectedRoute path="/orders/new">
+            <NewOrder />
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/orders/:id">
+        {() => (
+          <ProtectedRoute path="/orders">
+            <OrderDetail />
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/orders">
+        {() => (
+          <ProtectedRoute path="/orders">
+            <Orders />
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/tables">
+        {() => (
+          <ProtectedRoute path="/tables">
+            <Tables />
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/kitchen">
+        {() => (
+          <ProtectedRoute path="/kitchen">
+            <Kitchen />
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/menu">
+        {() => (
+          <ProtectedRoute path="/menu">
+            <Menu />
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/customers">
+        {() => (
+          <ProtectedRoute path="/customers">
+            <Customers />
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/payments/:orderId">
+        {() => (
+          <ProtectedRoute path="/payments">
+            <Payment />
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/cash">
+        {() => (
+          <ProtectedRoute path="/cash">
+            <Cash />
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/routes">
+        {() => (
+          <ProtectedRoute path="/routes">
+            <Routes />
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/motoboys">
+        {() => (
+          <ProtectedRoute path="/motoboys">
+            <Motoboys />
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/settings">
+        {() => (
+          <ProtectedRoute path="/settings">
+            <SettingsPage />
+          </ProtectedRoute>
+        )}
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );

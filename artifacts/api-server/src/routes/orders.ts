@@ -1,6 +1,17 @@
 import { Router, type IRouter } from "express";
-import { eq, and, sql, inArray } from "drizzle-orm";
-import { db, ordersTable, orderItemsTable, tablesTable, customersTable, productsTable, productVariantsTable, kitchenTicketsTable, paymentsTable, cashMovementsTable } from "@workspace/db";
+import { eq, and, sql, inArray, gte } from "drizzle-orm";
+import {
+  db,
+  ordersTable,
+  orderItemsTable,
+  tablesTable,
+  customersTable,
+  productsTable,
+  productVariantsTable,
+  kitchenTicketsTable,
+  paymentsTable,
+  cashMovementsTable,
+} from "@workspace/db";
 import {
   CreateOrderBody,
   GetOrderParams,
@@ -21,12 +32,16 @@ import {
   UpdateDeliveryStatusBody,
   UpdateDeliveryStatusResponse,
 } from "@workspace/api-zod";
-import { getDefaultStoreIdOrThrow } from "../lib/store-context";
+import {
+  getCurrentActor,
+  requireOpenShift,
+  getCurrentOperationalScope,
+} from "../middleware/rbac";
 import { releaseTableIfOrderClosed } from "../lib/table-release";
 
 const router: IRouter = Router();
 
-async function getOrderWithItems(orderId: number) {
+async function getOrderWithItems(orderId: number, storeId?: number) {
   const [order] = await db
     .select({
       id: ordersTable.id,
@@ -66,7 +81,11 @@ async function getOrderWithItems(orderId: number) {
     .from(ordersTable)
     .leftJoin(tablesTable, eq(ordersTable.tableId, tablesTable.id))
     .leftJoin(customersTable, eq(ordersTable.customerId, customersTable.id))
-    .where(eq(ordersTable.id, orderId));
+    .where(
+      storeId
+        ? and(eq(ordersTable.id, orderId), eq(ordersTable.storeId, storeId))
+        : eq(ordersTable.id, orderId),
+    );
 
   if (!order) return null;
 
@@ -75,7 +94,9 @@ async function getOrderWithItems(orderId: number) {
       id: orderItemsTable.id,
       orderId: orderItemsTable.orderId,
       productId: orderItemsTable.productId,
-      productName: sql<string | null>`coalesce(${productsTable.name}, ${orderItemsTable.externalProductName})`,
+      productName: sql<
+        string | null
+      >`coalesce(${productsTable.name}, ${orderItemsTable.externalProductName})`,
       variantId: orderItemsTable.variantId,
       variantName: orderItemsTable.variantName,
       variantPrice: orderItemsTable.variantPrice,
@@ -94,17 +115,22 @@ async function getOrderWithItems(orderId: number) {
     customerName: order.customerName ?? customerNameRegistered ?? null,
     totalAmount: parseFloat(String(order.totalAmount)),
     deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
-    needsChange: order.needsChange == null ? null : order.needsChange === "true",
+    needsChange:
+      order.needsChange == null ? null : order.needsChange === "true",
     changeFor: order.changeFor ? parseFloat(String(order.changeFor)) : null,
     paidAt: order.paidAt ? order.paidAt.toISOString() : null,
     closedAt: order.closedAt ? order.closedAt.toISOString() : null,
-    estimatedDistanceKm: order.estimatedDistanceKm ? parseFloat(String(order.estimatedDistanceKm)) : null,
+    estimatedDistanceKm: order.estimatedDistanceKm
+      ? parseFloat(String(order.estimatedDistanceKm))
+      : null,
     deliveryFeeCalculated: order.deliveryFeeCalculated === "true",
     createdAt: order.createdAt.toISOString(),
     updatedAt: order.updatedAt.toISOString(),
     items: items.map((item) => ({
       ...item,
-      variantPrice: item.variantPrice ? parseFloat(String(item.variantPrice)) : null,
+      variantPrice: item.variantPrice
+        ? parseFloat(String(item.variantPrice))
+        : null,
       unitPrice: parseFloat(String(item.unitPrice)),
       totalPrice: parseFloat(String(item.totalPrice)),
     })),
@@ -112,23 +138,40 @@ async function getOrderWithItems(orderId: number) {
 }
 
 async function recalcOrderTotal(orderId: number) {
-  const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, orderId));
-  const itemsTotal = items.reduce((sum, item) => sum + parseFloat(String(item.totalPrice)), 0);
+  const items = await db
+    .select()
+    .from(orderItemsTable)
+    .where(eq(orderItemsTable.orderId, orderId));
+  const itemsTotal = items.reduce(
+    (sum, item) => sum + parseFloat(String(item.totalPrice)),
+    0,
+  );
   const [order] = await db
     .select({ deliveryFee: ordersTable.deliveryFee })
     .from(ordersTable)
     .where(eq(ordersTable.id, orderId));
   const fee = parseFloat(String(order?.deliveryFee ?? "0"));
-  await db.update(ordersTable).set({ totalAmount: String(itemsTotal + fee) }).where(eq(ordersTable.id, orderId));
+  await db
+    .update(ordersTable)
+    .set({ totalAmount: String(itemsTotal + fee) })
+    .where(eq(ordersTable.id, orderId));
 }
 
 router.get("/orders", async (req, res): Promise<void> => {
   const queryParams = ListOrdersQueryParams.safeParse(req.query);
-  const { status, tableId } = queryParams.success ? queryParams.data : { status: undefined, tableId: undefined };
+  const { status, tableId } = queryParams.success
+    ? queryParams.data
+    : { status: undefined, tableId: undefined };
 
-  const conditions = [];
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
+
+  const conditions = [eq(ordersTable.storeId, scope.actor.storeId)];
   if (status) conditions.push(eq(ordersTable.status, status));
   if (tableId) conditions.push(eq(ordersTable.tableId, tableId));
+  if (scope.actor.role === "atendente" && scope.openedAt) {
+    conditions.push(gte(ordersTable.createdAt, scope.openedAt));
+  }
 
   const orders = await db
     .select({
@@ -172,47 +215,59 @@ router.get("/orders", async (req, res): Promise<void> => {
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(sql`${ordersTable.createdAt} DESC`);
 
-  const ordersWithItems = await Promise.all(orders.map(async (order) => {
-    const items = await db
-      .select({
-        id: orderItemsTable.id,
-        orderId: orderItemsTable.orderId,
-        productId: orderItemsTable.productId,
-        productName: sql<string | null>`coalesce(${productsTable.name}, ${orderItemsTable.externalProductName})`,
-        variantId: orderItemsTable.variantId,
-        variantName: orderItemsTable.variantName,
-        variantPrice: orderItemsTable.variantPrice,
-        quantity: orderItemsTable.quantity,
-        unitPrice: orderItemsTable.unitPrice,
-        totalPrice: orderItemsTable.totalPrice,
-        notes: orderItemsTable.notes,
-      })
-      .from(orderItemsTable)
-      .leftJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
-      .where(eq(orderItemsTable.orderId, order.id));
+  const ordersWithItems = await Promise.all(
+    orders.map(async (order) => {
+      const items = await db
+        .select({
+          id: orderItemsTable.id,
+          orderId: orderItemsTable.orderId,
+          productId: orderItemsTable.productId,
+          productName: sql<
+            string | null
+          >`coalesce(${productsTable.name}, ${orderItemsTable.externalProductName})`,
+          variantId: orderItemsTable.variantId,
+          variantName: orderItemsTable.variantName,
+          variantPrice: orderItemsTable.variantPrice,
+          quantity: orderItemsTable.quantity,
+          unitPrice: orderItemsTable.unitPrice,
+          totalPrice: orderItemsTable.totalPrice,
+          notes: orderItemsTable.notes,
+        })
+        .from(orderItemsTable)
+        .leftJoin(
+          productsTable,
+          eq(orderItemsTable.productId, productsTable.id),
+        )
+        .where(eq(orderItemsTable.orderId, order.id));
 
-    const { customerNameRegistered, ...orderRest } = order;
-    return {
-      ...orderRest,
-      customerName: order.customerName ?? customerNameRegistered ?? null,
-      totalAmount: parseFloat(String(order.totalAmount)),
-      deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
-      needsChange: order.needsChange == null ? null : order.needsChange === "true",
-      changeFor: order.changeFor ? parseFloat(String(order.changeFor)) : null,
-      paidAt: order.paidAt ? order.paidAt.toISOString() : null,
-      closedAt: order.closedAt ? order.closedAt.toISOString() : null,
-      estimatedDistanceKm: order.estimatedDistanceKm ? parseFloat(String(order.estimatedDistanceKm)) : null,
-      deliveryFeeCalculated: order.deliveryFeeCalculated === "true",
-      createdAt: order.createdAt.toISOString(),
-      updatedAt: order.updatedAt.toISOString(),
-      items: items.map((item) => ({
-        ...item,
-        variantPrice: item.variantPrice ? parseFloat(String(item.variantPrice)) : null,
-        unitPrice: parseFloat(String(item.unitPrice)),
-        totalPrice: parseFloat(String(item.totalPrice)),
-      })),
-    };
-  }));
+      const { customerNameRegistered, ...orderRest } = order;
+      return {
+        ...orderRest,
+        customerName: order.customerName ?? customerNameRegistered ?? null,
+        totalAmount: parseFloat(String(order.totalAmount)),
+        deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
+        needsChange:
+          order.needsChange == null ? null : order.needsChange === "true",
+        changeFor: order.changeFor ? parseFloat(String(order.changeFor)) : null,
+        paidAt: order.paidAt ? order.paidAt.toISOString() : null,
+        closedAt: order.closedAt ? order.closedAt.toISOString() : null,
+        estimatedDistanceKm: order.estimatedDistanceKm
+          ? parseFloat(String(order.estimatedDistanceKm))
+          : null,
+        deliveryFeeCalculated: order.deliveryFeeCalculated === "true",
+        createdAt: order.createdAt.toISOString(),
+        updatedAt: order.updatedAt.toISOString(),
+        items: items.map((item) => ({
+          ...item,
+          variantPrice: item.variantPrice
+            ? parseFloat(String(item.variantPrice))
+            : null,
+          unitPrice: parseFloat(String(item.unitPrice)),
+          totalPrice: parseFloat(String(item.totalPrice)),
+        })),
+      };
+    }),
+  );
 
   res.json(ListOrdersResponse.parse(ordersWithItems));
 });
@@ -227,12 +282,20 @@ router.post("/orders", async (req, res): Promise<void> => {
   const { deliveryFee, needsChange, changeFor, ...restData } = parsed.data;
   const fee = deliveryFee ?? 0;
 
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
+  const storeId = scope.actor.storeId;
+
   if (parsed.data.tableId) {
-    const storeId = await getDefaultStoreIdOrThrow();
     const [table] = await db
       .select({ id: tablesTable.id, storeId: tablesTable.storeId })
       .from(tablesTable)
-      .where(and(eq(tablesTable.id, parsed.data.tableId), eq(tablesTable.storeId, storeId)))
+      .where(
+        and(
+          eq(tablesTable.id, parsed.data.tableId),
+          eq(tablesTable.storeId, storeId),
+        ),
+      )
       .limit(1);
 
     if (!table) {
@@ -243,17 +306,21 @@ router.post("/orders", async (req, res): Promise<void> => {
     const [existingOpenOrder] = await db
       .select({ id: ordersTable.id })
       .from(ordersTable)
-      .where(and(
-        eq(ordersTable.tableId, parsed.data.tableId),
-        inArray(ordersTable.status, ["open", "preparing", "ready"])
-      ))
+      .where(
+        and(
+          eq(ordersTable.storeId, storeId),
+          eq(ordersTable.tableId, parsed.data.tableId),
+          inArray(ordersTable.status, ["open", "preparing", "ready"]),
+        ),
+      )
       .orderBy(sql`${ordersTable.createdAt} DESC`)
       .limit(1);
 
     if (existingOpenOrder) {
-      const full = await getOrderWithItems(existingOpenOrder.id);
+      const full = await getOrderWithItems(existingOpenOrder.id, storeId);
       res.status(409).json({
-        error: "Esta mesa já possui comanda aberta. Abra a comanda existente para adicionar itens.",
+        error:
+          "Esta mesa já possui comanda aberta. Abra a comanda existente para adicionar itens.",
         currentOrder: full,
         currentOrderId: existingOpenOrder.id,
       });
@@ -261,22 +328,30 @@ router.post("/orders", async (req, res): Promise<void> => {
     }
   }
 
-  const [order] = await db.insert(ordersTable).values({
-    ...restData,
-    deliveryFee: String(fee),
-    totalAmount: String(fee), // items added after via addOrderItem; recalcOrderTotal updates this
-    ...(parsed.data.type === "delivery" ? { deliveryStatus: "pending" } : {}),
-    ...(needsChange !== undefined ? { needsChange: String(needsChange) } : {}),
-    ...(changeFor !== undefined ? { changeFor: String(changeFor) } : {}),
-  }).returning();
+  const [order] = await db
+    .insert(ordersTable)
+    .values({
+      ...restData,
+      storeId,
+      cashRegisterId: scope.cashRegisterId,
+      deliveryFee: String(fee),
+      totalAmount: String(fee), // items added after via addOrderItem; recalcOrderTotal updates this
+      ...(parsed.data.type === "delivery" ? { deliveryStatus: "pending" } : {}),
+      ...(needsChange !== undefined
+        ? { needsChange: String(needsChange) }
+        : {}),
+      ...(changeFor !== undefined ? { changeFor: String(changeFor) } : {}),
+    })
+    .returning();
 
   if (parsed.data.tableId) {
-    await db.update(tablesTable)
+    await db
+      .update(tablesTable)
       .set({ status: "occupied", currentOrderId: order.id })
       .where(eq(tablesTable.id, parsed.data.tableId));
   }
 
-  const full = await getOrderWithItems(order.id);
+  const full = await getOrderWithItems(order.id, storeId);
   res.status(201).json(GetOrderResponse.parse(full));
 });
 
@@ -287,7 +362,10 @@ router.get("/orders/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const order = await getOrderWithItems(params.data.id);
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
+
+  const order = await getOrderWithItems(params.data.id, scope.actor.storeId);
   if (!order) {
     res.status(404).json({ error: "Order not found" });
     return;
@@ -309,13 +387,22 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  await db.update(ordersTable).set(parsed.data).where(eq(ordersTable.id, params.data.id));
+  const actor = await getCurrentActor(req);
+  await db
+    .update(ordersTable)
+    .set(parsed.data)
+    .where(
+      and(
+        eq(ordersTable.id, params.data.id),
+        eq(ordersTable.storeId, actor.storeId),
+      ),
+    );
 
   if (parsed.data.status === "closed" || parsed.data.status === "cancelled") {
     await releaseTableIfOrderClosed(params.data.id);
   }
 
-  const order = await getOrderWithItems(params.data.id);
+  const order = await getOrderWithItems(params.data.id, actor.storeId);
   if (!order) {
     res.status(404).json({ error: "Order not found" });
     return;
@@ -337,10 +424,18 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
     return;
   }
 
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
+
   const [order] = await db
     .select({ status: ordersTable.status })
     .from(ordersTable)
-    .where(eq(ordersTable.id, params.data.id));
+    .where(
+      and(
+        eq(ordersTable.id, params.data.id),
+        eq(ordersTable.storeId, scope.actor.storeId),
+      ),
+    );
 
   if (!order) {
     res.status(404).json({ error: "Order not found" });
@@ -348,23 +443,39 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
   }
 
   if (["closed", "cancelled"].includes(order.status)) {
-    res.status(409).json({ error: "Não é possível adicionar itens a um pedido finalizado ou cancelado." });
+    res.status(409).json({
+      error:
+        "Não é possível adicionar itens a um pedido finalizado ou cancelado.",
+    });
     return;
   }
 
-  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, parsed.data.productId));
+  const [product] = await db
+    .select()
+    .from(productsTable)
+    .where(
+      and(
+        eq(productsTable.id, parsed.data.productId),
+        eq(productsTable.storeId, scope.actor.storeId),
+      ),
+    );
   if (!product) {
     res.status(404).json({ error: "Product not found" });
     return;
   }
 
-  const activeVariants = await db.select({
-    id: productVariantsTable.id,
-  }).from(productVariantsTable).where(and(
-    eq(productVariantsTable.productId, parsed.data.productId),
-    eq(productVariantsTable.active, true),
-    eq(productVariantsTable.available, true),
-  ));
+  const activeVariants = await db
+    .select({
+      id: productVariantsTable.id,
+    })
+    .from(productVariantsTable)
+    .where(
+      and(
+        eq(productVariantsTable.productId, parsed.data.productId),
+        eq(productVariantsTable.active, true),
+        eq(productVariantsTable.available, true),
+      ),
+    );
 
   let unitPrice = parseFloat(String(product.price));
   let variantName: string | null = null;
@@ -372,12 +483,17 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
   let variantId: number | null = null;
 
   if (parsed.data.variantId != null) {
-    const [variant] = await db.select().from(productVariantsTable).where(and(
-      eq(productVariantsTable.id, parsed.data.variantId),
-      eq(productVariantsTable.productId, parsed.data.productId),
-      eq(productVariantsTable.active, true),
-      eq(productVariantsTable.available, true),
-    ));
+    const [variant] = await db
+      .select()
+      .from(productVariantsTable)
+      .where(
+        and(
+          eq(productVariantsTable.id, parsed.data.variantId),
+          eq(productVariantsTable.productId, parsed.data.productId),
+          eq(productVariantsTable.active, true),
+          eq(productVariantsTable.available, true),
+        ),
+      );
     if (!variant) {
       res.status(400).json({ error: "Variação inválida para este produto." });
       return;
@@ -393,17 +509,20 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
 
   const totalPrice = unitPrice * parsed.data.quantity;
 
-  const [item] = await db.insert(orderItemsTable).values({
-    orderId: params.data.id,
-    productId: parsed.data.productId,
-    variantId,
-    variantName,
-    variantPrice: variantPrice != null ? String(variantPrice) : null,
-    quantity: parsed.data.quantity,
-    unitPrice: String(unitPrice),
-    totalPrice: String(totalPrice),
-    notes: parsed.data.notes,
-  }).returning();
+  const [item] = await db
+    .insert(orderItemsTable)
+    .values({
+      orderId: params.data.id,
+      productId: parsed.data.productId,
+      variantId,
+      variantName,
+      variantPrice: variantPrice != null ? String(variantPrice) : null,
+      quantity: parsed.data.quantity,
+      unitPrice: String(unitPrice),
+      totalPrice: String(totalPrice),
+      notes: parsed.data.notes,
+    })
+    .returning();
 
   await recalcOrderTotal(params.data.id);
 
@@ -425,8 +544,17 @@ router.delete("/orders/:id/items/:itemId", async (req, res): Promise<void> => {
     return;
   }
 
-  const [item] = await db.delete(orderItemsTable)
-    .where(and(eq(orderItemsTable.id, params.data.itemId), eq(orderItemsTable.orderId, params.data.id)))
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
+
+  const [item] = await db
+    .delete(orderItemsTable)
+    .where(
+      and(
+        eq(orderItemsTable.id, params.data.itemId),
+        eq(orderItemsTable.orderId, params.data.id),
+      ),
+    )
     .returning();
 
   if (!item) {
@@ -446,21 +574,44 @@ router.post("/orders/:id/send-to-kitchen", async (req, res): Promise<void> => {
     return;
   }
 
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
+
   // For delivery orders, advance deliveryStatus from pending → preparing
-  const [current] = await db.select({ type: ordersTable.type, deliveryStatus: ordersTable.deliveryStatus })
-    .from(ordersTable).where(eq(ordersTable.id, params.data.id));
+  const [current] = await db
+    .select({
+      type: ordersTable.type,
+      deliveryStatus: ordersTable.deliveryStatus,
+    })
+    .from(ordersTable)
+    .where(
+      and(
+        eq(ordersTable.id, params.data.id),
+        eq(ordersTable.storeId, scope.actor.storeId),
+      ),
+    );
 
   const now = new Date();
-  await db.update(ordersTable).set({
-    status: "preparing",
-    kitchenAcceptedAt: now,
-    ...(current?.type === "delivery" && current.deliveryStatus === "pending"
-      ? { deliveryStatus: "preparing" }
-      : {}),
-  }).where(eq(ordersTable.id, params.data.id));
-  await db.insert(kitchenTicketsTable).values({ orderId: params.data.id, status: "pending" });
+  await db
+    .update(ordersTable)
+    .set({
+      status: "preparing",
+      kitchenAcceptedAt: now,
+      ...(current?.type === "delivery" && current.deliveryStatus === "pending"
+        ? { deliveryStatus: "preparing" }
+        : {}),
+    })
+    .where(
+      and(
+        eq(ordersTable.id, params.data.id),
+        eq(ordersTable.storeId, scope.actor.storeId),
+      ),
+    );
+  await db
+    .insert(kitchenTicketsTable)
+    .values({ orderId: params.data.id, status: "pending" });
 
-  const order = await getOrderWithItems(params.data.id);
+  const order = await getOrderWithItems(params.data.id, scope.actor.storeId);
   if (!order) {
     res.status(404).json({ error: "Order not found" });
     return;
@@ -476,16 +627,35 @@ router.post("/orders/:id/cancel", async (req, res): Promise<void> => {
     return;
   }
 
-  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id));
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
+
+  const [order] = await db
+    .select()
+    .from(ordersTable)
+    .where(
+      and(
+        eq(ordersTable.id, params.data.id),
+        eq(ordersTable.storeId, scope.actor.storeId),
+      ),
+    );
   if (!order) {
     res.status(404).json({ error: "Order not found" });
     return;
   }
 
-  await db.update(ordersTable).set({ status: "cancelled" }).where(eq(ordersTable.id, params.data.id));
+  await db
+    .update(ordersTable)
+    .set({ status: "cancelled" })
+    .where(
+      and(
+        eq(ordersTable.id, params.data.id),
+        eq(ordersTable.storeId, scope.actor.storeId),
+      ),
+    );
   await releaseTableIfOrderClosed(params.data.id);
 
-  const full = await getOrderWithItems(params.data.id);
+  const full = await getOrderWithItems(params.data.id, scope.actor.storeId);
   res.json(CancelOrderResponse.parse(full));
 });
 
@@ -495,7 +665,13 @@ router.post("/orders/:id/cancel", async (req, res): Promise<void> => {
 
 router.post("/orders/:id/finalize", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id ?? "", 10);
-  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  if (isNaN(id)) {
+    res.status(400).json({ error: "ID inválido" });
+    return;
+  }
+
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
 
   const [order] = await db
     .select({
@@ -508,46 +684,82 @@ router.post("/orders/:id/finalize", async (req, res): Promise<void> => {
       paidAt: ordersTable.paidAt,
     })
     .from(ordersTable)
-    .where(eq(ordersTable.id, id));
+    .where(
+      and(eq(ordersTable.id, id), eq(ordersTable.storeId, scope.actor.storeId)),
+    );
 
-  if (!order) { res.status(404).json({ error: "Pedido não encontrado" }); return; }
-  if (order.status === "cancelled") { res.status(400).json({ error: "Pedido cancelado não pode ser finalizado" }); return; }
+  if (!order) {
+    res.status(404).json({ error: "Pedido não encontrado" });
+    return;
+  }
+  if (order.status === "cancelled") {
+    res.status(400).json({ error: "Pedido cancelado não pode ser finalizado" });
+    return;
+  }
 
   // Already fully finalized
-  if (order.status === "closed" && (order.type !== "delivery" || ["delivered", null].includes(order.deliveryStatus))) {
+  if (
+    order.status === "closed" &&
+    (order.type !== "delivery" ||
+      ["delivered", null].includes(order.deliveryStatus))
+  ) {
     await releaseTableIfOrderClosed(id);
-    res.status(409).json({ error: "Pedido já está finalizado" }); return;
+    res.status(409).json({ error: "Pedido já está finalizado" });
+    return;
   }
 
   // Delivery on_delivery: require payment + cash_movement to exist
   if (order.type === "delivery" && order.paymentTiming === "on_delivery") {
     if (order.deliveryStatus === "awaiting_settlement") {
-      const [payment] = await db.select({ id: paymentsTable.id }).from(paymentsTable)
-        .where(eq(paymentsTable.orderId, id)).limit(1);
-      if (!payment) { res.status(400).json({ error: "Aguardando baixa financeira no Caixa" }); return; }
-      const [movement] = await db.select({ id: cashMovementsTable.id }).from(cashMovementsTable)
-        .where(eq(cashMovementsTable.orderId, id)).limit(1);
-      if (!movement) { res.status(400).json({ error: "Aguardando registro no Caixa" }); return; }
-    } else if (order.deliveryStatus !== "delivered" && order.deliveryStatus !== "out_for_delivery") {
-      res.status(400).json({ error: `Aguardando entrega (status: ${order.deliveryStatus ?? "—"})` }); return;
+      const [payment] = await db
+        .select({ id: paymentsTable.id })
+        .from(paymentsTable)
+        .where(eq(paymentsTable.orderId, id))
+        .limit(1);
+      if (!payment) {
+        res.status(400).json({ error: "Aguardando baixa financeira no Caixa" });
+        return;
+      }
+      const [movement] = await db
+        .select({ id: cashMovementsTable.id })
+        .from(cashMovementsTable)
+        .where(eq(cashMovementsTable.orderId, id))
+        .limit(1);
+      if (!movement) {
+        res.status(400).json({ error: "Aguardando registro no Caixa" });
+        return;
+      }
+    } else if (
+      order.deliveryStatus !== "delivered" &&
+      order.deliveryStatus !== "out_for_delivery"
+    ) {
+      res.status(400).json({
+        error: `Aguardando entrega (status: ${order.deliveryStatus ?? "—"})`,
+      });
+      return;
     }
   }
 
   // Non-delivery and delivery-now: must be paid
   if (order.type !== "delivery" || order.paymentTiming !== "on_delivery") {
     if (!order.paidAt && order.status !== "closed") {
-      res.status(400).json({ error: "Aguardando pagamento" }); return;
+      res.status(400).json({ error: "Aguardando pagamento" });
+      return;
     }
   }
 
   const now = new Date();
-  await db.update(ordersTable)
+  await db
+    .update(ordersTable)
     .set({
       status: "closed",
       closedAt: now,
-      deliveryStatus: order.type === "delivery" ? "delivered" : order.deliveryStatus,
+      deliveryStatus:
+        order.type === "delivery" ? "delivered" : order.deliveryStatus,
     })
-    .where(eq(ordersTable.id, id));
+    .where(
+      and(eq(ordersTable.id, id), eq(ordersTable.storeId, scope.actor.storeId)),
+    );
 
   await releaseTableIfOrderClosed(id);
 
@@ -568,23 +780,43 @@ router.patch("/orders/:id/delivery-status", async (req, res): Promise<void> => {
     return;
   }
 
-  const [existing] = await db.select({ id: ordersTable.id, kitchenAcceptedAt: ordersTable.kitchenAcceptedAt }).from(ordersTable).where(eq(ordersTable.id, params.data.id));
+  const scope = await getCurrentOperationalScope(req);
+  const [existing] = await db
+    .select({
+      id: ordersTable.id,
+      kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
+    })
+    .from(ordersTable)
+    .where(
+      and(
+        eq(ordersTable.id, params.data.id),
+        eq(ordersTable.storeId, scope.actor.storeId),
+      ),
+    );
   if (!existing) {
     res.status(404).json({ error: "Order not found" });
     return;
   }
 
   const newDeliveryStatus = parsed.data.deliveryStatus;
-  const setData: Record<string, string | Date | null> = { deliveryStatus: newDeliveryStatus };
+  const setData: Record<string, string | Date | null> = {
+    deliveryStatus: newDeliveryStatus,
+  };
   if (newDeliveryStatus === "preparing" && !existing.kitchenAcceptedAt) {
     setData.kitchenAcceptedAt = new Date();
   }
 
-  await db.update(ordersTable)
+  await db
+    .update(ordersTable)
     .set(setData)
-    .where(eq(ordersTable.id, params.data.id));
+    .where(
+      and(
+        eq(ordersTable.id, params.data.id),
+        eq(ordersTable.storeId, scope.actor.storeId),
+      ),
+    );
 
-  const order = await getOrderWithItems(params.data.id);
+  const order = await getOrderWithItems(params.data.id, scope.actor.storeId);
   res.json(UpdateDeliveryStatusResponse.parse(order));
 });
 

@@ -1,15 +1,23 @@
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
-import { db, cashRegistersTable, cashMovementsTable, ordersTable } from "@workspace/db";
+import { and, eq, sql } from "drizzle-orm";
+import {
+  db,
+  cashRegistersTable,
+  cashMovementsTable,
+  ordersTable,
+} from "@workspace/db";
 import {
   OpenCashRegisterBody,
   CloseCashRegisterBody,
   AddCashMovementBody,
 } from "@workspace/api-zod";
+import { getCurrentActor, requireOpenShift } from "../middleware/rbac";
 
 const router: IRouter = Router();
 
-async function buildRegisterDetail(register: typeof cashRegistersTable.$inferSelect) {
+async function buildRegisterDetail(
+  register: typeof cashRegistersTable.$inferSelect,
+) {
   const movements = await db
     .select()
     .from(cashMovementsTable)
@@ -22,22 +30,47 @@ async function buildRegisterDetail(register: typeof cashRegistersTable.$inferSel
     createdAt: m.createdAt.toISOString(),
   }));
 
-  const totalCash = parsed.filter((m) => m.type === "payment" && m.paymentMethod === "cash").reduce((s, m) => s + m.amount, 0);
-  const totalPix = parsed.filter((m) => m.type === "payment" && m.paymentMethod === "pix").reduce((s, m) => s + m.amount, 0);
-  const totalCredit = parsed.filter((m) => m.type === "payment" && m.paymentMethod === "credit_card").reduce((s, m) => s + m.amount, 0);
-  const totalDebit = parsed.filter((m) => m.type === "payment" && m.paymentMethod === "debit_card").reduce((s, m) => s + m.amount, 0);
-  const totalVoucher = parsed.filter((m) => m.type === "payment" && m.paymentMethod === "voucher").reduce((s, m) => s + m.amount, 0);
-  const totalSales = totalCash + totalPix + totalCredit + totalDebit + totalVoucher;
-  const totalWithdrawals = parsed.filter((m) => m.type === "withdrawal").reduce((s, m) => s + m.amount, 0);
-  const totalSupplies = parsed.filter((m) => m.type === "supply").reduce((s, m) => s + m.amount, 0);
-  const totalManualIn = parsed.filter((m) => m.type === "manual_in").reduce((s, m) => s + m.amount, 0);
+  const totalCash = parsed
+    .filter((m) => m.type === "payment" && m.paymentMethod === "cash")
+    .reduce((s, m) => s + m.amount, 0);
+  const totalPix = parsed
+    .filter((m) => m.type === "payment" && m.paymentMethod === "pix")
+    .reduce((s, m) => s + m.amount, 0);
+  const totalCredit = parsed
+    .filter((m) => m.type === "payment" && m.paymentMethod === "credit_card")
+    .reduce((s, m) => s + m.amount, 0);
+  const totalDebit = parsed
+    .filter((m) => m.type === "payment" && m.paymentMethod === "debit_card")
+    .reduce((s, m) => s + m.amount, 0);
+  const totalVoucher = parsed
+    .filter((m) => m.type === "payment" && m.paymentMethod === "voucher")
+    .reduce((s, m) => s + m.amount, 0);
+  const totalSales =
+    totalCash + totalPix + totalCredit + totalDebit + totalVoucher;
+  const totalWithdrawals = parsed
+    .filter((m) => m.type === "withdrawal")
+    .reduce((s, m) => s + m.amount, 0);
+  const totalSupplies = parsed
+    .filter((m) => m.type === "supply")
+    .reduce((s, m) => s + m.amount, 0);
+  const totalManualIn = parsed
+    .filter((m) => m.type === "manual_in")
+    .reduce((s, m) => s + m.amount, 0);
   const openingAmount = parseFloat(String(register.openingAmount));
-  const expectedCash = openingAmount + totalCash + totalSupplies + totalManualIn - totalWithdrawals;
+  const expectedCash =
+    openingAmount +
+    totalCash +
+    totalSupplies +
+    totalManualIn -
+    totalWithdrawals;
 
   return {
     ...register,
     openingAmount,
-    closingAmount: register.closingAmount !== null ? parseFloat(String(register.closingAmount)) : null,
+    closingAmount:
+      register.closingAmount !== null
+        ? parseFloat(String(register.closingAmount))
+        : null,
     openedAt: register.openedAt.toISOString(),
     closedAt: register.closedAt ? register.closedAt.toISOString() : null,
     movements: parsed,
@@ -56,11 +89,22 @@ async function buildRegisterDetail(register: typeof cashRegistersTable.$inferSel
   };
 }
 
-router.get("/cash/current", async (_req, res): Promise<void> => {
+router.get("/cash/current", async (req, res): Promise<void> => {
+  const actor = await getCurrentActor(req);
+  const conditions = [
+    eq(cashRegistersTable.storeId, actor.storeId),
+    eq(cashRegistersTable.status, "open"),
+  ];
+  if (actor.role === "atendente") {
+    if (actor.id)
+      conditions.push(eq(cashRegistersTable.operatorUserId, actor.id));
+    else conditions.push(sql`${cashRegistersTable.operator} = ${actor.name}`);
+  }
+
   const [register] = await db
     .select()
     .from(cashRegistersTable)
-    .where(eq(cashRegistersTable.status, "open"))
+    .where(and(...conditions))
     .orderBy(sql`${cashRegistersTable.openedAt} DESC`)
     .limit(1);
 
@@ -73,10 +117,16 @@ router.get("/cash/current", async (_req, res): Promise<void> => {
 });
 
 router.post("/cash/open", async (req, res): Promise<void> => {
+  const actor = await getCurrentActor(req);
   const [existingOpen] = await db
     .select()
     .from(cashRegistersTable)
-    .where(eq(cashRegistersTable.status, "open"))
+    .where(
+      and(
+        eq(cashRegistersTable.storeId, actor.storeId),
+        eq(cashRegistersTable.status, "open"),
+      ),
+    )
     .limit(1);
 
   if (existingOpen) {
@@ -90,20 +140,38 @@ router.post("/cash/open", async (req, res): Promise<void> => {
     return;
   }
 
-  const [register] = await db.insert(cashRegistersTable).values({
-    operator: parsed.data.operator,
-    openingAmount: String(parsed.data.openingAmount),
-    notes: parsed.data.notes,
-    status: "open",
-  }).returning();
+  const [register] = await db
+    .insert(cashRegistersTable)
+    .values({
+      storeId: actor.storeId,
+      operatorUserId: actor.id,
+      operator: actor.role === "atendente" ? actor.name : parsed.data.operator,
+      openingAmount: String(parsed.data.openingAmount),
+      notes: parsed.data.notes,
+      status: "open",
+    })
+    .returning();
 
   res.status(201).json(await buildRegisterDetail(register!));
 });
 
-router.get("/cash/history", async (_req, res): Promise<void> => {
+router.get("/cash/history", async (req, res): Promise<void> => {
+  const actor = await getCurrentActor(req);
+  if (actor.role === "atendente") {
+    const scope = await requireOpenShift(req, res);
+    if (!scope) return;
+    const [register] = await db
+      .select()
+      .from(cashRegistersTable)
+      .where(eq(cashRegistersTable.id, scope.cashRegisterId!));
+    res.json(register ? [await buildRegisterDetail(register)] : []);
+    return;
+  }
+
   const registers = await db
     .select()
     .from(cashRegistersTable)
+    .where(eq(cashRegistersTable.storeId, actor.storeId))
     .orderBy(sql`${cashRegistersTable.openedAt} DESC`);
 
   const details = await Promise.all(registers.map(buildRegisterDetail));
@@ -117,7 +185,16 @@ router.get("/cash/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const [register] = await db.select().from(cashRegistersTable).where(eq(cashRegistersTable.id, id));
+  const actor = await getCurrentActor(req);
+  const [register] = await db
+    .select()
+    .from(cashRegistersTable)
+    .where(
+      and(
+        eq(cashRegistersTable.id, id),
+        eq(cashRegistersTable.storeId, actor.storeId),
+      ),
+    );
   if (!register) {
     res.status(404).json({ error: "Cash register not found" });
     return;
@@ -139,7 +216,16 @@ router.post("/cash/:id/close", async (req, res): Promise<void> => {
     return;
   }
 
-  const [register] = await db.select().from(cashRegistersTable).where(eq(cashRegistersTable.id, id));
+  const actor = await getCurrentActor(req);
+  const [register] = await db
+    .select()
+    .from(cashRegistersTable)
+    .where(
+      and(
+        eq(cashRegistersTable.id, id),
+        eq(cashRegistersTable.storeId, actor.storeId),
+      ),
+    );
   if (!register) {
     res.status(404).json({ error: "Cash register not found" });
     return;
@@ -152,7 +238,12 @@ router.post("/cash/:id/close", async (req, res): Promise<void> => {
   const [pending] = await db
     .select({ count: sql<number>`count(*)` })
     .from(ordersTable)
-    .where(eq(ordersTable.deliveryStatus, "awaiting_settlement"));
+    .where(
+      and(
+        eq(ordersTable.storeId, actor.storeId),
+        eq(ordersTable.deliveryStatus, "awaiting_settlement"),
+      ),
+    );
 
   if (Number(pending?.count ?? 0) > 0) {
     res.status(409).json({
@@ -183,28 +274,50 @@ router.post("/cash/movements", async (req, res): Promise<void> => {
     return;
   }
 
+  const actor = await getCurrentActor(req);
+  if (actor.role === "atendente") {
+    const scope = await requireOpenShift(req, res);
+    if (!scope) return;
+    if (scope.cashRegisterId !== parsed.data.cashRegisterId) {
+      res.status(403).json({
+        error: "Esta visualização mostra apenas dados do seu plantão atual.",
+      });
+      return;
+    }
+  }
+
   const [register] = await db
     .select()
     .from(cashRegistersTable)
-    .where(eq(cashRegistersTable.id, parsed.data.cashRegisterId));
+    .where(
+      and(
+        eq(cashRegistersTable.id, parsed.data.cashRegisterId),
+        eq(cashRegistersTable.storeId, actor.storeId),
+      ),
+    );
 
   if (!register) {
     res.status(404).json({ error: "Cash register not found" });
     return;
   }
   if (register.status === "closed") {
-    res.status(409).json({ error: "Cannot add movement to a closed cash register" });
+    res
+      .status(409)
+      .json({ error: "Cannot add movement to a closed cash register" });
     return;
   }
 
-  const [movement] = await db.insert(cashMovementsTable).values({
-    cashRegisterId: parsed.data.cashRegisterId,
-    type: parsed.data.type,
-    amount: String(parsed.data.amount),
-    paymentMethod: parsed.data.paymentMethod,
-    reason: parsed.data.reason,
-    orderId: parsed.data.orderId,
-  }).returning();
+  const [movement] = await db
+    .insert(cashMovementsTable)
+    .values({
+      cashRegisterId: parsed.data.cashRegisterId,
+      type: parsed.data.type,
+      amount: String(parsed.data.amount),
+      paymentMethod: parsed.data.paymentMethod,
+      reason: parsed.data.reason,
+      orderId: parsed.data.orderId,
+    })
+    .returning();
 
   res.status(201).json({
     ...movement!,

@@ -27,6 +27,8 @@ export * from './categorySales';
 export * from './categoryUpdate';
 export * from './createVariantTemplateBody';
 export * from './createVariantTemplateOptionBody';
+export * from './currentActor';
+export * from './currentActorRole';
 export * from './customer';
 export * from './customerInput';
 export * from './customerUpdate';
