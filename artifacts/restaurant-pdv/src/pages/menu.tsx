@@ -115,6 +115,33 @@ type VariantTemplateOption = { id: number; templateId: number; name: string; pri
 type AddonOption = { id: number; groupId: number; name: string; price: number; available: boolean; sortOrder: number };
 type AddonGroup = { id: number; name: string; description?: string | null; required: boolean; minSelected: number; maxSelected?: number | null; active: boolean; options: AddonOption[] };
 
+type ApiErrorLike = {
+  data?: { error?: unknown; message?: unknown } | null;
+  response?: { data?: { error?: unknown } | null; status?: unknown } | null;
+  message?: unknown;
+  status?: unknown;
+};
+
+function getApiErrorMessage(err: unknown, fallback: string): string {
+  const apiError = err as ApiErrorLike | null;
+  const message = apiError?.data?.error ?? apiError?.data?.message ?? apiError?.response?.data?.error ?? apiError?.message;
+  return typeof message === "string" && message.trim() ? message : fallback;
+}
+
+function getApiErrorStatus(err: unknown): number | null {
+  const apiError = err as ApiErrorLike | null;
+  const status = apiError?.status ?? apiError?.response?.status;
+  return typeof status === "number" ? status : null;
+}
+
+function getAddonApiErrorMessage(err: unknown, fallback: string): string {
+  const message = getApiErrorMessage(err, fallback);
+  if (getApiErrorStatus(err) === 403 && message.toLowerCase().includes("permiss")) {
+    return "Você precisa estar como Max Control para criar ou editar adicionais.";
+  }
+  return message;
+}
+
 export default function Menu() {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
@@ -395,8 +422,8 @@ export default function Menu() {
         toast({ title: "Grupo de adicionais salvo." });
       },
       onError: (err) => {
-        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-        toast({ title: msg ?? "Erro ao salvar grupo de adicionais.", variant: "destructive" });
+        const msg = getAddonApiErrorMessage(err, "Erro ao salvar grupo de adicionais.");
+        toast({ title: msg, variant: "destructive" });
       },
     },
   });
@@ -408,8 +435,8 @@ export default function Menu() {
         toast({ title: "Grupo de adicionais atualizado." });
       },
       onError: (err) => {
-        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-        toast({ title: msg ?? "Erro ao atualizar grupo de adicionais.", variant: "destructive" });
+        const msg = getAddonApiErrorMessage(err, "Erro ao atualizar grupo de adicionais.");
+        toast({ title: msg, variant: "destructive" });
       },
     },
   });
@@ -423,8 +450,8 @@ export default function Menu() {
         toast({ title: "Opção de adicional salva." });
       },
       onError: (err) => {
-        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-        toast({ title: msg ?? "Erro ao salvar opção de adicional.", variant: "destructive" });
+        const msg = getAddonApiErrorMessage(err, "Erro ao salvar opção de adicional.");
+        toast({ title: msg, variant: "destructive" });
       },
     },
   });
@@ -437,8 +464,8 @@ export default function Menu() {
         toast({ title: "Opção de adicional atualizada." });
       },
       onError: (err) => {
-        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-        toast({ title: msg ?? "Erro ao atualizar opção de adicional.", variant: "destructive" });
+        const msg = getAddonApiErrorMessage(err, "Erro ao atualizar opção de adicional.");
+        toast({ title: msg, variant: "destructive" });
       },
     },
   });
@@ -454,15 +481,18 @@ export default function Menu() {
         toast({ title: "Adicionais vinculados ao produto." });
       },
       onError: (err) => {
-        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-        toast({ title: msg ?? "Erro ao vincular adicionais ao produto.", variant: "destructive" });
+        const msg = getAddonApiErrorMessage(err, "Erro ao vincular adicionais ao produto.");
+        toast({ title: msg, variant: "destructive" });
       },
     },
   });
 
   useEffect(() => {
     if (addonGroupsError || (addonGroupsData !== undefined && !Array.isArray(addonGroupsData))) {
-      toast({ title: "Não foi possível carregar adicionais. Tente atualizar a página.", variant: "destructive" });
+      const msg = addonGroupsError
+        ? getAddonApiErrorMessage(addonGroupsError, "Não foi possível carregar adicionais. Tente atualizar a página.")
+        : "Não foi possível carregar adicionais. Tente atualizar a página.";
+      toast({ title: msg, variant: "destructive" });
     }
   }, [addonGroupsData, addonGroupsError, toast]);
 
@@ -477,18 +507,41 @@ export default function Menu() {
     }
     if (linkedAddonGroupsData !== undefined || linkedAddonGroupsError) {
       setProductAddonGroupIds([]);
-      toast({ title: "Não foi possível carregar os adicionais vinculados a este produto.", variant: "destructive" });
+      const msg = linkedAddonGroupsError
+        ? getAddonApiErrorMessage(linkedAddonGroupsError, "Não foi possível carregar os adicionais vinculados a este produto.")
+        : "Não foi possível carregar os adicionais vinculados a este produto.";
+      toast({ title: msg, variant: "destructive" });
     }
   }, [editingId, linkedAddonGroupsData, linkedAddonGroupsError, toast]);
 
   const submitAddonGroup = () => {
-    if (!addonGroupForm.name.trim()) return;
+    const name = addonGroupForm.name.trim();
+    if (!name) {
+      toast({ title: "Informe o nome do grupo de adicionais.", variant: "destructive" });
+      return;
+    }
+    const minSelected = Number(addonGroupForm.minSelected);
+    if (!addonGroupForm.minSelected.trim() || !Number.isInteger(minSelected) || minSelected < 0) {
+      toast({ title: "Mínimo precisa ser um inteiro maior ou igual a 0.", variant: "destructive" });
+      return;
+    }
+    const hasMaxSelected = addonGroupForm.maxSelected.trim() !== "";
+    const parsedMaxSelected = Number(addonGroupForm.maxSelected);
+    if (hasMaxSelected && (!Number.isInteger(parsedMaxSelected) || parsedMaxSelected < 0)) {
+      toast({ title: "Máximo precisa ser um inteiro maior ou igual a 0.", variant: "destructive" });
+      return;
+    }
+    const maxSelected = hasMaxSelected ? parsedMaxSelected : null;
+    if (maxSelected !== null && minSelected > maxSelected) {
+      toast({ title: "Mínimo não pode ser maior que o máximo.", variant: "destructive" });
+      return;
+    }
     const data = {
-      name: addonGroupForm.name.trim(),
+      name,
       description: addonGroupForm.description.trim() || null,
       required: addonGroupForm.required,
-      minSelected: Number(addonGroupForm.minSelected || 0),
-      maxSelected: addonGroupForm.maxSelected ? Number(addonGroupForm.maxSelected) : null,
+      minSelected,
+      maxSelected,
       active: addonGroupForm.active,
     };
     if (editingAddonGroupId) {
@@ -1072,6 +1125,10 @@ export default function Menu() {
             </DialogDescription>
           </DialogHeader>
 
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100">
+            Somente Max Control pode criar ou editar adicionais. Atendentes apenas usam os adicionais no pedido.
+          </div>
+
           <div className="grid gap-4 lg:grid-cols-[minmax(0,380px)_1fr]">
             <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
               <div>
@@ -1109,6 +1166,11 @@ export default function Menu() {
                     Ativo
                   </label>
                 </div>
+                {addonGroupForm.required && Number(addonGroupForm.minSelected || 0) === 0 ? (
+                  <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+                    Com obrigatório ligado e mínimo 0, o cadastro será salvo com mínimo 0, mas no pedido será exigida pelo menos 1 opção.
+                  </p>
+                ) : null}
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Button onClick={submitAddonGroup} disabled={!addonGroupForm.name.trim() || createAddonGroupMutation.isPending || updateAddonGroupMutation.isPending}>
                     {editingAddonGroupId ? "Salvar grupo" : "Criar grupo"}
@@ -1124,7 +1186,11 @@ export default function Menu() {
 
             <div className="space-y-4">
               {addonGroupsLoadFailed ? (
-                <p className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">Não foi possível carregar adicionais. Tente atualizar a página.</p>
+                <p className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">
+                  {addonGroupsError
+                    ? getAddonApiErrorMessage(addonGroupsError, "Não foi possível carregar adicionais. Tente atualizar a página.")
+                    : "Não foi possível carregar adicionais. Tente atualizar a página."}
+                </p>
               ) : fetchingAddonGroups ? (
                 <Skeleton className="h-36 w-full" />
               ) : addonGroups.length === 0 ? (
