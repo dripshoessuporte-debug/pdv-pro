@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS "addon_groups" (
   "id" serial PRIMARY KEY NOT NULL,
-  "store_id" integer NOT NULL DEFAULT 1 REFERENCES "stores"("id"),
+  "store_id" integer NOT NULL REFERENCES "stores"("id"),
   "name" text NOT NULL,
   "description" text,
   "required" boolean NOT NULL DEFAULT false,
@@ -15,7 +15,7 @@ CREATE INDEX IF NOT EXISTS "addon_groups_store_id_idx" ON "addon_groups" ("store
 
 CREATE TABLE IF NOT EXISTS "addon_options" (
   "id" serial PRIMARY KEY NOT NULL,
-  "store_id" integer NOT NULL DEFAULT 1 REFERENCES "stores"("id"),
+  "store_id" integer NOT NULL REFERENCES "stores"("id"),
   "group_id" integer NOT NULL REFERENCES "addon_groups"("id"),
   "name" text NOT NULL,
   "price" numeric(10,2) NOT NULL DEFAULT '0',
@@ -29,7 +29,7 @@ CREATE INDEX IF NOT EXISTS "addon_options_group_id_idx" ON "addon_options" ("gro
 
 CREATE TABLE IF NOT EXISTS "product_addon_groups" (
   "id" serial PRIMARY KEY NOT NULL,
-  "store_id" integer NOT NULL DEFAULT 1 REFERENCES "stores"("id"),
+  "store_id" integer NOT NULL REFERENCES "stores"("id"),
   "product_id" integer NOT NULL REFERENCES "products"("id"),
   "addon_group_id" integer NOT NULL REFERENCES "addon_groups"("id"),
   "sort_order" integer NOT NULL DEFAULT 0
@@ -40,7 +40,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "product_addon_groups_unique_idx" ON "product_
 
 CREATE TABLE IF NOT EXISTS "order_item_addons" (
   "id" serial PRIMARY KEY NOT NULL,
-  "order_item_id" integer NOT NULL REFERENCES "order_items"("id"),
+  "order_item_id" integer NOT NULL REFERENCES "order_items"("id") ON DELETE CASCADE,
   "addon_option_id" integer REFERENCES "addon_options"("id"),
   "addon_group_name" text NOT NULL,
   "addon_name" text NOT NULL,

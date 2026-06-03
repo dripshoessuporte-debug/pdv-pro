@@ -146,21 +146,21 @@ async function getOrderWithItems(orderId: number, storeId?: number) {
   };
 }
 
-async function recalcOrderTotal(orderId: number) {
-  const items = await db
+async function recalcOrderTotal(orderId: number, client: any = db) {
+  const items = await client
     .select()
     .from(orderItemsTable)
     .where(eq(orderItemsTable.orderId, orderId));
   const itemsTotal = items.reduce(
-    (sum, item) => sum + parseFloat(String(item.totalPrice)),
+    (sum: number, item: { totalPrice: unknown }) => sum + parseFloat(String(item.totalPrice)),
     0,
   );
-  const [order] = await db
+  const [order] = await client
     .select({ deliveryFee: ordersTable.deliveryFee })
     .from(ordersTable)
     .where(eq(ordersTable.id, orderId));
   const fee = parseFloat(String(order?.deliveryFee ?? "0"));
-  await db
+  await client
     .update(ordersTable)
     .set({ totalAmount: String(itemsTotal + fee) })
     .where(eq(ordersTable.id, orderId));
@@ -594,8 +594,8 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
       (selectedByGroup.get(row.group.id) ?? 0) + requested.quantity,
     );
     const addonPrice = parseFloat(String(row.option.price));
-    const total = addonPrice * requested.quantity;
-    addonsTotal += total;
+    const total = addonPrice * requested.quantity * parsed.data.quantity;
+    addonsTotal += addonPrice * requested.quantity;
     addonSnapshots.push({
       addonOptionId: row.option.id,
       addonGroupName: row.group.name,
@@ -622,45 +622,47 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
   try {
     const totalUnitPrice = unitPrice + addonsTotal;
     const totalPrice = totalUnitPrice * parsed.data.quantity;
-    const [item] = await db
-      .insert(orderItemsTable)
-      .values({
-        orderId: params.data.id,
-        productId: parsed.data.productId,
-        variantId,
-        variantName,
-        variantPrice: variantPrice != null ? String(variantPrice) : null,
-        quantity: parsed.data.quantity,
-        unitPrice: String(totalUnitPrice),
-        totalPrice: String(totalPrice),
-        notes: parsed.data.notes,
-      })
-      .returning();
+    const itemWithName = await db.transaction(async (tx) => {
+      const [item] = await tx
+        .insert(orderItemsTable)
+        .values({
+          orderId: params.data.id,
+          productId: parsed.data.productId,
+          variantId,
+          variantName,
+          variantPrice: variantPrice != null ? String(variantPrice) : null,
+          quantity: parsed.data.quantity,
+          unitPrice: String(totalUnitPrice),
+          totalPrice: String(totalPrice),
+          notes: parsed.data.notes,
+        })
+        .returning();
 
-    if (addonSnapshots.length) {
-      await db.insert(orderItemAddonsTable).values(
-        addonSnapshots.map((addon) => ({
-          orderItemId: item.id,
-          addonOptionId: addon.addonOptionId,
-          addonGroupName: addon.addonGroupName,
-          addonName: addon.addonName,
-          addonPrice: String(addon.addonPrice),
-          quantity: addon.quantity,
-          totalPrice: String(addon.totalPrice),
-        })),
-      );
-    }
+      if (addonSnapshots.length) {
+        await tx.insert(orderItemAddonsTable).values(
+          addonSnapshots.map((addon) => ({
+            orderItemId: item.id,
+            addonOptionId: addon.addonOptionId,
+            addonGroupName: addon.addonGroupName,
+            addonName: addon.addonName,
+            addonPrice: String(addon.addonPrice),
+            quantity: addon.quantity,
+            totalPrice: String(addon.totalPrice),
+          })),
+        );
+      }
 
-    await recalcOrderTotal(params.data.id);
+      await recalcOrderTotal(params.data.id, tx);
 
-    const itemWithName = {
-      ...item,
-      productName: product.name,
-      variantPrice,
-      unitPrice: totalUnitPrice,
-      totalPrice,
-      addons: addonSnapshots,
-    };
+      return {
+        ...item,
+        productName: product.name,
+        variantPrice,
+        unitPrice: totalUnitPrice,
+        totalPrice,
+        addons: addonSnapshots,
+      };
+    });
 
     res.status(201).json(itemWithName);
   } catch (error) {
@@ -679,21 +681,35 @@ router.delete("/orders/:id/items/:itemId", async (req, res): Promise<void> => {
   if (!scope) return;
 
   const [item] = await db
-    .delete(orderItemsTable)
+    .select({ id: orderItemsTable.id })
+    .from(orderItemsTable)
     .where(
       and(
         eq(orderItemsTable.id, params.data.itemId),
         eq(orderItemsTable.orderId, params.data.id),
       ),
     )
-    .returning();
+    .limit(1);
 
   if (!item) {
     res.status(404).json({ error: "Order item not found" });
     return;
   }
 
-  await recalcOrderTotal(params.data.id);
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(orderItemAddonsTable)
+      .where(eq(orderItemAddonsTable.orderItemId, params.data.itemId));
+    await tx
+      .delete(orderItemsTable)
+      .where(
+        and(
+          eq(orderItemsTable.id, params.data.itemId),
+          eq(orderItemsTable.orderId, params.data.id),
+        ),
+      );
+    await recalcOrderTotal(params.data.id, tx);
+  });
 
   res.sendStatus(204);
 });

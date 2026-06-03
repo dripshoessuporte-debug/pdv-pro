@@ -99,7 +99,7 @@ export const orderItemAddonsTable = pgTable(
   "order_item_addons",
   {
     id: serial("id").primaryKey(),
-    orderItemId: integer("order_item_id").notNull().references(() => orderItemsTable.id),
+    orderItemId: integer("order_item_id").notNull().references(() => orderItemsTable.id, { onDelete: "cascade" }),
     addonOptionId: integer("addon_option_id").references(() => addonOptionsTable.id),
     addonGroupName: text("addon_group_name").notNull(),
     addonName: text("addon_name").notNull(),
