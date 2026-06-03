@@ -16,6 +16,15 @@ import {
   useCreateProductVariant,
   useUpdateProductVariant,
   useDeleteProductVariant,
+  useListAddonGroups,
+  getListAddonGroupsQueryKey,
+  useCreateAddonGroup,
+  useUpdateAddonGroup,
+  useCreateAddonOption,
+  useUpdateAddonOption,
+  useListProductAddonGroups,
+  getListProductAddonGroupsQueryKey,
+  useUpdateProductAddonGroups,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -104,7 +113,7 @@ type VariantForm = {
 type VariantTemplate = { id: number; name: string; description: string | null; active: boolean };
 type VariantTemplateOption = { id: number; templateId: number; name: string; price: number; available: boolean; sortOrder: number };
 type AddonOption = { id: number; groupId: number; name: string; price: number; available: boolean; sortOrder: number };
-type AddonGroup = { id: number; name: string; description: string | null; required: boolean; minSelected: number; maxSelected: number | null; active: boolean; options: AddonOption[] };
+type AddonGroup = { id: number; name: string; description?: string | null; required: boolean; minSelected: number; maxSelected?: number | null; active: boolean; options: AddonOption[] };
 
 export default function Menu() {
   const [search, setSearch] = useState("");
@@ -127,10 +136,12 @@ export default function Menu() {
   const [templateOptionForm, setTemplateOptionForm] = useState({ templateId: 0, name: "", price: "", available: true });
   const [editingTemplateOptionId, setEditingTemplateOptionId] = useState<number>(0);
   const [templateOptionsMap, setTemplateOptionsMap] = useState<Record<number, VariantTemplateOption[]>>({});
-  const [addonGroups, setAddonGroups] = useState<AddonGroup[]>([]);
+  const [addonDialog, setAddonDialog] = useState(false);
   const [productAddonGroupIds, setProductAddonGroupIds] = useState<number[]>([]);
   const [addonGroupForm, setAddonGroupForm] = useState({ name: "", description: "", required: false, minSelected: "0", maxSelected: "", active: true });
+  const [editingAddonGroupId, setEditingAddonGroupId] = useState<number>(0);
   const [addonOptionForm, setAddonOptionForm] = useState({ groupId: 0, name: "", price: "", available: true });
+  const [editingAddonOptionId, setEditingAddonOptionId] = useState<number>(0);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -152,6 +163,17 @@ export default function Menu() {
   const { data: variants, isLoading: loadingVariants } = useListProductVariants(editingId ?? 0, {
     query: { enabled: editingId !== null, queryKey: getListProductVariantsQueryKey(editingId ?? 0) },
   });
+
+  const { data: addonGroupsData, error: addonGroupsError, isFetching: fetchingAddonGroups } = useListAddonGroups({
+    query: { queryKey: getListAddonGroupsQueryKey() },
+  });
+  const addonGroups = Array.isArray(addonGroupsData) ? addonGroupsData : [];
+  const addonGroupsLoadFailed = Boolean(addonGroupsError) || (addonGroupsData !== undefined && !Array.isArray(addonGroupsData));
+
+  const { data: linkedAddonGroupsData, error: linkedAddonGroupsError } = useListProductAddonGroups(editingId ?? 0, {
+    query: { enabled: editingId !== null, queryKey: getListProductAddonGroupsQueryKey(editingId ?? 0) },
+  });
+
 
   const invalidateProducts = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/menu/products"] });
@@ -364,29 +386,104 @@ export default function Menu() {
   const isPending = createProduct.isPending || updateProduct.isPending;
   const isCatPending = createCategory.isPending || updateCategory.isPending;
 
-  const loadAddonGroups = async () => {
-    const res = await fetch("/api/menu/addon-groups");
-    const data = await res.json() as AddonGroup[];
-    setAddonGroups(data);
-  };
+  const createAddonGroupMutation = useCreateAddonGroup({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListAddonGroupsQueryKey() });
+        setAddonGroupForm({ name: "", description: "", required: false, minSelected: "0", maxSelected: "", active: true });
+        setEditingAddonGroupId(0);
+        toast({ title: "Grupo de adicionais salvo." });
+      },
+      onError: (err) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        toast({ title: msg ?? "Erro ao salvar grupo de adicionais.", variant: "destructive" });
+      },
+    },
+  });
 
-  const loadProductAddonGroups = async (productId: number) => {
-    const res = await fetch(`/api/menu/products/${productId}/addon-groups`);
-    const data = await res.json() as AddonGroup[];
-    setProductAddonGroupIds(data.map((group) => group.id));
-  };
+  const updateAddonGroupMutation = useUpdateAddonGroup({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListAddonGroupsQueryKey() });
+        toast({ title: "Grupo de adicionais atualizado." });
+      },
+      onError: (err) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        toast({ title: msg ?? "Erro ao atualizar grupo de adicionais.", variant: "destructive" });
+      },
+    },
+  });
+
+  const createAddonOptionMutation = useCreateAddonOption({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListAddonGroupsQueryKey() });
+        setAddonOptionForm((current) => ({ groupId: current.groupId, name: "", price: "", available: true }));
+        setEditingAddonOptionId(0);
+        toast({ title: "Opção de adicional salva." });
+      },
+      onError: (err) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        toast({ title: msg ?? "Erro ao salvar opção de adicional.", variant: "destructive" });
+      },
+    },
+  });
+
+  const updateAddonOptionMutation = useUpdateAddonOption({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListAddonGroupsQueryKey() });
+        setEditingAddonOptionId(0);
+        toast({ title: "Opção de adicional atualizada." });
+      },
+      onError: (err) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        toast({ title: msg ?? "Erro ao atualizar opção de adicional.", variant: "destructive" });
+      },
+    },
+  });
+
+  const updateProductAddonGroupsMutation = useUpdateProductAddonGroups({
+    mutation: {
+      onSuccess: (_data, variables) => {
+        const nextIds = Array.isArray(variables.data.addonGroupIds) ? variables.data.addonGroupIds : [];
+        setProductAddonGroupIds(nextIds);
+        if (editingId !== null) {
+          queryClient.invalidateQueries({ queryKey: getListProductAddonGroupsQueryKey(editingId) });
+        }
+        toast({ title: "Adicionais vinculados ao produto." });
+      },
+      onError: (err) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        toast({ title: msg ?? "Erro ao vincular adicionais ao produto.", variant: "destructive" });
+      },
+    },
+  });
 
   useEffect(() => {
-    void loadAddonGroups();
-  }, []);
+    if (addonGroupsError || (addonGroupsData !== undefined && !Array.isArray(addonGroupsData))) {
+      toast({ title: "Não foi possível carregar adicionais. Tente atualizar a página.", variant: "destructive" });
+    }
+  }, [addonGroupsData, addonGroupsError, toast]);
 
   useEffect(() => {
-    if (editingId !== null) void loadProductAddonGroups(editingId);
-    else setProductAddonGroupIds([]);
-  }, [editingId]);
+    if (editingId === null) {
+      setProductAddonGroupIds([]);
+      return;
+    }
+    if (Array.isArray(linkedAddonGroupsData)) {
+      setProductAddonGroupIds(linkedAddonGroupsData.map((group) => group.id));
+      return;
+    }
+    if (linkedAddonGroupsData !== undefined || linkedAddonGroupsError) {
+      setProductAddonGroupIds([]);
+      toast({ title: "Não foi possível carregar os adicionais vinculados a este produto.", variant: "destructive" });
+    }
+  }, [editingId, linkedAddonGroupsData, linkedAddonGroupsError, toast]);
 
-  const createAddonGroup = async () => {
-    const payload = {
+  const submitAddonGroup = () => {
+    if (!addonGroupForm.name.trim()) return;
+    const data = {
       name: addonGroupForm.name.trim(),
       description: addonGroupForm.description.trim() || null,
       required: addonGroupForm.required,
@@ -394,47 +491,55 @@ export default function Menu() {
       maxSelected: addonGroupForm.maxSelected ? Number(addonGroupForm.maxSelected) : null,
       active: addonGroupForm.active,
     };
-    const res = await fetch("/api/menu/addon-groups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    if (!res.ok) throw new Error("Erro ao criar grupo de adicionais.");
-    setAddonGroupForm({ name: "", description: "", required: false, minSelected: "0", maxSelected: "", active: true });
-    await loadAddonGroups();
-    toast({ title: "Grupo de adicionais criado." });
+    if (editingAddonGroupId) {
+      updateAddonGroupMutation.mutate({ id: editingAddonGroupId, data });
+      setAddonGroupForm({ name: "", description: "", required: false, minSelected: "0", maxSelected: "", active: true });
+      setEditingAddonGroupId(0);
+      return;
+    }
+    createAddonGroupMutation.mutate({ data });
   };
 
-  const updateAddonGroup = async (groupId: number, data: Partial<AddonGroup>) => {
-    const res = await fetch(`/api/menu/addon-groups/${groupId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
-    if (!res.ok) throw new Error("Erro ao atualizar grupo.");
-    await loadAddonGroups();
-  };
-
-  const createAddonOption = async () => {
-    const res = await fetch(`/api/menu/addon-groups/${addonOptionForm.groupId}/options`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: addonOptionForm.name.trim(), price: Number(addonOptionForm.price || 0), available: addonOptionForm.available }),
+  const editAddonGroup = (group: AddonGroup) => {
+    setEditingAddonGroupId(group.id);
+    setAddonGroupForm({
+      name: group.name,
+      description: group.description ?? "",
+      required: group.required,
+      minSelected: String(group.minSelected ?? 0),
+      maxSelected: group.maxSelected != null ? String(group.maxSelected) : "",
+      active: group.active,
     });
-    if (!res.ok) throw new Error("Erro ao criar opção de adicional.");
-    setAddonOptionForm({ groupId: addonOptionForm.groupId, name: "", price: "", available: true });
-    await loadAddonGroups();
-    toast({ title: "Opção de adicional criada." });
   };
 
-  const updateAddonOption = async (optionId: number, data: Partial<AddonOption>) => {
-    const res = await fetch(`/api/menu/addon-options/${optionId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
-    if (!res.ok) throw new Error("Erro ao atualizar opção.");
-    await loadAddonGroups();
+  const toggleAddonGroup = (group: AddonGroup) => {
+    updateAddonGroupMutation.mutate({ id: group.id, data: { active: !group.active } });
   };
 
-  const saveProductAddonGroups = async (nextIds = productAddonGroupIds) => {
+  const submitAddonOption = () => {
+    if (!addonOptionForm.groupId || !addonOptionForm.name.trim()) return;
+    const data = { name: addonOptionForm.name.trim(), price: Number(addonOptionForm.price || 0), available: addonOptionForm.available };
+    if (editingAddonOptionId) {
+      updateAddonOptionMutation.mutate({ id: editingAddonOptionId, data });
+      setAddonOptionForm({ groupId: addonOptionForm.groupId, name: "", price: "", available: true });
+      setEditingAddonOptionId(0);
+      return;
+    }
+    createAddonOptionMutation.mutate({ id: addonOptionForm.groupId, data });
+  };
+
+  const editAddonOption = (option: AddonOption) => {
+    setEditingAddonOptionId(option.id);
+    setAddonOptionForm({ groupId: option.groupId, name: option.name, price: String(option.price), available: option.available });
+  };
+
+  const toggleAddonOption = (option: AddonOption) => {
+    updateAddonOptionMutation.mutate({ id: option.id, data: { available: !option.available } });
+  };
+
+  const saveProductAddonGroups = (nextIds = productAddonGroupIds) => {
     if (editingId === null) return;
-    const res = await fetch(`/api/menu/products/${editingId}/addon-groups`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ addonGroupIds: nextIds }),
-    });
-    if (!res.ok) throw new Error("Erro ao vincular adicionais ao produto.");
-    setProductAddonGroupIds(nextIds);
-    toast({ title: "Adicionais vinculados ao produto." });
+    updateProductAddonGroupsMutation.mutate({ id: editingId, data: { addonGroupIds: nextIds } });
   };
 
   const isVariantPending = createVariant.isPending || updateVariant.isPending;
@@ -556,6 +661,9 @@ export default function Menu() {
             </Button>
             <Button variant="outline" onClick={() => setVariantTemplatesDialog(true)}>
               Variações gerais
+            </Button>
+            <Button variant="outline" onClick={() => setAddonDialog(true)} data-testid="button-manage-addons">
+              <Plus className="w-4 h-4 mr-2" /> Adicionais
             </Button>
             <Button
               onClick={() => { setEditingId(null); setForm(emptyProduct); setProductDialog(true); }}
@@ -791,6 +899,8 @@ export default function Menu() {
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Adicionais do produto</h3>
               {editingId === null ? (
                 <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Salve o produto primeiro para vincular grupos de adicionais.</p>
+              ) : addonGroupsLoadFailed ? (
+                <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Não foi possível carregar adicionais. Tente atualizar a página.</p>
               ) : addonGroups.length === 0 ? (
                 <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Nenhum grupo de adicionais criado ainda.</p>
               ) : (
@@ -813,7 +923,9 @@ export default function Menu() {
                       );
                     })}
                   </div>
-                  <Button type="button" variant="outline" onClick={() => void saveProductAddonGroups()}>Salvar vínculos de adicionais</Button>
+                  <Button type="button" variant="outline" onClick={() => saveProductAddonGroups()} disabled={updateProductAddonGroupsMutation.isPending}>
+                    {updateProductAddonGroupsMutation.isPending ? "Salvando..." : "Salvar vínculos de adicionais"}
+                  </Button>
                 </div>
               )}
             </div>
@@ -947,6 +1059,167 @@ export default function Menu() {
               ))}
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Addons Dialog */}
+      <Dialog open={addonDialog} onOpenChange={(open) => { setAddonDialog(open); if (!open) { setEditingAddonGroupId(0); setEditingAddonOptionId(0); setAddonGroupForm({ name: "", description: "", required: false, minSelected: "0", maxSelected: "", active: true }); setAddonOptionForm({ groupId: 0, name: "", price: "", available: true }); } }}>
+        <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Gerenciar Adicionais</DialogTitle>
+            <DialogDescription>
+              Crie grupos de adicionais e opções para vincular aos produtos do cardápio.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,380px)_1fr]">
+            <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+              <div>
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  {editingAddonGroupId ? "Editar grupo" : "Novo grupo de adicionais"}
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground">Ex.: Bordas, Molhos, Extras, Bebidas.</p>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <Label>Nome do grupo</Label>
+                  <Input value={addonGroupForm.name} onChange={(e) => setAddonGroupForm({ ...addonGroupForm, name: e.target.value })} placeholder="Ex: Molhos" />
+                </div>
+                <div>
+                  <Label>Descrição</Label>
+                  <Textarea value={addonGroupForm.description} onChange={(e) => setAddonGroupForm({ ...addonGroupForm, description: e.target.value })} placeholder="Descrição opcional" rows={2} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Mínimo</Label>
+                    <Input type="number" min="0" value={addonGroupForm.minSelected} onChange={(e) => setAddonGroupForm({ ...addonGroupForm, minSelected: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label>Máximo</Label>
+                    <Input type="number" min="0" value={addonGroupForm.maxSelected} onChange={(e) => setAddonGroupForm({ ...addonGroupForm, maxSelected: e.target.value })} placeholder="Sem limite" />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <label className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                    <Switch checked={addonGroupForm.required} onCheckedChange={(checked) => setAddonGroupForm({ ...addonGroupForm, required: checked })} />
+                    Obrigatório
+                  </label>
+                  <label className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                    <Switch checked={addonGroupForm.active} onCheckedChange={(checked) => setAddonGroupForm({ ...addonGroupForm, active: checked })} />
+                    Ativo
+                  </label>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button onClick={submitAddonGroup} disabled={!addonGroupForm.name.trim() || createAddonGroupMutation.isPending || updateAddonGroupMutation.isPending}>
+                    {editingAddonGroupId ? "Salvar grupo" : "Criar grupo"}
+                  </Button>
+                  {editingAddonGroupId ? (
+                    <Button variant="outline" onClick={() => { setEditingAddonGroupId(0); setAddonGroupForm({ name: "", description: "", required: false, minSelected: "0", maxSelected: "", active: true }); }}>
+                      Cancelar edição
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {addonGroupsLoadFailed ? (
+                <p className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">Não foi possível carregar adicionais. Tente atualizar a página.</p>
+              ) : fetchingAddonGroups ? (
+                <Skeleton className="h-36 w-full" />
+              ) : addonGroups.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  <p className="font-medium">Nenhum grupo de adicionais criado ainda.</p>
+                  <p className="mt-1">Crie o primeiro grupo para adicionar opções e depois vinculá-lo aos produtos.</p>
+                </div>
+              ) : (
+                addonGroups.map((group) => {
+                  const groupOptions = Array.isArray(group.options) ? group.options : [];
+                  const editingThisGroupOption = addonOptionForm.groupId === group.id;
+                  return (
+                    <div key={group.id} className={`rounded-xl border bg-card p-4 shadow-sm ${group.active ? "" : "opacity-70"}`}>
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-semibold">{group.name}</h3>
+                            <Badge variant={group.active ? "default" : "outline"}>{group.active ? "Ativo" : "Inativo"}</Badge>
+                            {group.required ? <Badge variant="outline">Obrigatório</Badge> : null}
+                          </div>
+                          {group.description ? <p className="mt-1 text-sm text-muted-foreground">{group.description}</p> : null}
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Seleção: mín. {group.minSelected ?? 0}{group.maxSelected != null ? ` • máx. ${group.maxSelected}` : " • sem máximo"}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => editAddonGroup(group)}><Pencil className="h-3.5 w-3.5" /></Button>
+                          <Button size="sm" variant="outline" onClick={() => toggleAddonGroup(group)}>{group.active ? "Desativar" : "Ativar"}</Button>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <Label className="text-xs uppercase tracking-wide text-muted-foreground">Opções ({groupOptions.length})</Label>
+                          {!editingThisGroupOption ? (
+                            <Button size="sm" variant="outline" onClick={() => { setEditingAddonOptionId(0); setAddonOptionForm({ groupId: group.id, name: "", price: "", available: true }); }}>
+                              <Plus className="mr-1.5 h-3.5 w-3.5" /> Opção
+                            </Button>
+                          ) : null}
+                        </div>
+
+                        {groupOptions.length === 0 ? (
+                          <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Nenhuma opção criada neste grupo.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {groupOptions.map((option) => (
+                              <div key={option.id} className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                  <p className="text-sm font-medium">{option.name}</p>
+                                  <p className="text-xs text-muted-foreground">R$ {option.price.toFixed(2)} • {option.available ? "Disponível" : "Indisponível"}</p>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Button size="sm" variant="outline" onClick={() => editAddonOption(option)}><Pencil className="h-3.5 w-3.5" /></Button>
+                                  <Button size="sm" variant="outline" onClick={() => toggleAddonOption(option)}>{option.available ? "Desativar" : "Ativar"}</Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {editingThisGroupOption ? (
+                          <div className="grid gap-3 rounded-lg border bg-muted/40 p-3 md:grid-cols-[1fr_140px]">
+                            <div>
+                              <Label>Nome da opção</Label>
+                              <Input value={addonOptionForm.name} onChange={(e) => setAddonOptionForm({ ...addonOptionForm, name: e.target.value })} placeholder="Ex: Bacon extra" />
+                            </div>
+                            <div>
+                              <Label>Preço (R$)</Label>
+                              <Input type="number" min="0" step="0.01" value={addonOptionForm.price} onChange={(e) => setAddonOptionForm({ ...addonOptionForm, price: e.target.value })} />
+                            </div>
+                            <div className="flex items-center gap-2 md:col-span-2">
+                              <Switch checked={addonOptionForm.available} onCheckedChange={(checked) => setAddonOptionForm({ ...addonOptionForm, available: checked })} />
+                              <Label>Disponível para venda</Label>
+                            </div>
+                            <div className="flex flex-col gap-2 sm:flex-row md:col-span-2">
+                              <Button onClick={submitAddonOption} disabled={!addonOptionForm.name.trim() || createAddonOptionMutation.isPending || updateAddonOptionMutation.isPending}>
+                                {editingAddonOptionId ? "Salvar opção" : "Criar opção"}
+                              </Button>
+                              <Button variant="outline" onClick={() => { setEditingAddonOptionId(0); setAddonOptionForm({ groupId: 0, name: "", price: "", available: true }); }}>
+                                Cancelar
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddonDialog(false)}>Fechar</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
