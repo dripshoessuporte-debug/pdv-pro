@@ -472,6 +472,179 @@ paths:
                 $ref: "#/components/schemas/ProductVariant"
 
 
+
+  /menu/addon-groups:
+    get:
+      operationId: listAddonGroups
+      tags: [menu]
+      summary: List addon groups
+      responses:
+        "200":
+          description: List of addon groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AddonGroup"
+    post:
+      operationId: createAddonGroup
+      tags: [menu]
+      summary: Create addon group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddonGroupInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddonGroup"
+
+  /menu/addon-groups/{id}:
+    patch:
+      operationId: updateAddonGroup
+      tags: [menu]
+      summary: Update addon group
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddonGroupUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddonGroup"
+
+  /menu/addon-groups/{id}/options:
+    get:
+      operationId: listAddonOptions
+      tags: [menu]
+      summary: List addon options
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of addon options
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AddonOption"
+    post:
+      operationId: createAddonOption
+      tags: [menu]
+      summary: Create addon option
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddonOptionInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddonOption"
+
+  /menu/addon-options/{id}:
+    patch:
+      operationId: updateAddonOption
+      tags: [menu]
+      summary: Update addon option
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddonOptionUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddonOption"
+
+  /menu/products/{id}/addon-groups:
+    get:
+      operationId: listProductAddonGroups
+      tags: [menu]
+      summary: List addon groups linked to product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Product addon groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AddonGroup"
+    put:
+      operationId: updateProductAddonGroups
+      tags: [menu]
+      summary: Replace product addon group links
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductAddonGroupsInput"
+      responses:
+        "200":
+          description: Updated product addon groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AddonGroup"
+
   /menu/variant-templates:
     get:
       operationId: listVariantTemplates
@@ -1733,6 +1906,166 @@ components:
           type: string
           enum: [pending, preparing, ready, out_for_delivery, delivered, awaiting_settlement]
 
+
+    AddonOption:
+      type: object
+      required: [id, storeId, groupId, name, price, available, sortOrder]
+      properties:
+        id:
+          type: integer
+        storeId:
+          type: integer
+        groupId:
+          type: integer
+        name:
+          type: string
+        price:
+          type: number
+        available:
+          type: boolean
+        sortOrder:
+          type: integer
+
+    AddonOptionInput:
+      type: object
+      required: [name, price]
+      properties:
+        name:
+          type: string
+        price:
+          type: number
+          minimum: 0
+        available:
+          type: boolean
+        sortOrder:
+          type: integer
+
+    AddonOptionUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        price:
+          type: number
+          minimum: 0
+        available:
+          type: boolean
+        sortOrder:
+          type: integer
+
+    AddonGroup:
+      type: object
+      required: [id, storeId, name, required, minSelected, active, sortOrder, options]
+      properties:
+        id:
+          type: integer
+        storeId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        required:
+          type: boolean
+        minSelected:
+          type: integer
+        maxSelected:
+          type: integer
+          nullable: true
+        active:
+          type: boolean
+        sortOrder:
+          type: integer
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/AddonOption"
+
+    AddonGroupInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        required:
+          type: boolean
+        minSelected:
+          type: integer
+          minimum: 0
+        maxSelected:
+          type: integer
+          nullable: true
+        active:
+          type: boolean
+        sortOrder:
+          type: integer
+
+    AddonGroupUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        required:
+          type: boolean
+        minSelected:
+          type: integer
+          minimum: 0
+        maxSelected:
+          type: integer
+          nullable: true
+        active:
+          type: boolean
+        sortOrder:
+          type: integer
+
+    ProductAddonGroupsInput:
+      type: object
+      required: [addonGroupIds]
+      properties:
+        addonGroupIds:
+          type: array
+          items:
+            type: integer
+
+    OrderItemAddon:
+      type: object
+      required: [id, orderItemId, addonGroupName, addonName, addonPrice, quantity, totalPrice]
+      properties:
+        id:
+          type: integer
+        orderItemId:
+          type: integer
+        addonOptionId:
+          type: integer
+          nullable: true
+        addonGroupName:
+          type: string
+        addonName:
+          type: string
+        addonPrice:
+          type: number
+        quantity:
+          type: integer
+        totalPrice:
+          type: number
+
+    OrderItemAddonInput:
+      type: object
+      required: [addonOptionId]
+      properties:
+        addonOptionId:
+          type: integer
+        quantity:
+          type: integer
+          minimum: 1
+
     OrderItem:
       type: object
       required: [id, orderId, productName, quantity, unitPrice, totalPrice]
@@ -1759,6 +2092,10 @@ components:
           type: ["string", "null"]
         variantPrice:
           type: ["number", "null"]
+        addons:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItemAddon"
 
     OrderItemInput:
       type: object
@@ -1773,6 +2110,10 @@ components:
           type: string
         variantId:
           type: ["integer", "null"]
+        addons:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItemAddonInput"
 
     # Payments
     Payment:

@@ -8,6 +8,10 @@ import {
   customersTable,
   productsTable,
   productVariantsTable,
+  addonGroupsTable,
+  addonOptionsTable,
+  productAddonGroupsTable,
+  orderItemAddonsTable,
   kitchenTicketsTable,
   paymentsTable,
   cashMovementsTable,
@@ -126,32 +130,37 @@ async function getOrderWithItems(orderId: number, storeId?: number) {
     deliveryFeeCalculated: order.deliveryFeeCalculated === "true",
     createdAt: order.createdAt.toISOString(),
     updatedAt: order.updatedAt.toISOString(),
-    items: items.map((item) => ({
+    items: await Promise.all(items.map(async (item) => ({
       ...item,
       variantPrice: item.variantPrice
         ? parseFloat(String(item.variantPrice))
         : null,
       unitPrice: parseFloat(String(item.unitPrice)),
       totalPrice: parseFloat(String(item.totalPrice)),
-    })),
+      addons: (await db.select().from(orderItemAddonsTable).where(eq(orderItemAddonsTable.orderItemId, item.id))).map((addon) => ({
+        ...addon,
+        addonPrice: parseFloat(String(addon.addonPrice)),
+        totalPrice: parseFloat(String(addon.totalPrice)),
+      })),
+    }))),
   };
 }
 
-async function recalcOrderTotal(orderId: number) {
-  const items = await db
+async function recalcOrderTotal(orderId: number, client: any = db) {
+  const items = await client
     .select()
     .from(orderItemsTable)
     .where(eq(orderItemsTable.orderId, orderId));
   const itemsTotal = items.reduce(
-    (sum, item) => sum + parseFloat(String(item.totalPrice)),
+    (sum: number, item: { totalPrice: unknown }) => sum + parseFloat(String(item.totalPrice)),
     0,
   );
-  const [order] = await db
+  const [order] = await client
     .select({ deliveryFee: ordersTable.deliveryFee })
     .from(ordersTable)
     .where(eq(ordersTable.id, orderId));
   const fee = parseFloat(String(order?.deliveryFee ?? "0"));
-  await db
+  await client
     .update(ordersTable)
     .set({ totalAmount: String(itemsTotal + fee) })
     .where(eq(ordersTable.id, orderId));
@@ -257,14 +266,19 @@ router.get("/orders", async (req, res): Promise<void> => {
         deliveryFeeCalculated: order.deliveryFeeCalculated === "true",
         createdAt: order.createdAt.toISOString(),
         updatedAt: order.updatedAt.toISOString(),
-        items: items.map((item) => ({
+        items: await Promise.all(items.map(async (item) => ({
           ...item,
           variantPrice: item.variantPrice
             ? parseFloat(String(item.variantPrice))
             : null,
           unitPrice: parseFloat(String(item.unitPrice)),
           totalPrice: parseFloat(String(item.totalPrice)),
-        })),
+          addons: (await db.select().from(orderItemAddonsTable).where(eq(orderItemAddonsTable.orderItemId, item.id))).map((addon) => ({
+            ...addon,
+            addonPrice: parseFloat(String(addon.addonPrice)),
+            totalPrice: parseFloat(String(addon.totalPrice)),
+          })),
+        }))),
       };
     }),
   );
@@ -472,6 +486,7 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
     .where(
       and(
         eq(productVariantsTable.productId, parsed.data.productId),
+        eq(productVariantsTable.storeId, scope.actor.storeId),
         eq(productVariantsTable.active, true),
         eq(productVariantsTable.available, true),
       ),
@@ -490,6 +505,7 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
         and(
           eq(productVariantsTable.id, parsed.data.variantId),
           eq(productVariantsTable.productId, parsed.data.productId),
+          eq(productVariantsTable.storeId, scope.actor.storeId),
           eq(productVariantsTable.active, true),
           eq(productVariantsTable.available, true),
         ),
@@ -507,34 +523,151 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
     return;
   }
 
-  const totalPrice = unitPrice * parsed.data.quantity;
+  const requestedAddons = (parsed.data.addons ?? []).map((addon) => ({
+    addonOptionId: addon.addonOptionId,
+    quantity: addon.quantity ?? 1,
+  }));
 
-  const [item] = await db
-    .insert(orderItemsTable)
-    .values({
-      orderId: params.data.id,
-      productId: parsed.data.productId,
-      variantId,
-      variantName,
-      variantPrice: variantPrice != null ? String(variantPrice) : null,
-      quantity: parsed.data.quantity,
-      unitPrice: String(unitPrice),
-      totalPrice: String(totalPrice),
-      notes: parsed.data.notes,
+  if (requestedAddons.some((addon) => addon.quantity < 1)) {
+    res.status(400).json({ error: "Quantidade de adicional deve ser >= 1." });
+    return;
+  }
+
+  const linkedGroups = await db
+    .select({
+      group: addonGroupsTable,
     })
-    .returning();
+    .from(productAddonGroupsTable)
+    .innerJoin(
+      addonGroupsTable,
+      eq(productAddonGroupsTable.addonGroupId, addonGroupsTable.id),
+    )
+    .where(
+      and(
+        eq(productAddonGroupsTable.productId, parsed.data.productId),
+        eq(productAddonGroupsTable.storeId, scope.actor.storeId),
+        eq(addonGroupsTable.storeId, scope.actor.storeId),
+        eq(addonGroupsTable.active, true),
+      ),
+    );
+  const allowedGroupIds = new Set(linkedGroups.map((row) => row.group.id));
+  const addonOptionIds = requestedAddons.map((addon) => addon.addonOptionId);
+  const addonRows = addonOptionIds.length
+    ? await db
+        .select({ option: addonOptionsTable, group: addonGroupsTable })
+        .from(addonOptionsTable)
+        .innerJoin(addonGroupsTable, eq(addonOptionsTable.groupId, addonGroupsTable.id))
+        .where(
+          and(
+            eq(addonOptionsTable.storeId, scope.actor.storeId),
+            inArray(addonOptionsTable.id, addonOptionIds),
+            eq(addonOptionsTable.available, true),
+            eq(addonGroupsTable.active, true),
+          ),
+        )
+    : [];
 
-  await recalcOrderTotal(params.data.id);
+  if (addonRows.length !== new Set(addonOptionIds).size) {
+    res.status(400).json({ error: "Adicional inválido ou indisponível." });
+    return;
+  }
 
-  const itemWithName = {
-    ...item,
-    productName: product.name,
-    variantPrice,
-    unitPrice,
-    totalPrice,
-  };
+  const addonById = new Map(addonRows.map((row) => [row.option.id, row]));
+  const selectedByGroup = new Map<number, number>();
+  let addonsTotal = 0;
+  const addonSnapshots = [] as Array<{
+    addonOptionId: number;
+    addonGroupName: string;
+    addonName: string;
+    addonPrice: number;
+    quantity: number;
+    totalPrice: number;
+  }>;
+  for (const requested of requestedAddons) {
+    const row = addonById.get(requested.addonOptionId);
+    if (!row || !allowedGroupIds.has(row.group.id)) {
+      res.status(400).json({ error: "Adicional não pertence a este produto/loja." });
+      return;
+    }
+    selectedByGroup.set(
+      row.group.id,
+      (selectedByGroup.get(row.group.id) ?? 0) + requested.quantity,
+    );
+    const addonPrice = parseFloat(String(row.option.price));
+    const total = addonPrice * requested.quantity * parsed.data.quantity;
+    addonsTotal += addonPrice * requested.quantity;
+    addonSnapshots.push({
+      addonOptionId: row.option.id,
+      addonGroupName: row.group.name,
+      addonName: row.option.name,
+      addonPrice,
+      quantity: requested.quantity,
+      totalPrice: total,
+    });
+  }
 
-  res.status(201).json(itemWithName);
+  for (const { group } of linkedGroups) {
+    const selectedCount = selectedByGroup.get(group.id) ?? 0;
+    const minimum = group.required ? Math.max(1, group.minSelected) : group.minSelected;
+    if (selectedCount < minimum) {
+      res.status(400).json({ error: `Selecione pelo menos ${minimum} opção(ões) em ${group.name}.` });
+      return;
+    }
+    if (group.maxSelected != null && selectedCount > group.maxSelected) {
+      res.status(400).json({ error: `Selecione no máximo ${group.maxSelected} opção(ões) em ${group.name}.` });
+      return;
+    }
+  }
+
+  try {
+    const totalUnitPrice = unitPrice + addonsTotal;
+    const totalPrice = totalUnitPrice * parsed.data.quantity;
+    const itemWithName = await db.transaction(async (tx) => {
+      const [item] = await tx
+        .insert(orderItemsTable)
+        .values({
+          orderId: params.data.id,
+          productId: parsed.data.productId,
+          variantId,
+          variantName,
+          variantPrice: variantPrice != null ? String(variantPrice) : null,
+          quantity: parsed.data.quantity,
+          unitPrice: String(totalUnitPrice),
+          totalPrice: String(totalPrice),
+          notes: parsed.data.notes,
+        })
+        .returning();
+
+      if (addonSnapshots.length) {
+        await tx.insert(orderItemAddonsTable).values(
+          addonSnapshots.map((addon) => ({
+            orderItemId: item.id,
+            addonOptionId: addon.addonOptionId,
+            addonGroupName: addon.addonGroupName,
+            addonName: addon.addonName,
+            addonPrice: String(addon.addonPrice),
+            quantity: addon.quantity,
+            totalPrice: String(addon.totalPrice),
+          })),
+        );
+      }
+
+      await recalcOrderTotal(params.data.id, tx);
+
+      return {
+        ...item,
+        productName: product.name,
+        variantPrice,
+        unitPrice: totalUnitPrice,
+        totalPrice,
+        addons: addonSnapshots,
+      };
+    });
+
+    res.status(201).json(itemWithName);
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Erro ao adicionar adicionais." });
+  }
 });
 
 router.delete("/orders/:id/items/:itemId", async (req, res): Promise<void> => {
@@ -548,21 +681,35 @@ router.delete("/orders/:id/items/:itemId", async (req, res): Promise<void> => {
   if (!scope) return;
 
   const [item] = await db
-    .delete(orderItemsTable)
+    .select({ id: orderItemsTable.id })
+    .from(orderItemsTable)
     .where(
       and(
         eq(orderItemsTable.id, params.data.itemId),
         eq(orderItemsTable.orderId, params.data.id),
       ),
     )
-    .returning();
+    .limit(1);
 
   if (!item) {
     res.status(404).json({ error: "Order item not found" });
     return;
   }
 
-  await recalcOrderTotal(params.data.id);
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(orderItemAddonsTable)
+      .where(eq(orderItemAddonsTable.orderItemId, params.data.itemId));
+    await tx
+      .delete(orderItemsTable)
+      .where(
+        and(
+          eq(orderItemsTable.id, params.data.itemId),
+          eq(orderItemsTable.orderId, params.data.id),
+        ),
+      );
+    await recalcOrderTotal(params.data.id, tx);
+  });
 
   res.sendStatus(204);
 });

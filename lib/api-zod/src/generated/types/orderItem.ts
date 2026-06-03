@@ -5,6 +5,7 @@
  * Restaurant POS API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { OrderItemAddon } from './orderItemAddon';
 
 export interface OrderItem {
   id: number;
@@ -24,4 +25,5 @@ export interface OrderItem {
   variantName?: string | null;
   /** @nullable */
   variantPrice?: number | null;
+  addons?: OrderItemAddon[];
 }

@@ -238,6 +238,9 @@ function canAtendenteAccess(method: string, path: string): boolean {
   if (path === "/menu/products") return true;
   if (/^\/menu\/products\/\d+$/.test(path)) return true;
   if (/^\/menu\/products\/\d+\/variants$/.test(path)) return true;
+  if (path === "/menu/addon-groups") return true;
+  if (/^\/menu\/addon-groups\/\d+\/options$/.test(path)) return true;
+  if (/^\/menu\/products\/\d+\/addon-groups$/.test(path)) return true;
 
   return false;
 }

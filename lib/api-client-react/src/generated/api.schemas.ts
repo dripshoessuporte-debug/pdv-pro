@@ -300,6 +300,17 @@ export const OrderPaymentTiming = {
   on_delivery: 'on_delivery',
 } as const;
 
+export interface OrderItemAddon {
+  id: number;
+  orderItemId: number;
+  addonOptionId?: number | null;
+  addonGroupName: string;
+  addonName: string;
+  addonPrice: number;
+  quantity: number;
+  totalPrice: number;
+}
+
 export interface OrderItem {
   id: number;
   orderId: number;
@@ -318,6 +329,7 @@ export interface OrderItem {
   variantName?: string | null;
   /** @nullable */
   variantPrice?: number | null;
+  addons?: OrderItemAddon[];
 }
 
 export interface Order {
@@ -452,6 +464,77 @@ export interface DeliveryStatusUpdate {
   deliveryStatus: DeliveryStatusUpdateDeliveryStatus;
 }
 
+export interface AddonOption {
+  id: number;
+  storeId: number;
+  groupId: number;
+  name: string;
+  price: number;
+  available: boolean;
+  sortOrder: number;
+}
+
+export interface AddonOptionInput {
+  name: string;
+  /** @minimum 0 */
+  price: number;
+  available?: boolean;
+  sortOrder?: number;
+}
+
+export interface AddonOptionUpdate {
+  name?: string;
+  /** @minimum 0 */
+  price?: number;
+  available?: boolean;
+  sortOrder?: number;
+}
+
+export interface AddonGroup {
+  id: number;
+  storeId: number;
+  name: string;
+  description?: string | null;
+  required: boolean;
+  minSelected: number;
+  maxSelected?: number | null;
+  active: boolean;
+  sortOrder: number;
+  options: AddonOption[];
+}
+
+export interface AddonGroupInput {
+  name: string;
+  description?: string | null;
+  required?: boolean;
+  /** @minimum 0 */
+  minSelected?: number;
+  maxSelected?: number | null;
+  active?: boolean;
+  sortOrder?: number;
+}
+
+export interface AddonGroupUpdate {
+  name?: string;
+  description?: string | null;
+  required?: boolean;
+  /** @minimum 0 */
+  minSelected?: number;
+  maxSelected?: number | null;
+  active?: boolean;
+  sortOrder?: number;
+}
+
+export interface ProductAddonGroupsInput {
+  addonGroupIds: number[];
+}
+
+export interface OrderItemAddonInput {
+  addonOptionId: number;
+  /** @minimum 1 */
+  quantity?: number;
+}
+
 export interface OrderItemInput {
   productId: number;
   /** @minimum 1 */
@@ -459,6 +542,7 @@ export interface OrderItemInput {
   notes?: string;
   /** @nullable */
   variantId?: number | null;
+  addons?: OrderItemAddonInput[];
 }
 
 export type PaymentMethod = typeof PaymentMethod[keyof typeof PaymentMethod];

@@ -133,6 +133,55 @@ export default function OrderDetail() {
     },
   });
 
+
+  const addProductToExistingOrder = async (product: { id: number; name: string; price: number }) => {
+    try {
+      const variantsRes = await fetch(`/api/menu/products/${product.id}/variants`);
+      const variants = (await variantsRes.json()) as Array<{ id: number; name: string; price: number; active: boolean; available: boolean }>;
+      const activeVariants = variants.filter((variant) => variant.active && variant.available);
+      let variantId: number | undefined;
+      if (activeVariants.length > 0) {
+        const variantLines = activeVariants
+          .map((v) => `${v.id} - ${v.name} (R$ ${v.price.toFixed(2)})`)
+          .join("\n");
+        const choice = window.prompt(`Escolha a variação de ${product.name}:\n${variantLines}`);
+        if (!choice) return;
+        const selected = activeVariants.find((variant) => variant.id === Number(choice));
+        if (!selected) {
+          toast({ title: "Variação inválida.", variant: "destructive" });
+          return;
+        }
+        variantId = selected.id;
+      }
+
+      const addonsRes = await fetch(`/api/menu/products/${product.id}/addon-groups`);
+      const groups = ((await addonsRes.json()) as Array<{ id: number; name: string; required: boolean; minSelected: number; maxSelected: number | null; active: boolean; options: Array<{ id: number; name: string; price: number; available: boolean }> }>).filter((group) => group.active);
+      const addons: Array<{ addonOptionId: number; quantity: number }> = [];
+      for (const group of groups) {
+        const availableOptions = group.options.filter((option) => option.available);
+        for (const option of availableOptions) {
+          if (window.confirm(`${group.name}: adicionar ${option.name} por R$ ${option.price.toFixed(2)}?`)) {
+            addons.push({ addonOptionId: option.id, quantity: 1 });
+          }
+        }
+        const selectedCount = addons.filter((addon) => availableOptions.some((option) => option.id === addon.addonOptionId)).length;
+        const minimum = group.required ? Math.max(1, group.minSelected) : group.minSelected;
+        if (selectedCount < minimum) {
+          toast({ title: `Selecione pelo menos ${minimum} em ${group.name}.`, variant: "destructive" });
+          return;
+        }
+        if (group.maxSelected != null && selectedCount > group.maxSelected) {
+          toast({ title: `Selecione no máximo ${group.maxSelected} em ${group.name}.`, variant: "destructive" });
+          return;
+        }
+      }
+
+      addItem.mutate({ id: orderId, data: { productId: product.id, quantity: 1, ...(variantId ? { variantId } : {}), ...(addons.length ? { addons } : {}) } });
+    } catch {
+      toast({ title: "Erro ao adicionar item.", variant: "destructive" });
+    }
+  };
+
   const { data: categories } = useListCategories({
     query: { queryKey: getListCategoriesQueryKey() },
   });
@@ -325,9 +374,7 @@ export default function OrderDetail() {
                         <div
                           key={product.id}
                           className="p-3 border rounded-lg cursor-pointer hover:bg-accent hover:border-primary transition-colors"
-                          onClick={() => {
-                            addItem.mutate({ id: orderId, data: { productId: product.id, quantity: 1 } });
-                          }}
+                          onClick={() => void addProductToExistingOrder(product)}
                           data-testid={`product-option-${product.id}`}
                         >
                           <p className="font-medium text-sm">{product.name}</p>
@@ -391,6 +438,11 @@ export default function OrderDetail() {
                             <p className="font-medium truncate">{item.productName}</p>
                           </div>
                           <p className="text-sm text-muted-foreground">R$ {item.unitPrice.toFixed(2)} cada</p>
+                          {"addons" in item && Array.isArray(item.addons) && item.addons.map((addon: { id: number; addonName: string; addonPrice?: number }) => (
+                            <p key={addon.id} className="text-xs text-muted-foreground mt-0.5">
+                              ↳ {addon.addonName}{typeof addon.addonPrice === "number" ? ` · R$ ${addon.addonPrice.toFixed(2)}` : ""}
+                            </p>
+                          ))}
                           {item.notes && (
                             <p className="text-xs text-muted-foreground italic mt-0.5">💬 {item.notes}</p>
                           )}
@@ -591,7 +643,7 @@ export default function OrderDetail() {
               <CardContent className="space-y-2">
                 {order.items.map((item) => (
                   <div key={item.id} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground truncate">{item.quantity}x {item.productName}</span>
+                    <span className="text-muted-foreground truncate">{item.quantity}x {item.productName}{"addons" in item && Array.isArray(item.addons) && item.addons.length > 0 ? ` + ${item.addons.length} adicional(is)` : ""}</span>
                     <span className="shrink-0 ml-2">R$ {item.totalPrice.toFixed(2)}</span>
                   </div>
                 ))}

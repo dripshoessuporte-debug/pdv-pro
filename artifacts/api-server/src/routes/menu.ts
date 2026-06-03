@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, ilike, and, ne } from "drizzle-orm";
+import { eq, ilike, and, ne, inArray } from "drizzle-orm";
 import { getCurrentActor } from "../middleware/rbac";
 import {
   db,
@@ -9,6 +9,9 @@ import {
   orderItemsTable,
   variantTemplatesTable,
   variantTemplateOptionsTable,
+  addonGroupsTable,
+  addonOptionsTable,
+  productAddonGroupsTable,
 } from "@workspace/db";
 import {
   CreateCategoryBody,
@@ -957,5 +960,172 @@ router.post(
       .json(created.map((r) => ({ ...r, price: parseFloat(r.price) })));
   },
 );
+
+
+// ─── Add-ons ────────────────────────────────────────────────────────────────
+
+type AddonGroupBody = {
+  name?: string;
+  description?: string | null;
+  required?: boolean;
+  minSelected?: number;
+  maxSelected?: number | null;
+  active?: boolean;
+  sortOrder?: number;
+};
+
+type AddonOptionBody = {
+  name?: string;
+  price?: number;
+  available?: boolean;
+  sortOrder?: number;
+};
+
+function parseAddonGroupBody(body: AddonGroupBody, partial = false) {
+  const data: Record<string, unknown> = {};
+  if (!partial || body.name !== undefined) {
+    if (!body.name?.trim()) return { error: "Nome do grupo é obrigatório." };
+    data.name = body.name.trim();
+  }
+  if (body.description !== undefined) data.description = body.description?.trim() || null;
+  if (body.required !== undefined) data.required = body.required;
+  if (body.minSelected !== undefined) {
+    if (!Number.isInteger(body.minSelected) || body.minSelected < 0) return { error: "Mínimo deve ser inteiro e >= 0." };
+    data.minSelected = body.minSelected;
+  } else if (!partial) data.minSelected = 0;
+  if (body.maxSelected !== undefined) {
+    if (body.maxSelected !== null && (!Number.isInteger(body.maxSelected) || body.maxSelected < 0)) return { error: "Máximo deve ser inteiro, >= 0 ou nulo." };
+    data.maxSelected = body.maxSelected;
+  }
+  if (body.active !== undefined) data.active = body.active;
+  if (body.sortOrder !== undefined) data.sortOrder = body.sortOrder;
+  const min = Number(data.minSelected ?? body.minSelected ?? 0);
+  const max = data.maxSelected as number | null | undefined;
+  if (max != null && min > max) return { error: "Mínimo não pode ser maior que o máximo." };
+  return { data };
+}
+
+const serializeAddonOption = (option: typeof addonOptionsTable.$inferSelect) => ({
+  ...option,
+  price: parseFloat(String(option.price)),
+});
+
+const serializeAddonGroup = (
+  group: typeof addonGroupsTable.$inferSelect,
+  options: Array<typeof addonOptionsTable.$inferSelect> = [],
+) => ({
+  ...group,
+  options: options.map(serializeAddonOption),
+});
+
+router.get("/menu/addon-groups", async (req, res): Promise<void> => {
+  const { storeId } = await getCurrentActor(req);
+  const groups = await db
+    .select()
+    .from(addonGroupsTable)
+    .where(eq(addonGroupsTable.storeId, storeId))
+    .orderBy(addonGroupsTable.sortOrder, addonGroupsTable.name);
+  const options = groups.length
+    ? await db.select().from(addonOptionsTable).where(and(eq(addonOptionsTable.storeId, storeId), inArray(addonOptionsTable.groupId, groups.map((g) => g.id)))).orderBy(addonOptionsTable.sortOrder, addonOptionsTable.id)
+    : [];
+  res.json(groups.map((g) => serializeAddonGroup(g, options.filter((o) => o.groupId === g.id))));
+});
+
+router.post("/menu/addon-groups", async (req, res): Promise<void> => {
+  const { storeId } = await getCurrentActor(req);
+  const parsed = parseAddonGroupBody(req.body as AddonGroupBody);
+  if ("error" in parsed) return void res.status(400).json({ error: parsed.error });
+  const [created] = await db.insert(addonGroupsTable).values({ ...parsed.data, storeId } as typeof addonGroupsTable.$inferInsert).returning();
+  res.status(201).json(serializeAddonGroup(created));
+});
+
+router.patch("/menu/addon-groups/:id", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return void res.status(400).json({ error: "ID inválido." });
+  const { storeId } = await getCurrentActor(req);
+  const parsed = parseAddonGroupBody(req.body as AddonGroupBody, true);
+  if ("error" in parsed) return void res.status(400).json({ error: parsed.error });
+  const [updated] = await db.update(addonGroupsTable).set({ ...parsed.data, updatedAt: new Date() }).where(and(eq(addonGroupsTable.id, id), eq(addonGroupsTable.storeId, storeId))).returning();
+  if (!updated) return void res.status(404).json({ error: "Grupo de adicionais não encontrado." });
+  const options = await db.select().from(addonOptionsTable).where(and(eq(addonOptionsTable.groupId, id), eq(addonOptionsTable.storeId, storeId))).orderBy(addonOptionsTable.sortOrder, addonOptionsTable.id);
+  res.json(serializeAddonGroup(updated, options));
+});
+
+router.get("/menu/addon-groups/:id/options", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return void res.status(400).json({ error: "ID inválido." });
+  const { storeId } = await getCurrentActor(req);
+  const [group] = await db.select({ id: addonGroupsTable.id }).from(addonGroupsTable).where(and(eq(addonGroupsTable.id, id), eq(addonGroupsTable.storeId, storeId))).limit(1);
+  if (!group) return void res.status(404).json({ error: "Grupo de adicionais não encontrado." });
+  const options = await db.select().from(addonOptionsTable).where(and(eq(addonOptionsTable.groupId, id), eq(addonOptionsTable.storeId, storeId))).orderBy(addonOptionsTable.sortOrder, addonOptionsTable.id);
+  res.json(options.map(serializeAddonOption));
+});
+
+router.post("/menu/addon-groups/:id/options", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return void res.status(400).json({ error: "ID inválido." });
+  const { storeId } = await getCurrentActor(req);
+  const [group] = await db.select({ id: addonGroupsTable.id }).from(addonGroupsTable).where(and(eq(addonGroupsTable.id, id), eq(addonGroupsTable.storeId, storeId))).limit(1);
+  if (!group) return void res.status(404).json({ error: "Grupo de adicionais não encontrado." });
+  const body = req.body as AddonOptionBody;
+  if (!body.name?.trim()) return void res.status(400).json({ error: "Nome da opção é obrigatório." });
+  if (typeof body.price !== "number" || !Number.isFinite(body.price) || body.price < 0) return void res.status(400).json({ error: "Preço deve ser numérico e >= 0." });
+  const [created] = await db.insert(addonOptionsTable).values({ storeId, groupId: id, name: body.name.trim(), price: String(body.price), available: body.available ?? true, sortOrder: body.sortOrder ?? 0 }).returning();
+  res.status(201).json(serializeAddonOption(created));
+});
+
+router.patch("/menu/addon-options/:id", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return void res.status(400).json({ error: "ID inválido." });
+  const { storeId } = await getCurrentActor(req);
+  const body = req.body as AddonOptionBody;
+  const data: Record<string, unknown> = { updatedAt: new Date() };
+  if (body.name !== undefined) {
+    if (!body.name.trim()) return void res.status(400).json({ error: "Nome da opção é obrigatório." });
+    data.name = body.name.trim();
+  }
+  if (body.price !== undefined) {
+    if (typeof body.price !== "number" || !Number.isFinite(body.price) || body.price < 0) return void res.status(400).json({ error: "Preço deve ser numérico e >= 0." });
+    data.price = String(body.price);
+  }
+  if (body.available !== undefined) data.available = body.available;
+  if (body.sortOrder !== undefined) data.sortOrder = body.sortOrder;
+  const [updated] = await db.update(addonOptionsTable).set(data).where(and(eq(addonOptionsTable.id, id), eq(addonOptionsTable.storeId, storeId))).returning();
+  if (!updated) return void res.status(404).json({ error: "Opção de adicional não encontrada." });
+  res.json(serializeAddonOption(updated));
+});
+
+router.get("/menu/products/:id/addon-groups", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return void res.status(400).json({ error: "ID inválido." });
+  const { storeId } = await getCurrentActor(req);
+  const [product] = await db.select({ id: productsTable.id }).from(productsTable).where(and(eq(productsTable.id, id), eq(productsTable.storeId, storeId))).limit(1);
+  if (!product) return void res.status(404).json({ error: "Produto não encontrado." });
+  const links = await db.select({ sortOrder: productAddonGroupsTable.sortOrder, group: addonGroupsTable }).from(productAddonGroupsTable).innerJoin(addonGroupsTable, eq(productAddonGroupsTable.addonGroupId, addonGroupsTable.id)).where(and(eq(productAddonGroupsTable.productId, id), eq(productAddonGroupsTable.storeId, storeId), eq(addonGroupsTable.storeId, storeId))).orderBy(productAddonGroupsTable.sortOrder, addonGroupsTable.name);
+  const groups = links.map((l) => l.group);
+  const options = groups.length ? await db.select().from(addonOptionsTable).where(and(eq(addonOptionsTable.storeId, storeId), inArray(addonOptionsTable.groupId, groups.map((g) => g.id)))).orderBy(addonOptionsTable.sortOrder, addonOptionsTable.id) : [];
+  res.json(groups.map((g) => serializeAddonGroup(g, options.filter((o) => o.groupId === g.id))));
+});
+
+router.put("/menu/products/:id/addon-groups", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return void res.status(400).json({ error: "ID inválido." });
+  const { storeId } = await getCurrentActor(req);
+  const groupIds = Array.isArray((req.body as { addonGroupIds?: unknown }).addonGroupIds) ? (req.body as { addonGroupIds: unknown[] }).addonGroupIds.map(Number) : [];
+  if (groupIds.some((gid) => !Number.isInteger(gid) || gid <= 0)) return void res.status(400).json({ error: "Lista de grupos inválida." });
+  const [product] = await db.select({ id: productsTable.id }).from(productsTable).where(and(eq(productsTable.id, id), eq(productsTable.storeId, storeId))).limit(1);
+  if (!product) return void res.status(404).json({ error: "Produto não encontrado." });
+  const uniqueIds = [...new Set(groupIds)];
+  if (uniqueIds.length) {
+    const groups = await db.select({ id: addonGroupsTable.id }).from(addonGroupsTable).where(and(eq(addonGroupsTable.storeId, storeId), inArray(addonGroupsTable.id, uniqueIds)));
+    if (groups.length !== uniqueIds.length) return void res.status(400).json({ error: "Todos os grupos devem pertencer à loja atual." });
+  }
+  await db.delete(productAddonGroupsTable).where(and(eq(productAddonGroupsTable.productId, id), eq(productAddonGroupsTable.storeId, storeId)));
+  if (uniqueIds.length) {
+    await db.insert(productAddonGroupsTable).values(uniqueIds.map((addonGroupId, index) => ({ storeId, productId: id, addonGroupId, sortOrder: index })));
+  }
+  const groups = uniqueIds.length ? await db.select().from(addonGroupsTable).where(and(eq(addonGroupsTable.storeId, storeId), inArray(addonGroupsTable.id, uniqueIds))).orderBy(addonGroupsTable.name) : [];
+  res.json(groups.map((g) => serializeAddonGroup(g)));
+});
 
 export default router;

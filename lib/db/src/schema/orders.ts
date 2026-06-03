@@ -11,7 +11,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { customersTable } from "./customers";
 import { tablesTable } from "./tables";
-import { productsTable, productVariantsTable } from "./menu";
+import { addonOptionsTable, productsTable, productVariantsTable } from "./menu";
 import { storesTable } from "./tenancy";
 
 export const ordersTable = pgTable(
@@ -94,6 +94,25 @@ export const orderItemsTable = pgTable("order_items", {
   notes: text("notes"),
 });
 
+
+export const orderItemAddonsTable = pgTable(
+  "order_item_addons",
+  {
+    id: serial("id").primaryKey(),
+    orderItemId: integer("order_item_id").notNull().references(() => orderItemsTable.id, { onDelete: "cascade" }),
+    addonOptionId: integer("addon_option_id").references(() => addonOptionsTable.id),
+    addonGroupName: text("addon_group_name").notNull(),
+    addonName: text("addon_name").notNull(),
+    addonPrice: numeric("addon_price", { precision: 10, scale: 2 }).notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    totalPrice: numeric("total_price", { precision: 10, scale: 2 }).notNull(),
+  },
+  (table) => [
+    index("order_item_addons_order_item_id_idx").on(table.orderItemId),
+    index("order_item_addons_addon_option_id_idx").on(table.addonOptionId),
+  ],
+);
+
 export const insertOrderSchema = createInsertSchema(ordersTable).omit({
   id: true,
   createdAt: true,
@@ -107,3 +126,8 @@ export const insertOrderItemSchema = createInsertSchema(orderItemsTable).omit({
 });
 export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
 export type OrderItem = typeof orderItemsTable.$inferSelect;
+
+
+export const insertOrderItemAddonSchema = createInsertSchema(orderItemAddonsTable).omit({ id: true });
+export type InsertOrderItemAddon = z.infer<typeof insertOrderItemAddonSchema>;
+export type OrderItemAddon = typeof orderItemAddonsTable.$inferSelect;
