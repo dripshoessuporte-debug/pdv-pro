@@ -981,6 +981,14 @@ type AddonOptionBody = {
   sortOrder?: number;
 };
 
+function isMissingAddonTableError(error: unknown): boolean {
+  const dbError = error as { code?: unknown; message?: unknown; cause?: { code?: unknown; message?: unknown } } | null;
+  const code = dbError?.code ?? dbError?.cause?.code;
+  const message = String(dbError?.message ?? dbError?.cause?.message ?? "").toLowerCase();
+
+  return code === "42P01" || (message.includes("relation") && message.includes("addon_groups") && message.includes("does not exist"));
+}
+
 function parseAddonGroupBody(body: AddonGroupBody, partial = false) {
   const data: Record<string, unknown> = {};
   if (!partial || body.name !== undefined) {
@@ -1032,11 +1040,21 @@ router.get("/menu/addon-groups", async (req, res): Promise<void> => {
 });
 
 router.post("/menu/addon-groups", async (req, res): Promise<void> => {
-  const { storeId } = await getCurrentActor(req);
-  const parsed = parseAddonGroupBody(req.body as AddonGroupBody);
-  if ("error" in parsed) return void res.status(400).json({ error: parsed.error });
-  const [created] = await db.insert(addonGroupsTable).values({ ...parsed.data, storeId } as typeof addonGroupsTable.$inferInsert).returning();
-  res.status(201).json(serializeAddonGroup(created));
+  try {
+    const { storeId } = await getCurrentActor(req);
+    const parsed = parseAddonGroupBody(req.body as AddonGroupBody);
+    if ("error" in parsed) return void res.status(400).json({ error: parsed.error });
+    const [created] = await db.insert(addonGroupsTable).values({ ...parsed.data, storeId } as typeof addonGroupsTable.$inferInsert).returning();
+    res.status(201).json(serializeAddonGroup(created));
+  } catch (error) {
+    console.error("Erro ao criar grupo de adicionais", error);
+    if (isMissingAddonTableError(error)) {
+      res.status(500).json({ error: "Banco de dados ainda não está atualizado. Rode a migration dos adicionais." });
+      return;
+    }
+
+    res.status(500).json({ error: error instanceof Error ? error.message : "Erro ao criar grupo de adicionais." });
+  }
 });
 
 router.patch("/menu/addon-groups/:id", async (req, res): Promise<void> => {
