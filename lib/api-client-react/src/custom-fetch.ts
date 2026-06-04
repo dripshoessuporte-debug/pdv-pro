@@ -11,6 +11,10 @@ export type AuthTokenGetter = () => Promise<string | null> | string | null;
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
+const DEV_ROLE_STORAGE_KEY = "gestor-max-dev-role";
+const DEV_NAME_STORAGE_KEY = "gestor-max-dev-name";
+const DEV_STORE_ID_STORAGE_KEY = "gestor-max-dev-store-id";
+
 // ---------------------------------------------------------------------------
 // Module-level configuration
 // ---------------------------------------------------------------------------
@@ -42,6 +46,17 @@ export function setBaseUrl(url: string | null): void {
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
+}
+
+function readLocalStorageValue(key: string): string | undefined {
+  if (typeof window === "undefined") return undefined;
+
+  try {
+    const value = window.localStorage.getItem(key)?.trim();
+    return value ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {
@@ -377,19 +392,29 @@ export async function customFetch<T = unknown>(
       : undefined;
   const env = maybeImportMeta?.env;
   const allowDevRbacHeaders =
-    env?.DEV === true || env?.VITE_ALLOW_DEV_RBAC_HEADERS === "true";
+    env?.DEV === true ||
+    env?.VITE_ENABLE_DEV_ROLE_SWITCHER === "true" ||
+    env?.VITE_ALLOW_DEV_RBAC_HEADERS === "true";
   if (allowDevRbacHeaders) {
-    if (env?.VITE_STORE_ID && !headers.has("x-store-id")) {
-      headers.set("x-store-id", String(env.VITE_STORE_ID));
+    const devRole = readLocalStorageValue(DEV_ROLE_STORAGE_KEY);
+    const devStoreId = readLocalStorageValue(DEV_STORE_ID_STORAGE_KEY);
+    const devName = readLocalStorageValue(DEV_NAME_STORAGE_KEY);
+
+    const storeId = devStoreId ?? env?.VITE_STORE_ID;
+    const role = devRole ?? env?.VITE_RBAC_ROLE;
+    const name = devName ?? env?.VITE_RBAC_NAME;
+
+    if (storeId && !headers.has("x-store-id")) {
+      headers.set("x-store-id", String(storeId));
     }
-    if (env?.VITE_RBAC_USER_ID && !headers.has("x-user-id")) {
+    if (!devRole && env?.VITE_RBAC_USER_ID && !headers.has("x-user-id")) {
       headers.set("x-user-id", String(env.VITE_RBAC_USER_ID));
     }
-    if (env?.VITE_RBAC_ROLE && !headers.has("x-rbac-role")) {
-      headers.set("x-rbac-role", String(env.VITE_RBAC_ROLE));
+    if (role && !headers.has("x-rbac-role")) {
+      headers.set("x-rbac-role", String(role));
     }
-    if (env?.VITE_RBAC_NAME && !headers.has("x-rbac-name")) {
-      headers.set("x-rbac-name", String(env.VITE_RBAC_NAME));
+    if (name && !headers.has("x-rbac-name")) {
+      headers.set("x-rbac-name", String(name));
     }
   }
 

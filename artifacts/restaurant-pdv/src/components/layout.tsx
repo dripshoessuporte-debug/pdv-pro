@@ -21,6 +21,7 @@ import {
   getGetCurrentCashRegisterQueryKey,
   getGetAlertsQueryKey,
 } from "@workspace/api-client-react";
+import { DevRoleSwitcher } from "@/components/dev-role-switcher";
 import { canAccessPath, getCurrentActor } from "@/lib/rbac";
 
 const navItems = [
@@ -172,6 +173,8 @@ export function Layout({ children }: { children: ReactNode }) {
             )}
           </div>
         )}
+
+        <DevRoleSwitcher />
 
         <div className="p-4 border-t border-white/10 text-sm flex items-center justify-between">
           <div className="flex items-center text-zinc-300">

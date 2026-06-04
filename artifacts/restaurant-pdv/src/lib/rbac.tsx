@@ -20,17 +20,44 @@ export type Actor = {
 };
 
 const roleSet = new Set<string>(roles);
+const DEV_ROLE_STORAGE_KEY = "gestor-max-dev-role";
+const DEV_NAME_STORAGE_KEY = "gestor-max-dev-name";
+const DEV_STORE_ID_STORAGE_KEY = "gestor-max-dev-store-id";
+
+function canUseDevRoleSwitcherStorage(): boolean {
+  return (
+    import.meta.env.DEV === true ||
+    import.meta.env.VITE_ENABLE_DEV_ROLE_SWITCHER === "true"
+  );
+}
+
+function readDevStorageValue(key: string): string | null {
+  if (!canUseDevRoleSwitcherStorage()) return null;
+  if (typeof window === "undefined") return null;
+
+  return window.localStorage.getItem(key);
+}
 
 export function getCurrentActor(): Actor {
-  const role = roleSet.has(import.meta.env.VITE_RBAC_ROLE)
-    ? (import.meta.env.VITE_RBAC_ROLE as Role)
+  const storedRole = readDevStorageValue(DEV_ROLE_STORAGE_KEY);
+  const configuredRole = storedRole ?? import.meta.env.VITE_RBAC_ROLE;
+  const role = roleSet.has(configuredRole)
+    ? (configuredRole as Role)
     : "max_control";
+
   return {
     id: import.meta.env.VITE_RBAC_USER_ID
       ? Number(import.meta.env.VITE_RBAC_USER_ID)
       : null,
-    storeId: Number(import.meta.env.VITE_STORE_ID ?? 1),
-    name: import.meta.env.VITE_RBAC_NAME ?? "Operador desenvolvimento",
+    storeId: Number(
+      readDevStorageValue(DEV_STORE_ID_STORAGE_KEY) ??
+        import.meta.env.VITE_STORE_ID ??
+        1,
+    ),
+    name:
+      readDevStorageValue(DEV_NAME_STORAGE_KEY) ??
+      import.meta.env.VITE_RBAC_NAME ??
+      "Operador desenvolvimento",
     role,
     isDevelopmentFallback: true,
   };
