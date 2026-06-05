@@ -1036,7 +1036,8 @@ export default function Settings() {
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Essa chave é usada apenas para ferramentas de desenvolvimento.
+                  Para testes no Replit Preview, use: gestormax-dev. Essa
+                  ferramenta será removida ou protegida antes da publicação.
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-2">

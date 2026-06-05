@@ -6,6 +6,7 @@ function isTrue(value: string | undefined): boolean {
 
 const DEV_ADMIN_KEY_FALLBACK = "gestormax-dev";
 let warnedAboutDevAdminFallback = false;
+let warnedAboutReplitPreviewFallback = false;
 
 function getAdminKeys(): string[] {
   return [process.env.ADMIN_RESET_KEY, process.env.ADMIN_API_KEY]
@@ -13,12 +14,48 @@ function getAdminKeys(): string[] {
     .filter((v): v is string => Boolean(v));
 }
 
-function isDevAdminFallbackAllowed(): boolean {
-  return (
-    isTrue(process.env.ENABLE_DEV_ROUTES) &&
-    (process.env.NODE_ENV !== "production" ||
-      isTrue(process.env.ALLOW_DEV_ADMIN_FALLBACK))
+function getHeaderValue(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
+}
+
+function getProvidedAdminKey(req: Request): string {
+  return getHeaderValue(req.headers["x-admin-key"]);
+}
+
+function requestHasReplitPreviewHeader(req: Request): boolean {
+  const previewSource = [
+    req.headers.host,
+    req.headers.origin,
+    req.headers.referer,
+  ]
+    .map((value) => getHeaderValue(value).toLowerCase())
+    .join(" ");
+
+  return ["replit.dev", "replit.app", "repl.co"].some((domain) =>
+    previewSource.includes(domain),
   );
+}
+
+function warnAboutReplitPreviewFallback(): void {
+  if (warnedAboutReplitPreviewFallback) return;
+  console.warn(
+    "Ferramenta dev liberada por fallback de preview Replit. Remover antes de produção.",
+  );
+  warnedAboutReplitPreviewFallback = true;
+}
+
+export function isPreviewDevToolRequest(req: Request): boolean {
+  if (getProvidedAdminKey(req) !== DEV_ADMIN_KEY_FALLBACK) return false;
+
+  if (process.env.NODE_ENV !== "production") return true;
+  if (isTrue(process.env.ALLOW_DEV_ADMIN_FALLBACK)) return true;
+
+  if (requestHasReplitPreviewHeader(req)) {
+    warnAboutReplitPreviewFallback();
+    return true;
+  }
+
+  return false;
 }
 
 function warnAboutDevAdminFallback(): void {
@@ -30,14 +67,13 @@ function warnAboutDevAdminFallback(): void {
 }
 
 export function requireDevRoutesEnabled(
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction,
 ): void {
-  if (!isTrue(process.env.ENABLE_DEV_ROUTES)) {
+  if (!isTrue(process.env.ENABLE_DEV_ROUTES) && !isPreviewDevToolRequest(req)) {
     res.status(403).json({
-      error:
-        "Rotas de desenvolvimento desativadas. Ative ENABLE_DEV_ROUTES=true no ambiente de teste.",
+      error: "Rotas de desenvolvimento desativadas neste ambiente.",
     });
     return;
   }
@@ -51,13 +87,17 @@ export function requireAdminKey(
 ): void {
   const adminKeys = getAdminKeys();
 
-  const headerValue = req.headers["x-admin-key"];
-  const provided = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+  const provided = getProvidedAdminKey(req);
 
   if (adminKeys.length === 0) {
-    if (isDevAdminFallbackAllowed() && provided === DEV_ADMIN_KEY_FALLBACK) {
+    if (isPreviewDevToolRequest(req)) {
       warnAboutDevAdminFallback();
       next();
+      return;
+    }
+
+    if (provided) {
+      res.status(403).json({ error: "Chave administrativa inválida." });
       return;
     }
 
