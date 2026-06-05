@@ -113,12 +113,34 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+const DEV_ADMIN_KEY_STORAGE_KEY = "gestor-max-dev-admin-key";
+const DEV_ADMIN_KEY_FALLBACK = "gestormax-dev";
+
+function isDevAdminFallbackAllowed(): boolean {
+  return (
+    import.meta.env.DEV === true ||
+    import.meta.env.VITE_ENABLE_DEV_ROLE_SWITCHER === "true" ||
+    import.meta.env.MODE !== "production"
+  );
+}
+
+function getStoredAdminResetKey(): string {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(DEV_ADMIN_KEY_STORAGE_KEY)?.trim() ?? "";
+}
+
 function getAdminResetKey(): string {
-  return String(
+  const storedAdminKey = getStoredAdminResetKey();
+  if (storedAdminKey) return storedAdminKey;
+
+  const configuredAdminKey = String(
     import.meta.env.VITE_ADMIN_RESET_KEY ??
       import.meta.env.VITE_ADMIN_API_KEY ??
       "",
   ).trim();
+  if (configuredAdminKey) return configuredAdminKey;
+
+  return isDevAdminFallbackAllowed() ? DEV_ADMIN_KEY_FALLBACK : "";
 }
 
 function getAdminResetHeaders(): HeadersInit | null {
@@ -128,7 +150,15 @@ function getAdminResetHeaders(): HeadersInit | null {
 }
 
 function getDevToolErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Erro desconhecido.";
+  const message = error instanceof Error ? error.message : "Erro desconhecido.";
+  const lowerMessage = message.toLowerCase();
+  if (
+    lowerMessage.includes("chave administrativa") ||
+    lowerMessage.includes("x-admin-key")
+  ) {
+    return "Chave admin inválida ou backend sem configuração dev. Use gestormax-dev no campo Chave admin de teste ou configure ADMIN_RESET_KEY no Replit.";
+  }
+  return message;
 }
 
 export default function Settings() {
@@ -139,6 +169,11 @@ export default function Settings() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [seedingDeliveries, setSeedingDeliveries] = useState(false);
+  const [devAdminKeyInput, setDevAdminKeyInput] = useState(
+    () =>
+      getStoredAdminResetKey() ||
+      (isDevAdminFallbackAllowed() ? DEV_ADMIN_KEY_FALLBACK : ""),
+  );
 
   const [storeName, setStoreName] = useState("");
   const [storePhone, setStorePhone] = useState("");
@@ -260,12 +295,23 @@ export default function Settings() {
     });
   };
 
+  const handleSaveDevAdminKey = () => {
+    const key = devAdminKeyInput.trim();
+    if (key) {
+      window.localStorage.setItem(DEV_ADMIN_KEY_STORAGE_KEY, key);
+    } else {
+      window.localStorage.removeItem(DEV_ADMIN_KEY_STORAGE_KEY);
+    }
+    setDevAdminKeyInput(key);
+    toast({ title: "Chave admin de teste salva." });
+  };
+
   const handleReset = async () => {
     const adminHeaders = getAdminResetHeaders();
     if (!adminHeaders) {
       toast({
         title:
-          "Chave administrativa não configurada para zerar dados de teste.",
+          "Chave admin inválida ou backend sem configuração dev. Use gestormax-dev no campo Chave admin de teste ou configure ADMIN_RESET_KEY no Replit.",
         variant: "destructive",
       });
       return;
@@ -299,7 +345,7 @@ export default function Settings() {
     if (!adminHeaders) {
       toast({
         title:
-          "Chave administrativa não configurada para zerar dados de teste.",
+          "Chave admin inválida ou backend sem configuração dev. Use gestormax-dev no campo Chave admin de teste ou configure ADMIN_RESET_KEY no Replit.",
         variant: "destructive",
       });
       return;
@@ -966,6 +1012,31 @@ export default function Settings() {
                 </ul>
                 <p className="text-xs mt-2 font-medium">
                   Mantido: clientes, cardápio, mesas, configurações, caixa.
+                </p>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+                  <div className="flex-1 space-y-1">
+                    <Label htmlFor="dev-admin-key">Chave admin de teste</Label>
+                    <Input
+                      id="dev-admin-key"
+                      value={devAdminKeyInput}
+                      onChange={(e) => setDevAdminKeyInput(e.target.value)}
+                      placeholder="Ex: gestormax-dev"
+                      data-testid="input-dev-admin-key"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleSaveDevAdminKey}
+                    data-testid="button-save-dev-admin-key"
+                  >
+                    Salvar chave
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Essa chave é usada apenas para ferramentas de desenvolvimento.
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
