@@ -44,9 +44,7 @@ function warnAboutReplitPreviewFallback(): void {
   warnedAboutReplitPreviewFallback = true;
 }
 
-export function isPreviewDevToolRequest(req: Request): boolean {
-  if (getProvidedAdminKey(req) !== DEV_ADMIN_KEY_FALLBACK) return false;
-
+function canUseDevAdminFallback(req: Request): boolean {
   if (process.env.NODE_ENV !== "production") return true;
   if (isTrue(process.env.ALLOW_DEV_ADMIN_FALLBACK)) return true;
 
@@ -58,12 +56,65 @@ export function isPreviewDevToolRequest(req: Request): boolean {
   return false;
 }
 
+export function isUsingDevAdminFallback(req: Request): boolean {
+  return (
+    getAdminKeys().length === 0 &&
+    getProvidedAdminKey(req) === DEV_ADMIN_KEY_FALLBACK &&
+    canUseDevAdminFallback(req)
+  );
+}
+
+export function isPreviewDevToolRequest(req: Request): boolean {
+  return (
+    getProvidedAdminKey(req) === DEV_ADMIN_KEY_FALLBACK &&
+    canUseDevAdminFallback(req)
+  );
+}
+
 function warnAboutDevAdminFallback(): void {
   if (warnedAboutDevAdminFallback) return;
   console.warn(
-    "Usando chave administrativa padrão de desenvolvimento. Não use em produção.",
+    "Ferramenta dev liberada por chave padrão de construção. Remover antes de produção.",
   );
   warnedAboutDevAdminFallback = true;
+}
+
+export function requireDevToolAccess(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
+  const provided = getProvidedAdminKey(req).trim();
+  if (!provided) {
+    res.status(403).json({ error: "Informe a chave admin de teste." });
+    return;
+  }
+
+  const adminKeys = getAdminKeys();
+  if (adminKeys.length > 0) {
+    if (!adminKeys.includes(provided)) {
+      res.status(403).json({ error: "Chave administrativa inválida." });
+      return;
+    }
+
+    next();
+    return;
+  }
+
+  if (provided !== DEV_ADMIN_KEY_FALLBACK) {
+    res.status(403).json({ error: "Chave administrativa inválida." });
+    return;
+  }
+
+  if (canUseDevAdminFallback(req)) {
+    warnAboutDevAdminFallback();
+    next();
+    return;
+  }
+
+  res.status(403).json({
+    error: "Rotas de desenvolvimento desativadas neste ambiente.",
+  });
 }
 
 export function requireDevRoutesEnabled(
