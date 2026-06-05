@@ -5,19 +5,31 @@ function isTrue(value: string | undefined): boolean {
 }
 
 function getAdminKeys(): string[] {
-  return [process.env.ADMIN_RESET_KEY, process.env.ADMIN_API_KEY]
-    .filter((v): v is string => Boolean(v && v.trim()));
+  return [process.env.ADMIN_RESET_KEY, process.env.ADMIN_API_KEY].filter(
+    (v): v is string => Boolean(v && v.trim()),
+  );
 }
 
-export function requireDevRoutesEnabled(_req: Request, res: Response, next: NextFunction): void {
+export function requireDevRoutesEnabled(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   if (!isTrue(process.env.ENABLE_DEV_ROUTES)) {
-    res.status(403).json({ error: "Rotas de desenvolvimento desativadas neste ambiente." });
+    res.status(403).json({
+      error:
+        "Rotas de desenvolvimento desativadas. Ative ENABLE_DEV_ROUTES=true no ambiente de teste.",
+    });
     return;
   }
   next();
 }
 
-export function requireAdminKey(req: Request, res: Response, next: NextFunction): void {
+export function requireAdminKey(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   const adminKeys = getAdminKeys();
 
   if (adminKeys.length === 0) {
@@ -36,7 +48,11 @@ export function requireAdminKey(req: Request, res: Response, next: NextFunction)
   next();
 }
 
-export function requireIntegrationKey(req: Request, res: Response, next: NextFunction): void {
+export function requireIntegrationKey(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   const requiredKey = process.env.INTEGRATION_API_KEY;
 
   if (!requiredKey || !requiredKey.trim()) {
