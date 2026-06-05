@@ -117,10 +117,17 @@ const DEV_ADMIN_KEY_STORAGE_KEY = "gestor-max-dev-admin-key";
 const DEV_ADMIN_KEY_FALLBACK = "gestormax-dev";
 
 function isDevAdminFallbackAllowed(): boolean {
+  const hostname =
+    typeof window === "undefined" ? "" : window.location.hostname.toLowerCase();
+  const isReplitPreview = ["replit.dev", "replit.app", "repl.co"].some(
+    (domain) => hostname.includes(domain),
+  );
+
   return (
     import.meta.env.DEV === true ||
     import.meta.env.VITE_ENABLE_DEV_ROLE_SWITCHER === "true" ||
-    import.meta.env.MODE !== "production"
+    import.meta.env.MODE !== "production" ||
+    isReplitPreview
   );
 }
 
@@ -143,20 +150,46 @@ function getAdminResetKey(): string {
   return isDevAdminFallbackAllowed() ? DEV_ADMIN_KEY_FALLBACK : "";
 }
 
-function getAdminResetHeaders(): HeadersInit | null {
-  const adminKey = getAdminResetKey();
+function getDevToolKeyFromInput(inputValue: string): string {
+  const inputKey = inputValue.trim();
+  if (inputKey) return inputKey;
+  return isDevAdminFallbackAllowed() ? DEV_ADMIN_KEY_FALLBACK : "";
+}
+
+function persistDevToolKey(adminKey: string): void {
+  if (typeof window === "undefined") return;
+  if (adminKey) {
+    window.localStorage.setItem(DEV_ADMIN_KEY_STORAGE_KEY, adminKey);
+  } else {
+    window.localStorage.removeItem(DEV_ADMIN_KEY_STORAGE_KEY);
+  }
+}
+
+function getAdminResetHeaders(adminKey: string): HeadersInit | null {
   if (!adminKey) return null;
   return { "x-admin-key": adminKey };
+}
+
+function maskDevToolKey(adminKey: string): string {
+  if (!adminKey) return "não informada";
+  if (adminKey === DEV_ADMIN_KEY_FALLBACK) return DEV_ADMIN_KEY_FALLBACK;
+  return `${adminKey.slice(0, 3)}•••`;
 }
 
 function getDevToolErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : "Erro desconhecido.";
   const lowerMessage = message.toLowerCase();
+  if (lowerMessage.includes("rotas de desenvolvimento desativadas")) {
+    return "As ferramentas dev foram bloqueadas pelo backend. Use a chave gestormax-dev no campo, clique em Salvar chave e tente novamente. Se continuar, o backend ainda não recebeu o hotfix requireDevToolAccess.";
+  }
+  if (lowerMessage.includes("chave administrativa inválida")) {
+    return "Chave admin inválida. Para o Preview, use gestormax-dev.";
+  }
   if (
-    lowerMessage.includes("chave administrativa") ||
+    lowerMessage.includes("informe a chave admin") ||
     lowerMessage.includes("x-admin-key")
   ) {
-    return "Chave admin inválida ou backend sem configuração dev. Use gestormax-dev no campo Chave admin de teste ou configure ADMIN_RESET_KEY no Replit.";
+    return "Informe a chave admin de teste. Para o Preview, use gestormax-dev.";
   }
   return message;
 }
@@ -169,6 +202,7 @@ export default function Settings() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [seedingDeliveries, setSeedingDeliveries] = useState(false);
+  const [testingDevTools, setTestingDevTools] = useState(false);
   const [devAdminKeyInput, setDevAdminKeyInput] = useState(
     () =>
       getStoredAdminResetKey() ||
@@ -207,10 +241,13 @@ export default function Settings() {
   const [cepLookupStatus, setCepLookupStatus] = useState<
     "idle" | "loading" | "found" | "not_found"
   >("idle");
+  const currentDevToolKey = getDevToolKeyFromInput(devAdminKeyInput);
+  const devToolKeyLabel = maskDevToolKey(currentDevToolKey);
   const showDevTools =
     import.meta.env.DEV ||
     import.meta.env.MODE !== "production" ||
-    Boolean(getAdminResetKey());
+    Boolean(getAdminResetKey()) ||
+    Boolean(currentDevToolKey);
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -296,18 +333,57 @@ export default function Settings() {
   };
 
   const handleSaveDevAdminKey = () => {
-    const key = devAdminKeyInput.trim();
-    if (key) {
-      window.localStorage.setItem(DEV_ADMIN_KEY_STORAGE_KEY, key);
-    } else {
-      window.localStorage.removeItem(DEV_ADMIN_KEY_STORAGE_KEY);
-    }
+    const key = getDevToolKeyFromInput(devAdminKeyInput);
+    persistDevToolKey(key);
     setDevAdminKeyInput(key);
     toast({ title: "Chave admin de teste salva." });
   };
 
+  const getCurrentDevToolHeaders = (): HeadersInit | null => {
+    const key = getDevToolKeyFromInput(devAdminKeyInput);
+    if (!key) return null;
+    persistDevToolKey(key);
+    setDevAdminKeyInput(key);
+    return getAdminResetHeaders(key);
+  };
+
+  const handleTestDevTools = async () => {
+    const adminHeaders = getCurrentDevToolHeaders();
+    if (!adminHeaders) {
+      toast({
+        title:
+          "Informe a chave admin de teste. Para o Preview, use gestormax-dev.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setTestingDevTools(true);
+    try {
+      const result = await apiFetch<{ usingFallback: boolean }>(
+        "/dev/tool-status",
+        {
+          method: "GET",
+          headers: adminHeaders,
+        },
+      );
+      toast({
+        title: result.usingFallback
+          ? "Ferramentas dev liberadas com gestormax-dev."
+          : "Ferramentas dev liberadas com chave administrativa.",
+      });
+    } catch (e) {
+      toast({
+        title: `Erro ao testar ferramentas dev: ${getDevToolErrorMessage(e)}`,
+        variant: "destructive",
+      });
+    } finally {
+      setTestingDevTools(false);
+    }
+  };
+
   const handleReset = async () => {
-    const adminHeaders = getAdminResetHeaders();
+    const adminHeaders = getCurrentDevToolHeaders();
     if (!adminHeaders) {
       toast({
         title:
@@ -341,7 +417,7 @@ export default function Settings() {
   };
 
   const handleSeedDeliveries = async () => {
-    const adminHeaders = getAdminResetHeaders();
+    const adminHeaders = getCurrentDevToolHeaders();
     if (!adminHeaders) {
       toast({
         title:
@@ -1039,13 +1115,29 @@ export default function Settings() {
                   Para testes no Replit Preview, use: gestormax-dev. Essa
                   ferramenta será removida ou protegida antes da publicação.
                 </p>
+                <p className="text-xs font-medium text-muted-foreground">
+                  Chave usada nas ferramentas dev: {devToolKeyLabel}
+                </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="gap-2"
+                  onClick={handleTestDevTools}
+                  disabled={resetting || seedingDeliveries || testingDevTools}
+                  data-testid="button-test-dev-tools"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  {testingDevTools
+                    ? "Testando ferramentas..."
+                    : "Testar ferramentas dev"}
+                </Button>
                 <Button
                   variant="outline"
                   className="gap-2 border-red-300 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950"
                   onClick={() => setShowResetConfirm(true)}
-                  disabled={resetting || seedingDeliveries}
+                  disabled={resetting || seedingDeliveries || testingDevTools}
                   data-testid="button-reset-data"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -1055,7 +1147,7 @@ export default function Settings() {
                   variant="outline"
                   className="gap-2"
                   onClick={handleSeedDeliveries}
-                  disabled={resetting || seedingDeliveries}
+                  disabled={resetting || seedingDeliveries || testingDevTools}
                   data-testid="button-seed-curitiba-deliveries"
                 >
                   <Package className="w-4 h-4" />

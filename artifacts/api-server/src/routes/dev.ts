@@ -14,12 +14,26 @@ import {
   productVariantsTable,
 } from "@workspace/db";
 import {
-  requireAdminKey,
-  requireDevRoutesEnabled,
+  isUsingDevAdminFallback,
+  requireDevToolAccess,
 } from "../middleware/security";
 import { getCurrentActor } from "../middleware/rbac";
 
 const router: IRouter = Router();
+
+router.get("/dev/tool-status", requireDevToolAccess, (req, res): void => {
+  res.json({
+    ok: true,
+    receivedAdminKey: Boolean(req.headers["x-admin-key"]),
+    usingFallback: isUsingDevAdminFallback(req),
+    host: req.headers.host ?? "",
+    origin: req.headers.origin ?? "",
+    referer: req.headers.referer ?? "",
+    nodeEnv: process.env.NODE_ENV ?? "",
+    enableDevRoutes: process.env.ENABLE_DEV_ROUTES ?? "",
+    allowDevAdminFallback: process.env.ALLOW_DEV_ADMIN_FALLBACK ?? "",
+  });
+});
 
 // ─── POST /dev/reset ──────────────────────────────────────────────────────────
 // Apaga pedidos, rotas e dados transacionais da loja atual.
@@ -27,8 +41,7 @@ const router: IRouter = Router();
 
 router.post(
   "/dev/reset",
-  requireDevRoutesEnabled,
-  requireAdminKey,
+  requireDevToolAccess,
   async (req, res): Promise<void> => {
     const confirm = req.body?.confirm;
     if (confirm !== "ZERAR") {
@@ -52,35 +65,48 @@ router.post(
       .from(orderItemsTable)
       .where(inArray(orderItemsTable.orderId, orderIds));
 
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(deliveryRouteOrdersTable)
-        .where(
-          or(
-            inArray(deliveryRouteOrdersTable.orderId, orderIds),
-            inArray(deliveryRouteOrdersTable.routeId, routeIds),
-          ),
-        );
-      await tx
-        .delete(deliveryRoutesTable)
-        .where(eq(deliveryRoutesTable.storeId, storeId));
-      await tx
-        .delete(kitchenTicketsTable)
-        .where(inArray(kitchenTicketsTable.orderId, orderIds));
-      await tx
-        .delete(cashMovementsTable)
-        .where(inArray(cashMovementsTable.orderId, orderIds));
-      await tx
-        .delete(paymentsTable)
-        .where(inArray(paymentsTable.orderId, orderIds));
-      await tx
-        .delete(orderItemAddonsTable)
-        .where(inArray(orderItemAddonsTable.orderItemId, orderItemIds));
-      await tx
-        .delete(orderItemsTable)
-        .where(inArray(orderItemsTable.orderId, orderIds));
-      await tx.delete(ordersTable).where(eq(ordersTable.storeId, storeId));
-    });
+    try {
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(deliveryRouteOrdersTable)
+          .where(
+            or(
+              inArray(deliveryRouteOrdersTable.orderId, orderIds),
+              inArray(deliveryRouteOrdersTable.routeId, routeIds),
+            ),
+          );
+        await tx
+          .delete(deliveryRoutesTable)
+          .where(eq(deliveryRoutesTable.storeId, storeId));
+        await tx
+          .delete(kitchenTicketsTable)
+          .where(inArray(kitchenTicketsTable.orderId, orderIds));
+        await tx
+          .delete(cashMovementsTable)
+          .where(inArray(cashMovementsTable.orderId, orderIds));
+        await tx
+          .delete(paymentsTable)
+          .where(inArray(paymentsTable.orderId, orderIds));
+        await tx
+          .delete(orderItemAddonsTable)
+          .where(inArray(orderItemAddonsTable.orderItemId, orderItemIds));
+        await tx
+          .delete(orderItemsTable)
+          .where(inArray(orderItemsTable.orderId, orderIds));
+        await tx.delete(ordersTable).where(eq(ordersTable.storeId, storeId));
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "erro desconhecido";
+      req.log.error(
+        { err: error, storeId },
+        "dev reset: failed to clear transactional data",
+      );
+      res.status(500).json({
+        error: `Erro ao zerar dados transacionais: ${message}`,
+      });
+      return;
+    }
 
     req.log.info({ storeId }, "dev reset: transactional data cleared");
     res.json({ ok: true, message: "Dados zerados com sucesso." });
@@ -103,8 +129,7 @@ interface TestOrderSpec {
 
 router.post(
   "/dev/create-test-orders",
-  requireDevRoutesEnabled,
-  requireAdminKey,
+  requireDevToolAccess,
   async (req, res): Promise<void> => {
     const { storeId } = await getCurrentActor(req);
     const specs: TestOrderSpec[] = req.body?.orders;
@@ -263,8 +288,7 @@ function getSeedCount(value: unknown): number {
 
 router.post(
   "/dev/seed-curitiba-delivery-orders",
-  requireDevRoutesEnabled,
-  requireAdminKey,
+  requireDevToolAccess,
   async (req, res): Promise<void> => {
     if (req.body?.confirm !== "CRIAR") {
       res
