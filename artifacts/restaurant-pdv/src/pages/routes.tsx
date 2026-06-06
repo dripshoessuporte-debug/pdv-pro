@@ -19,6 +19,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Layout } from "@/components/layout";
+import { OrderDetailDialog } from "@/components/order-detail-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetAlertsQueryKey,
@@ -246,6 +247,13 @@ export default function Routes() {
   const [showCompleted, setShowCompleted] = useState(false);
   const [maxOrdersPerRoute, setMaxOrdersPerRoute] = useState(4);
   const [routeView, setRouteView] = useState<"available" | "in_progress">("available");
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const [isOrderDetailOpen, setIsOrderDetailOpen] = useState(false);
+
+  const openOrderDetail = (orderId: number) => {
+    setSelectedOrderId(orderId);
+    setIsOrderDetailOpen(true);
+  };
 
   const fetchRoutes = useCallback(async () => {
     try {
@@ -682,6 +690,7 @@ export default function Routes() {
                   onToggle={() => togglePending(order.id)}
                   onAddToRoute={() => setAddPendingState({ orderId: order.id, customerName: order.customerName })}
                   onEmergency={() => handleCreateEmergency(order.id)}
+                  onOpenOrder={() => openOrderDetail(order.id)}
                 />
               ))}
             </div>
@@ -746,6 +755,7 @@ export default function Routes() {
                     setMoveOrderState({ orderId, routeId: route.id, customerName })
                   }
                   onDirectRemove={(orderId) => handleDirectRemoveFromRoute(route.id, orderId)}
+                  onOpenOrder={openOrderDetail}
                   completing={completing === route.id}
                 />
               ))}
@@ -774,6 +784,7 @@ export default function Routes() {
                     setMoveOrderState({ orderId, routeId: route.id, customerName })
                   }
                   onDirectRemove={(orderId) => handleDirectRemoveFromRoute(route.id, orderId)}
+                  onOpenOrder={openOrderDetail}
                   completing={completing === route.id}
                 />
               ))}
@@ -814,6 +825,7 @@ export default function Routes() {
                     onQrCode={() => setQrRoute(route)}
                     onMoveOrder={() => {}}
                     onDirectRemove={() => {}}
+                    onOpenOrder={openOrderDetail}
                     completing={false}
                   />
                 ))}
@@ -822,6 +834,12 @@ export default function Routes() {
           </section>
         )}
       </div>
+
+      <OrderDetailDialog
+        orderId={selectedOrderId}
+        open={isOrderDetailOpen}
+        onOpenChange={setIsOrderDetailOpen}
+      />
 
       {/* ── QR Code Modal ── */}
       <Dialog open={!!qrRoute} onOpenChange={(open) => { if (!open) setQrRoute(null); }}>
@@ -1174,6 +1192,7 @@ function PendingOrderRow({
   onToggle,
   onAddToRoute,
   onEmergency,
+  onOpenOrder,
 }: {
   order: PendingDeliveryOrder;
   dispatchMinutes: number;
@@ -1183,6 +1202,7 @@ function PendingOrderRow({
   onToggle: () => void;
   onAddToRoute: () => void;
   onEmergency: () => void;
+  onOpenOrder: () => void;
 }) {
   const deadlineMs = order.kitchenAcceptedAt
     ? new Date(order.kitchenAcceptedAt).getTime() + dispatchMinutes * 60_000
@@ -1196,10 +1216,17 @@ function PendingOrderRow({
   const UrgencyIcon = URGENCY_ICON[urgency];
 
   return (
-    <div className={`flex items-center gap-3 px-4 py-3 transition-colors ${selected ? "bg-blue-50 dark:bg-blue-900/20" : "hover:bg-muted/30"} ${!isLast ? "border-b border-border" : ""}`}>
+    <div
+      className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors ${selected ? "bg-blue-50 dark:bg-blue-900/20" : "hover:bg-slate-50"} ${!isLast ? "border-b border-border" : ""}`}
+      onClick={onOpenOrder}
+      title="Clique para ver comanda"
+    >
       {/* Checkbox */}
       <button
-        onClick={onToggle}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggle();
+        }}
         className={`shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${selected ? "bg-primary border-primary" : "border-[#CBD5E1] hover:border-primary"}`}
         title={selected ? "Desmarcar" : "Selecionar"}
       >
@@ -1234,6 +1261,8 @@ function PendingOrderRow({
           <span className="truncate">
             {[order.deliveryNeighborhood, order.deliveryCep].filter(Boolean).join(" · ")}
           </span>
+          <span className="mx-1 opacity-40">·</span>
+          <span className="font-semibold text-[#D91F16]">Clique para ver comanda</span>
           {order.customerPhone && (
             <>
               <span className="mx-1 opacity-40">·</span>
@@ -1269,7 +1298,10 @@ function PendingOrderRow({
             size="sm"
             variant="outline"
             className="h-7 px-2 text-xs gap-1 border-primary/40 text-primary hover:bg-primary/5"
-            onClick={onAddToRoute}
+            onClick={(event) => {
+              event.stopPropagation();
+              onAddToRoute();
+            }}
             title="Adicionar a uma rota existente"
           >
             <PlusCircle className="w-3.5 h-3.5" />
@@ -1280,7 +1312,10 @@ function PendingOrderRow({
           size="sm"
           variant="ghost"
           className="h-7 px-2 text-xs gap-1 text-[#D91F16] hover:text-[#D91F16] hover:bg-red-50 dark:text-red-300"
-          onClick={onEmergency}
+          onClick={(event) => {
+            event.stopPropagation();
+            onEmergency();
+          }}
           title="Criar rota solitária"
         >
           <Zap className="w-3.5 h-3.5" />
@@ -1323,6 +1358,7 @@ function RouteCard({
   onQrCode,
   onMoveOrder,
   onDirectRemove,
+  onOpenOrder,
   completing,
 }: {
   route: DeliveryRoute;
@@ -1334,6 +1370,7 @@ function RouteCard({
   onQrCode: () => void;
   onMoveOrder: (orderId: number, customerName: string | null) => void;
   onDirectRemove: (orderId: number) => void;
+  onOpenOrder: (orderId: number) => void;
   completing: boolean;
 }) {
   const isAvailable = route.status === "available";
@@ -1505,17 +1542,16 @@ function RouteCard({
               >
                 {/* Order row */}
                 <div
-                  className={`flex items-center gap-2.5 px-3 py-2.5 text-xs group select-none ${expanded ? "cursor-pointer" : "cursor-default"}`}
+                  className="group flex cursor-pointer items-center gap-2.5 px-3 py-2.5 text-xs transition-colors select-none hover:bg-slate-100"
                   style={{ backgroundColor: isOrderExpanded ? `${vc.color}08` : "#F8FAFC" }}
                   onMouseEnter={(e) => {
-                    if (expanded && !isOrderExpanded) e.currentTarget.style.backgroundColor = "#F1F5F9";
+                    if (!isOrderExpanded) e.currentTarget.style.backgroundColor = "#F1F5F9";
                   }}
                   onMouseLeave={(e) => {
                     if (!isOrderExpanded) e.currentTarget.style.backgroundColor = "#F8FAFC";
                   }}
-                  onClick={() => {
-                    if (expanded) setExpandedOrderId(isOrderExpanded ? null : order.orderId);
-                  }}
+                  onClick={() => onOpenOrder(order.orderId)}
+                  title="Clique para ver comanda"
                   data-testid={`route-order-${order.orderId}`}
                 >
                   {/* Stop number */}
@@ -1546,6 +1582,7 @@ function RouteCard({
                           🥤 {orderFridges.reduce((s, i) => s + i.quantity, 0)} refri
                         </span>
                       )}
+                      <p className="mt-0.5 text-[10px] font-semibold text-[#D91F16]">Clique para ver comanda</p>
                     </div>
                   </div>
 
@@ -1586,9 +1623,19 @@ function RouteCard({
                       </Button>
                     )}
                     {expanded && (
-                      <ChevronDown
-                        className={`w-3.5 h-3.5 text-[#94A3B8] transition-transform shrink-0 ${isOrderExpanded ? "rotate-180" : ""}`}
-                      />
+                      <button
+                        type="button"
+                        className="rounded-md p-0.5 hover:bg-slate-200"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setExpandedOrderId(isOrderExpanded ? null : order.orderId);
+                        }}
+                        title="Ver itens rápidos da entrega"
+                      >
+                        <ChevronDown
+                          className={`w-3.5 h-3.5 text-[#94A3B8] transition-transform shrink-0 ${isOrderExpanded ? "rotate-180" : ""}`}
+                        />
+                      </button>
                     )}
                   </div>
                 </div>
@@ -1646,7 +1693,10 @@ function RouteCard({
           {/* "+N entregas" link when collapsed and there are hidden orders */}
           {!expanded && hiddenCount > 0 && (
             <button
-              onClick={() => setExpanded(true)}
+              onClick={(event) => {
+                event.stopPropagation();
+                setExpanded(true);
+              }}
               className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium hover:bg-slate-50 transition-colors"
               style={{ color: vc.color }}
               data-testid={`btn-show-more-${route.id}`}
@@ -1758,7 +1808,10 @@ function RouteCard({
         {/* ── Ver/Ocultar detalhes toggle ── */}
         {showExpandToggle && (
           <button
-            onClick={handleToggleExpand}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleToggleExpand();
+            }}
             className="flex items-center justify-center gap-1.5 text-xs font-medium transition-colors rounded-lg py-1.5 border border-[#E2E8F0] hover:bg-slate-50"
             style={{ color: "#64748B" }}
             data-testid={`btn-toggle-details-${route.id}`}
@@ -1778,7 +1831,10 @@ function RouteCard({
             variant="outline"
             size="sm"
             className="h-8 w-8 p-0 rounded-lg"
-            onClick={onQrCode}
+            onClick={(event) => {
+              event.stopPropagation();
+              onQrCode();
+            }}
             data-testid={`button-qr-${route.id}`}
           >
             <QrCode className="w-3.5 h-3.5" />
@@ -1789,7 +1845,10 @@ function RouteCard({
               size="sm"
               className="h-8 gap-1.5 rounded-lg font-semibold text-white border-0"
               style={{ backgroundColor: "#F97316", color: "#FFFFFF" }}
-              onClick={onAssign}
+              onClick={(event) => {
+                event.stopPropagation();
+                onAssign();
+              }}
               title="Assumir esta rota"
               data-testid={`button-assign-${route.id}`}
             >
@@ -1802,7 +1861,10 @@ function RouteCard({
             <Button
               size="sm"
               className="flex-1 h-8 gap-1.5 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white"
-              onClick={onComplete}
+              onClick={(event) => {
+                event.stopPropagation();
+                onComplete();
+              }}
               disabled={completing}
               data-testid={`button-complete-${route.id}`}
             >

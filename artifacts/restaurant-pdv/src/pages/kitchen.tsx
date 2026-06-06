@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle2, ChefHat, Clock, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { OrderDetailDialog } from "@/components/order-detail-dialog";
 
 function useElapsed(createdAt: string) {
   const [elapsed, setElapsed] = useState(() =>
@@ -76,6 +77,13 @@ const ORDER_TYPE_COLORS: Record<string, string> = {
 export default function Kitchen() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const [isOrderDetailOpen, setIsOrderDetailOpen] = useState(false);
+
+  const openOrderDetail = (orderId: number) => {
+    setSelectedOrderId(orderId);
+    setIsOrderDetailOpen(true);
+  };
 
   const { data: tickets, isLoading, dataUpdatedAt } = useGetKitchenQueue({
     query: {
@@ -146,7 +154,8 @@ export default function Kitchen() {
               return (
                 <div
                   key={ticket.id}
-                  className="rounded-2xl overflow-hidden shadow-lg border border-border flex flex-col bg-card"
+                  className="rounded-2xl overflow-hidden shadow-lg border border-border flex flex-col bg-card cursor-pointer transition-all hover:-translate-y-0.5 hover:border-[#D91F16]/50 hover:shadow-xl"
+                  onClick={() => openOrderDetail(ticket.orderId)}
                   data-testid={`card-ticket-${ticket.id}`}
                 >
                   {/* Colored header strip */}
@@ -158,6 +167,9 @@ export default function Kitchen() {
                       </p>
                       <p className="text-white/80 text-sm font-medium mt-0.5">
                         {ORDER_TYPE_LABELS[ticket.orderType ?? "counter"]}
+                      </p>
+                      <p className="text-white/80 text-xs font-semibold mt-1">
+                        Clique para ver comanda completa
                       </p>
                     </div>
                     <ElapsedBadge createdAt={ticket.createdAt} />
@@ -205,7 +217,10 @@ export default function Kitchen() {
                   <div className="px-4 pb-4">
                     <Button
                       className="w-full h-11 text-base font-bold bg-green-600 hover:bg-green-700 active:bg-green-800 text-white rounded-xl shadow-sm"
-                      onClick={() => markReady.mutate({ id: ticket.id })}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        markReady.mutate({ id: ticket.id });
+                      }}
                       disabled={markReady.isPending}
                       data-testid={`button-ready-${ticket.id}`}
                     >
@@ -219,6 +234,11 @@ export default function Kitchen() {
           </div>
         )}
       </div>
+      <OrderDetailDialog
+        orderId={selectedOrderId}
+        open={isOrderDetailOpen}
+        onOpenChange={setIsOrderDetailOpen}
+      />
     </Layout>
   );
 }
