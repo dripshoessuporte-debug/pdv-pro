@@ -300,8 +300,9 @@ function orderPairScore(a: EligibleOrder, b: EligibleOrder): number {
  */
 const MIN_PAIR_SCORE = 18;
 
-/** Max kitchen-time spread allowed within a single route (20 minutes). */
-const MAX_TIME_SPREAD_MS = 20 * 60_000;
+/** Max order-time window allowed within a single route (30 minutes). */
+const ROUTE_TIME_WINDOW_MINUTES = 30;
+const MAX_ROUTE_ORDER_TIME_GAP_MS = ROUTE_TIME_WINDOW_MINUTES * 60_000;
 
 /** Returns the reference time used for urgency (kitchen acceptance, or creation). */
 function kitchenTimeMs(o: EligibleOrder): number {
@@ -309,16 +310,70 @@ function kitchenTimeMs(o: EligibleOrder): number {
 }
 
 /**
- * Greedy grouping algorithm — urgency-first, proximity-within-time-window.
+ * Splits eligible orders into chronological windows before any distance logic.
+ *
+ * The oldest order in the current temporal group is the reference. If the next
+ * order is more than ROUTE_TIME_WINDOW_MINUTES newer than that reference, it
+ * starts a new temporal group even when CEP/neighborhood are very close.
+ */
+function groupOrdersByTimeWindow(orders: EligibleOrder[]): EligibleOrder[][] {
+  const byUrgency = [...orders].sort(
+    (a, b) => kitchenTimeMs(a) - kitchenTimeMs(b),
+  );
+  const groups: EligibleOrder[][] = [];
+
+  for (const order of byUrgency) {
+    const current = groups[groups.length - 1];
+    if (!current || current.length === 0) {
+      groups.push([order]);
+      continue;
+    }
+
+    const referenceTime = kitchenTimeMs(current[0]);
+    if (kitchenTimeMs(order) - referenceTime > MAX_ROUTE_ORDER_TIME_GAP_MS) {
+      groups.push([order]);
+    } else {
+      current.push(order);
+    }
+  }
+
+  return groups;
+}
+
+function buildRouteFromBatch(
+  batch: EligibleOrder[],
+  storeCep: string,
+): { mainNeighborhood: string; orders: EligibleOrder[] } {
+  const neighborhoodCounts = new Map<string, number>();
+  for (const o of batch) {
+    const n = (o.deliveryNeighborhood ?? "Outros").trim();
+    neighborhoodCounts.set(n, (neighborhoodCounts.get(n) ?? 0) + 1);
+  }
+  const mainNeighborhood = [...neighborhoodCounts.entries()].sort(
+    (a, b) => b[1] - a[1],
+  )[0][0];
+
+  const sortedBatch = [...batch].sort((a, b) => {
+    const sA = proximityToStore(storeCep, a.deliveryCep ?? "");
+    const sB = proximityToStore(storeCep, b.deliveryCep ?? "");
+    if (sB !== sA) return sB - sA;
+    return normalizeCep(a.deliveryCep ?? "").localeCompare(
+      normalizeCep(b.deliveryCep ?? ""),
+    );
+  });
+
+  return { mainNeighborhood, orders: sortedBatch };
+}
+
+/**
+ * Greedy grouping algorithm — time window first, proximity second.
  *
  * 1. Sort all orders by kitchen acceptance time (oldest = most urgent first).
- * 2. Seed each route with the next unassigned (most urgent) order.
- * 3. Fill the batch greedily: a candidate is accepted only when it:
- *    a) scores >= MIN_PAIR_SCORE against at least one current batch member
- *       (geographic proximity), AND
- *    b) does not push the batch's kitchen-time spread beyond 20 minutes.
- * 4. Routes may be smaller than maxPerRoute — geographically or temporally
- *    incompatible leftovers form their own routes.
+ * 2. Create chronological groups using ROUTE_TIME_WINDOW_MINUTES from the
+ *    oldest order in each group.
+ * 3. Inside each temporal group only, form routes by CEP/neighborhood score.
+ * 4. Routes may be smaller than maxPerRoute — geographically incompatible
+ *    leftovers form their own routes within the same temporal group.
  *
  * Stops within each route are sorted closest-to-store first.
  */
@@ -327,86 +382,56 @@ function generateRoutePlan(
   maxPerRoute: number,
   storeCep: string,
 ): Array<{ mainNeighborhood: string; orders: EligibleOrder[] }> {
-  const assigned = new Set<number>();
   const routes: Array<{ mainNeighborhood: string; orders: EligibleOrder[] }> =
     [];
 
-  // Sort oldest-first so the most urgent orders seed routes first
-  const byUrgency = [...orders].sort(
-    (a, b) => kitchenTimeMs(a) - kitchenTimeMs(b),
-  );
+  for (const temporalGroup of groupOrdersByTimeWindow(orders)) {
+    const assigned = new Set<number>();
 
-  for (const seed of byUrgency) {
-    if (assigned.has(seed.id)) continue;
+    for (const seed of temporalGroup) {
+      if (assigned.has(seed.id)) continue;
 
-    assigned.add(seed.id);
-    const batch: EligibleOrder[] = [seed];
+      assigned.add(seed.id);
+      const batch: EligibleOrder[] = [seed];
+      const routeReferenceTime = kitchenTimeMs(seed);
 
-    // Fill batch greedily up to maxPerRoute.
-    //
-    // A candidate qualifies only when:
-    //   1. Its geographic score vs at least one batch member >= MIN_PAIR_SCORE.
-    //   2. Adding it would not increase the batch's kitchen-time spread beyond
-    //      MAX_TIME_SPREAD_MS (20 min) — avoids mixing a just-dispatched order
-    //      with one that has been waiting 30+ minutes.
-    while (batch.length < maxPerRoute) {
-      let bestOrder: EligibleOrder | null = null;
-      let bestScore = MIN_PAIR_SCORE - 1; // must exceed threshold to qualify
+      while (batch.length < maxPerRoute) {
+        let bestOrder: EligibleOrder | null = null;
+        let bestScore = MIN_PAIR_SCORE - 1;
 
-      const batchTimes = batch.map(kitchenTimeMs);
-      const batchTimeMin = Math.min(...batchTimes);
-      const batchTimeMax = Math.max(...batchTimes);
+        for (const o of temporalGroup) {
+          if (assigned.has(o.id)) continue;
 
-      for (const o of byUrgency) {
-        if (assigned.has(o.id)) continue;
+          // Defensive gate: never let automatic routing mix orders outside the
+          // route seed's temporal window, even inside a temporal group boundary.
+          if (
+            kitchenTimeMs(o) - routeReferenceTime >
+            MAX_ROUTE_ORDER_TIME_GAP_MS
+          ) {
+            continue;
+          }
 
-        // Time-spread gate: reject if adding this order would exceed 20 min spread
-        const t = kitchenTimeMs(o);
-        const newSpread = Math.max(batchTimeMax, t) - Math.min(batchTimeMin, t);
-        if (newSpread > MAX_TIME_SPREAD_MS) continue;
-
-        // Geographic score vs every current batch member; keep the maximum
-        const score = batch.reduce(
-          (max, batchMember) => Math.max(max, orderPairScore(batchMember, o)),
-          0,
-        );
-        if (score > bestScore) {
-          bestScore = score;
-          bestOrder = o;
-        } else if (score === bestScore && bestOrder !== null) {
-          // Tiebreak: prefer the more urgent (older kitchen time) order
-          if (kitchenTimeMs(o) < kitchenTimeMs(bestOrder)) {
+          const score = batch.reduce(
+            (max, batchMember) => Math.max(max, orderPairScore(batchMember, o)),
+            0,
+          );
+          if (score > bestScore) {
+            bestScore = score;
             bestOrder = o;
+          } else if (score === bestScore && bestOrder !== null) {
+            if (kitchenTimeMs(o) < kitchenTimeMs(bestOrder)) {
+              bestOrder = o;
+            }
           }
         }
+
+        if (!bestOrder) break;
+        batch.push(bestOrder);
+        assigned.add(bestOrder.id);
       }
 
-      if (!bestOrder) break; // no more compatible candidates
-      batch.push(bestOrder);
-      assigned.add(bestOrder.id);
+      routes.push(buildRouteFromBatch(batch, storeCep));
     }
-
-    // Determine main neighborhood (most frequent, preserving original casing)
-    const neighborhoodCounts = new Map<string, number>();
-    for (const o of batch) {
-      const n = (o.deliveryNeighborhood ?? "Outros").trim();
-      neighborhoodCounts.set(n, (neighborhoodCounts.get(n) ?? 0) + 1);
-    }
-    const mainNeighborhood = [...neighborhoodCounts.entries()].sort(
-      (a, b) => b[1] - a[1],
-    )[0][0];
-
-    // Sort stops: closest to store first, then by CEP
-    const sortedBatch = [...batch].sort((a, b) => {
-      const sA = proximityToStore(storeCep, a.deliveryCep ?? "");
-      const sB = proximityToStore(storeCep, b.deliveryCep ?? "");
-      if (sB !== sA) return sB - sA;
-      return normalizeCep(a.deliveryCep ?? "").localeCompare(
-        normalizeCep(b.deliveryCep ?? ""),
-      );
-    });
-
-    routes.push({ mainNeighborhood, orders: sortedBatch });
   }
 
   return routes;

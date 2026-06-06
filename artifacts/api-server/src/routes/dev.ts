@@ -198,6 +198,70 @@ type SeedItemTemplate = {
 };
 
 const curitibaDeliveryAddresses = [
+  // Bloco 1: Jardim das Américas — quatro pedidos próximos no tempo.
+  {
+    neighborhood: "Jardim das Américas",
+    cep: "81530-000",
+    address: "Rua Professor João Doetzer, 610",
+    fee: 7.5,
+  },
+  {
+    neighborhood: "Jardim das Américas",
+    cep: "81540-000",
+    address: "Rua Frei Henrique de Coimbra, 420",
+    fee: 7.5,
+  },
+  {
+    neighborhood: "Jardim das Américas",
+    cep: "81530-120",
+    address: "Avenida Nossa Senhora de Lourdes, 980",
+    fee: 7.75,
+  },
+  {
+    neighborhood: "Jardim das Américas",
+    cep: "81530-290",
+    address: "Rua Tenente Ricardo Kirch, 145",
+    fee: 7.75,
+  },
+  // Logo depois do bloco Jardim das Américas.
+  {
+    neighborhood: "Cajuru",
+    cep: "82900-000",
+    address: "Rua Roraima, 420",
+    fee: 8.25,
+  },
+  // Bloco leste/nordeste próximo por região e CEP.
+  {
+    neighborhood: "Tarumã",
+    cep: "82800-000",
+    address: "Avenida Victor Ferreira do Amaral, 2200",
+    fee: 7.5,
+  },
+  {
+    neighborhood: "Capão da Imbuia",
+    cep: "82810-000",
+    address: "Rua Delegado Leopoldo Belczak, 1330",
+    fee: 7.75,
+  },
+  {
+    neighborhood: "Bairro Alto",
+    cep: "82820-000",
+    address: "Rua Alberico Flores Bueno, 1510",
+    fee: 9.25,
+  },
+  {
+    neighborhood: "Atuba",
+    cep: "82630-000",
+    address: "Rua Margarida de Conto Gava, 275",
+    fee: 8.9,
+  },
+  {
+    neighborhood: "Tingui",
+    cep: "82620-000",
+    address: "Rua Fredolin Wolf, 640",
+    fee: 8.75,
+  },
+  // Bloco norte.
   {
     neighborhood: "Bacacheri",
     cep: "82510-000",
@@ -217,46 +281,47 @@ const curitibaDeliveryAddresses = [
     fee: 9.5,
   },
   {
-    neighborhood: "Atuba",
-    cep: "82630-000",
-    address: "Rua Margarida de Conto Gava, 275",
-    fee: 8.9,
-  },
-  {
-    neighborhood: "Tingui",
-    cep: "82620-000",
-    address: "Rua Fredolin Wolf, 640",
-    fee: 8.75,
-  },
-  {
-    neighborhood: "Bairro Alto",
-    cep: "82820-000",
-    address: "Rua Alberico Flores Bueno, 1510",
-    fee: 9.25,
-  },
-  {
-    neighborhood: "Tarumã",
-    cep: "82800-000",
-    address: "Avenida Victor Ferreira do Amaral, 2200",
-    fee: 7.5,
-  },
-  {
-    neighborhood: "Capão da Imbuia",
-    cep: "82810-000",
-    address: "Rua Delegado Leopoldo Belczak, 1330",
-    fee: 7.75,
-  },
-  {
-    neighborhood: "Cajuru",
-    cep: "82900-000",
-    address: "Rua Roraima, 420",
+    neighborhood: "Ahu",
+    cep: "80540-000",
+    address: "Rua Deputado Mário de Barros, 900",
     fee: 8.25,
   },
+  {
+    neighborhood: "Cabral",
+    cep: "80035-000",
+    address: "Avenida Munhoz da Rocha, 840",
+    fee: 8.5,
+  },
+  // Bloco sul/sudeste.
   {
     neighborhood: "Uberaba",
     cep: "81560-000",
     address: "Avenida Senador Salgado Filho, 4850",
     fee: 10.5,
+  },
+  {
+    neighborhood: "Hauer",
+    cep: "81630-000",
+    address: "Rua Anne Frank, 2100",
+    fee: 9.5,
+  },
+  {
+    neighborhood: "Boqueirão",
+    cep: "81650-000",
+    address: "Avenida Marechal Floriano Peixoto, 6500",
+    fee: 10.25,
+  },
+  {
+    neighborhood: "Xaxim",
+    cep: "81720-000",
+    address: "Rua Francisco Derosso, 3900",
+    fee: 10.75,
+  },
+  {
+    neighborhood: "Portão",
+    cep: "81070-000",
+    address: "Avenida República Argentina, 3000",
+    fee: 9.75,
   },
 ];
 
@@ -284,6 +349,12 @@ function getSeedCount(value: unknown): number {
   const parsed = Number.parseInt(String(value), 10);
   if (!Number.isFinite(parsed) || parsed < 1) return 20;
   return Math.min(parsed, 100);
+}
+
+function getSeedMinutesAgo(index: number, count: number): number {
+  // Keeps test deliveries 8 minutes apart. With the default 20 orders this
+  // creates coherent chronological blocks while preserving a 5–10 minute gap.
+  return (count - index) * 8;
 }
 
 router.post(
@@ -386,7 +457,7 @@ router.post(
         const totalAmount = itemsTotal + deliveryFee;
         const now = new Date();
         const kitchenAcceptedAt = new Date(
-          now.getTime() - ((i % 10) + 1) * 60_000,
+          now.getTime() - getSeedMinutesAgo(i, count) * 60_000,
         );
 
         const [order] = await tx
@@ -444,7 +515,12 @@ router.post(
       { storeId, count: created.length },
       "dev seed-curitiba-delivery-orders: created",
     );
-    res.json({ created: created.length, results: created });
+    res.json({
+      created: created.length,
+      timeGapMinutes: 8,
+      routeTimeWindowMinutes: 30,
+      results: created,
+    });
   },
 );
 

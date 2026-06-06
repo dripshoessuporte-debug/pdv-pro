@@ -1,10 +1,35 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Truck, RefreshCw, Sparkles, MapPin, Package, DollarSign, User, Phone,
-  Banknote, CreditCard, Smartphone, QrCode, Play, CheckCircle2, Clock,
-  AlertTriangle, AlertCircle, Hash, Plus, Minus, ArrowRightLeft, Zap, X,
-  ChevronRight, ChevronDown, Timer, PlusCircle, Lock, ShoppingBag,
+  Truck,
+  RefreshCw,
+  Sparkles,
+  MapPin,
+  Package,
+  DollarSign,
+  User,
+  Phone,
+  Banknote,
+  CreditCard,
+  Smartphone,
+  QrCode,
+  Play,
+  CheckCircle2,
+  Clock,
+  AlertTriangle,
+  AlertCircle,
+  Hash,
+  Plus,
+  Minus,
+  ArrowRightLeft,
+  Zap,
+  X,
+  ChevronRight,
+  ChevronDown,
+  Timer,
+  PlusCircle,
+  Lock,
+  ShoppingBag,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
@@ -31,7 +56,12 @@ import {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type RouteStatus = "available" | "in_progress" | "completed";
-type DeliveryOrderStatus = "pending" | "preparing" | "ready" | "out_for_delivery" | "delivered";
+type DeliveryOrderStatus =
+  | "pending"
+  | "preparing"
+  | "ready"
+  | "out_for_delivery"
+  | "delivered";
 
 interface RouteOrderItem {
   productId: number | null;
@@ -59,6 +89,7 @@ interface RouteOrder {
   changeFor: number | null;
   deliveryPaymentMethod: string | null;
   deliveryPaymentNotes: string | null;
+  orderCreatedAt: string | null;
   items: RouteOrderItem[];
 }
 
@@ -121,8 +152,10 @@ const STATUS_LABELS: Record<RouteStatus, string> = {
 
 const STATUS_COLORS: Record<RouteStatus, string> = {
   available: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
-  in_progress: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  completed: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+  in_progress:
+    "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  completed:
+    "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
 };
 
 const DELIVERY_STATUS_LABELS: Record<DeliveryOrderStatus, string> = {
@@ -134,11 +167,11 @@ const DELIVERY_STATUS_LABELS: Record<DeliveryOrderStatus, string> = {
 };
 
 const DELIVERY_STATUS_COLORS: Record<DeliveryOrderStatus, string> = {
-  pending:          "bg-slate-100 text-slate-700",
-  preparing:        "bg-amber-300 text-amber-950 font-semibold",
-  ready:            "bg-emerald-100 text-emerald-800",
+  pending: "bg-slate-100 text-slate-700",
+  preparing: "bg-amber-300 text-amber-950 font-semibold",
+  ready: "bg-emerald-100 text-emerald-800",
   out_for_delivery: "bg-blue-100 text-blue-800",
-  delivered:        "bg-purple-100 text-purple-800",
+  delivered: "bg-purple-100 text-purple-800",
 };
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -146,6 +179,8 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   pix: "Pix",
   cartao: "Cartão",
 };
+
+const ROUTE_TIME_WINDOW_MINUTES = 30;
 
 const PAYMENT_METHOD_ICONS: Record<string, typeof Banknote> = {
   dinheiro: Banknote,
@@ -201,14 +236,15 @@ const URGENCY_ICON: Record<TimeUrgency, typeof Clock> = {
   danger: AlertCircle,
 };
 
-
 function isTodayLocal(iso: string | null): boolean {
   if (!iso) return false;
   const date = new Date(iso);
   const today = new Date();
-  return date.getFullYear() === today.getFullYear()
-    && date.getMonth() === today.getMonth()
-    && date.getDate() === today.getDate();
+  return (
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -217,19 +253,27 @@ export default function Routes() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [routes, setRoutes] = useState<DeliveryRoute[]>([]);
-  const [pendingOrders, setPendingOrders] = useState<PendingDeliveryOrder[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<PendingDeliveryOrder[]>(
+    [],
+  );
   const [dispatchMinutes, setDispatchMinutes] = useState(20);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [savingDispatch, setSavingDispatch] = useState(false);
   const [, setTick] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(
+    undefined,
+  );
 
   const [qrRoute, setQrRoute] = useState<DeliveryRoute | null>(null);
   const [assignRoute, setAssignRoute] = useState<DeliveryRoute | null>(null);
   const [courierName, setCourierName] = useState("");
-  const [selectedCourierId, setSelectedCourierId] = useState<number | null>(null);
-  const [couriers, setCouriers] = useState<{ id: number; name: string; vehicle: string }[]>([]);
+  const [selectedCourierId, setSelectedCourierId] = useState<number | null>(
+    null,
+  );
+  const [couriers, setCouriers] = useState<
+    { id: number; name: string; vehicle: string }[]
+  >([]);
   const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
@@ -240,13 +284,18 @@ export default function Routes() {
   }, [assignRoute]);
   const [preparingConfirm, setPreparingConfirm] = useState(false);
   const [completing, setCompleting] = useState<number | null>(null);
-  const [moveOrderState, setMoveOrderState] = useState<MoveOrderState | null>(null);
+  const [moveOrderState, setMoveOrderState] = useState<MoveOrderState | null>(
+    null,
+  );
   const [movingOrder, setMovingOrder] = useState(false);
-  const [addPendingState, setAddPendingState] = useState<AddPendingState | null>(null);
+  const [addPendingState, setAddPendingState] =
+    useState<AddPendingState | null>(null);
   const [addingToRoute, setAddingToRoute] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
   const [maxOrdersPerRoute, setMaxOrdersPerRoute] = useState(4);
-  const [routeView, setRouteView] = useState<"available" | "in_progress">("available");
+  const [routeView, setRouteView] = useState<"available" | "in_progress">(
+    "available",
+  );
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [isOrderDetailOpen, setIsOrderDetailOpen] = useState(false);
 
@@ -266,7 +315,9 @@ export default function Routes() {
 
   const fetchPendingOrders = useCallback(async () => {
     try {
-      const data = await apiFetch<PendingDeliveryOrder[]>("/delivery/orders/pending");
+      const data = await apiFetch<PendingDeliveryOrder[]>(
+        "/delivery/orders/pending",
+      );
       setPendingOrders(data);
     } catch {
       // silently ignore
@@ -275,7 +326,10 @@ export default function Routes() {
 
   const fetchSettings = useCallback(async () => {
     try {
-      const s = await apiFetch<{ deliveryDispatchTimeMinutes: number; maxOrdersPerRoute: number }>("/settings");
+      const s = await apiFetch<{
+        deliveryDispatchTimeMinutes: number;
+        maxOrdersPerRoute: number;
+      }>("/settings");
       setDispatchMinutes(s.deliveryDispatchTimeMinutes);
       setMaxOrdersPerRoute(s.maxOrdersPerRoute ?? 4);
     } catch {
@@ -307,7 +361,7 @@ export default function Routes() {
     try {
       const { created } = await apiFetch<{ created: number }>(
         "/delivery/routes/generate",
-        { method: "POST" }
+        { method: "POST" },
       );
       await refreshDeliveryAndFinanceViews();
       toast({
@@ -348,7 +402,9 @@ export default function Routes() {
 
     // Warn if some orders are still preparing
     if (!forcePrep) {
-      const preparingCount = assignRoute.orders.filter((o) => o.deliveryStatus === "preparing").length;
+      const preparingCount = assignRoute.orders.filter(
+        (o) => o.deliveryStatus === "preparing",
+      ).length;
       if (preparingCount > 0) {
         setPreparingConfirm(true);
         return;
@@ -366,13 +422,18 @@ export default function Routes() {
         body: JSON.stringify(body),
       });
       await refreshDeliveryAndFinanceViews();
-      const name = couriers.find((c) => c.id === selectedCourierId)?.name ?? courierName.trim();
+      const name =
+        couriers.find((c) => c.id === selectedCourierId)?.name ??
+        courierName.trim();
       toast({ title: `Rota assumida por ${name}!` });
       setAssignRoute(null);
       setCourierName("");
       setSelectedCourierId(null);
     } catch (e) {
-      toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
+      toast({
+        title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`,
+        variant: "destructive",
+      });
     } finally {
       setAssigning(false);
     }
@@ -381,11 +442,16 @@ export default function Routes() {
   const handleComplete = async (route: DeliveryRoute) => {
     setCompleting(route.id);
     try {
-      await apiFetch(`/delivery/routes/${route.id}/complete`, { method: "POST" });
+      await apiFetch(`/delivery/routes/${route.id}/complete`, {
+        method: "POST",
+      });
       await refreshDeliveryAndFinanceViews();
       toast({ title: "Rota concluída! Pedidos marcados como entregues." });
     } catch (e) {
-      toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
+      toast({
+        title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`,
+        variant: "destructive",
+      });
     } finally {
       setCompleting(null);
     }
@@ -397,13 +463,19 @@ export default function Routes() {
     try {
       await apiFetch(`/delivery/routes/${moveOrderState.routeId}/move-order`, {
         method: "POST",
-        body: JSON.stringify({ orderId: moveOrderState.orderId, targetRouteId }),
+        body: JSON.stringify({
+          orderId: moveOrderState.orderId,
+          targetRouteId,
+        }),
       });
       await Promise.all([fetchRoutes(), fetchPendingOrders()]);
       toast({ title: "Pedido movido!" });
       setMoveOrderState(null);
     } catch (e) {
-      toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
+      toast({
+        title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`,
+        variant: "destructive",
+      });
     } finally {
       setMovingOrder(false);
     }
@@ -421,13 +493,19 @@ export default function Routes() {
       toast({ title: "Pedido voltou para aguardando rota." });
       setMoveOrderState(null);
     } catch (e) {
-      toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
+      toast({
+        title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`,
+        variant: "destructive",
+      });
     } finally {
       setMovingOrder(false);
     }
   };
 
-  const handleDirectRemoveFromRoute = async (routeId: number, orderId: number) => {
+  const handleDirectRemoveFromRoute = async (
+    routeId: number,
+    orderId: number,
+  ) => {
     try {
       await apiFetch(`/delivery/routes/${routeId}/move-order`, {
         method: "POST",
@@ -436,11 +514,17 @@ export default function Routes() {
       await Promise.all([fetchRoutes(), fetchPendingOrders()]);
       toast({ title: "Pedido removido da rota." });
     } catch (e) {
-      toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
+      toast({
+        title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`,
+        variant: "destructive",
+      });
     }
   };
 
-  const handleCreateEmergency = async (orderId: number, fromMoveDialog?: boolean) => {
+  const handleCreateEmergency = async (
+    orderId: number,
+    fromMoveDialog?: boolean,
+  ) => {
     setMovingOrder(true);
     try {
       await apiFetch("/delivery/routes/emergency", {
@@ -452,7 +536,10 @@ export default function Routes() {
       if (fromMoveDialog) setMoveOrderState(null);
       setAddPendingState(null);
     } catch (e) {
-      toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
+      toast({
+        title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`,
+        variant: "destructive",
+      });
     } finally {
       setMovingOrder(false);
     }
@@ -470,28 +557,43 @@ export default function Routes() {
       toast({ title: "Pedido adicionado à rota!" });
       setAddPendingState(null);
     } catch (e) {
-      toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
+      toast({
+        title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`,
+        variant: "destructive",
+      });
     } finally {
       setAddingToRoute(false);
     }
   };
 
-  const [pendingSelected, setPendingSelected] = useState<Set<number>>(new Set());
+  const [pendingSelected, setPendingSelected] = useState<Set<number>>(
+    new Set(),
+  );
   const refreshDeliveryAndFinanceViews = useCallback(async () => {
     await Promise.all([
       fetchRoutes(),
       fetchPendingOrders(),
       queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() }),
-      queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }),
-      queryClient.invalidateQueries({ queryKey: getGetCurrentCashRegisterQueryKey() }),
-      queryClient.invalidateQueries({ queryKey: getListAwaitingSettlementQueryKey() }),
+      queryClient.invalidateQueries({
+        queryKey: getGetDashboardSummaryQueryKey(),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: getGetCurrentCashRegisterQueryKey(),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: getListAwaitingSettlementQueryKey(),
+      }),
     ]);
   }, [fetchPendingOrders, fetchRoutes, queryClient]);
 
   const pendingOrdersRenderable = pendingOrders.filter((order) => {
-    const isEligibleDeliveryStatus = ["pending", "preparing", "ready"].includes(order.deliveryStatus ?? "");
+    const isEligibleDeliveryStatus = ["pending", "preparing", "ready"].includes(
+      order.deliveryStatus ?? "",
+    );
     const hasRouteLink = (order as { routeId?: number | null }).routeId != null;
-    return isEligibleDeliveryStatus && !hasRouteLink && isTodayLocal(order.createdAt);
+    return (
+      isEligibleDeliveryStatus && !hasRouteLink && isTodayLocal(order.createdAt)
+    );
   });
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [bulkAdding, setBulkAdding] = useState(false);
@@ -499,7 +601,8 @@ export default function Routes() {
   const togglePending = (id: number) => {
     setPendingSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -517,15 +620,20 @@ export default function Routes() {
           apiFetch(`/delivery/routes/${routeId}/add-order`, {
             method: "POST",
             body: JSON.stringify({ orderId }),
-          })
-        )
+          }),
+        ),
       );
       await Promise.all([fetchRoutes(), fetchPendingOrders()]);
-      toast({ title: `${pendingSelected.size} pedido(s) adicionado(s) à rota!` });
+      toast({
+        title: `${pendingSelected.size} pedido(s) adicionado(s) à rota!`,
+      });
       setPendingSelected(new Set());
       setBulkAddOpen(false);
     } catch (e) {
-      toast({ title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`, variant: "destructive" });
+      toast({
+        title: `Erro: ${e instanceof Error ? e.message : "Desconhecido"}`,
+        variant: "destructive",
+      });
     } finally {
       setBulkAdding(false);
     }
@@ -536,21 +644,33 @@ export default function Routes() {
   const inProgressRoutes = routes.filter((r) => r.status === "in_progress");
   const hasActiveRoutes = availableRoutes.length + inProgressRoutes.length > 0;
   const hasPendingOrders = pendingOrdersRenderable.length > 0;
-  const completedTodayRoutes = routes.filter((r) => r.status === "completed" && isTodayLocal(r.completedAt));
-  const oldCompletedRoutes = routes.filter((r) => r.status === "completed" && !isTodayLocal(r.completedAt));
-  const completedRoutes = showCompleted ? [...completedTodayRoutes, ...oldCompletedRoutes] : completedTodayRoutes;
+  const completedTodayRoutes = routes.filter(
+    (r) => r.status === "completed" && isTodayLocal(r.completedAt),
+  );
+  const oldCompletedRoutes = routes.filter(
+    (r) => r.status === "completed" && !isTodayLocal(r.completedAt),
+  );
+  const completedRoutes = showCompleted
+    ? [...completedTodayRoutes, ...oldCompletedRoutes]
+    : completedTodayRoutes;
 
   const routeNavigation = (
     <div className="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-[#E2E8F0] bg-white p-2 shadow-sm">
       <button
         type="button"
         className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${hasPendingOrders && !hasActiveRoutes ? "bg-[#0F172A] text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
-        onClick={() => document.getElementById("pending-routes-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        onClick={() =>
+          document
+            .getElementById("pending-routes-section")
+            ?.scrollIntoView({ behavior: "smooth", block: "start" })
+        }
         disabled={!hasPendingOrders}
         data-testid="tab-pending-routes"
       >
         <span>Aguardando rota</span>
-        <span className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${hasPendingOrders && !hasActiveRoutes ? "bg-white text-[#0F172A]" : "bg-[#E2E8F0] text-[#0F172A]"}`}>
+        <span
+          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${hasPendingOrders && !hasActiveRoutes ? "bg-white text-[#0F172A]" : "bg-[#E2E8F0] text-[#0F172A]"}`}
+        >
           {pendingOrdersRenderable.length}
         </span>
       </button>
@@ -560,9 +680,13 @@ export default function Routes() {
         className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "available" ? "bg-[#D91F16] text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
         data-testid="tab-available"
       >
-        <span className={`h-2 w-2 shrink-0 rounded-full ${routeView === "available" ? "bg-white" : "bg-[#D91F16]"}`} />
+        <span
+          className={`h-2 w-2 shrink-0 rounded-full ${routeView === "available" ? "bg-white" : "bg-[#D91F16]"}`}
+        />
         <span>Rotas disponíveis</span>
-        <span className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "available" ? "bg-white text-[#D91F16]" : "bg-[#E2E8F0] text-[#0F172A]"}`}>
+        <span
+          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "available" ? "bg-white text-[#D91F16]" : "bg-[#E2E8F0] text-[#0F172A]"}`}
+        >
           {availableRoutes.length}
         </span>
       </button>
@@ -572,9 +696,13 @@ export default function Routes() {
         className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "in_progress" ? "bg-[#0F172A] text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
         data-testid="tab-in-progress"
       >
-        <span className={`h-2 w-2 shrink-0 rounded-full ${routeView === "in_progress" ? "bg-white" : "bg-[#0F172A]"}`} />
+        <span
+          className={`h-2 w-2 shrink-0 rounded-full ${routeView === "in_progress" ? "bg-white" : "bg-[#0F172A]"}`}
+        />
         <span>Em andamento</span>
-        <span className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "in_progress" ? "bg-white text-[#0F172A]" : "bg-[#E2E8F0] text-[#0F172A]"}`}>
+        <span
+          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "in_progress" ? "bg-white text-[#0F172A]" : "bg-[#E2E8F0] text-[#0F172A]"}`}
+        >
           {inProgressRoutes.length}
         </span>
       </button>
@@ -595,7 +723,6 @@ export default function Routes() {
   return (
     <Layout>
       <div className="space-y-5">
-
         {/* ── Header ── */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
@@ -604,7 +731,8 @@ export default function Routes() {
               Painel de Rotas
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Delivery em tempo real — agrupe pedidos em rotas quando estiver pronto
+              Delivery em tempo real — agrupe pedidos em rotas quando estiver
+              pronto
             </p>
             {/* ── Legenda de cores por distância ── */}
             <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-2">
@@ -614,35 +742,61 @@ export default function Routes() {
                     className="w-2 h-2 rounded-full shrink-0"
                     style={{ backgroundColor: entry.color }}
                   />
-                  <span className="text-xs text-muted-foreground">{entry.label}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {entry.label}
+                  </span>
                 </div>
               ))}
+              <div className="flex items-center gap-1.5 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                <Timer className="w-3 h-3" />
+                Agrupamento automático: horário primeiro (janela{" "}
+                {ROUTE_TIME_WINDOW_MINUTES} min), distância/CEP depois
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-1 bg-muted rounded-lg px-2.5 py-1.5 text-sm">
               <Timer className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="text-muted-foreground text-xs">Prazo:</span>
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 w-5 p-0"
                 onClick={() => handleUpdateDispatchTime(-5)}
-                disabled={savingDispatch || dispatchMinutes <= 5}>
+                disabled={savingDispatch || dispatchMinutes <= 5}
+              >
                 <Minus className="w-3 h-3" />
               </Button>
               <span className="font-semibold w-14 text-center text-xs">
                 {savingDispatch ? "..." : `${dispatchMinutes} min`}
               </span>
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 w-5 p-0"
                 onClick={() => handleUpdateDispatchTime(5)}
-                disabled={savingDispatch || dispatchMinutes >= 120}>
+                disabled={savingDispatch || dispatchMinutes >= 120}
+              >
                 <Plus className="w-3 h-3" />
               </Button>
             </div>
-            <Button variant="outline" size="sm" onClick={fetchAll} disabled={loading}>
-              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchAll}
+              disabled={loading}
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`}
+              />
               Atualizar
             </Button>
-            <Button onClick={handleGroupRoutes} disabled={generating} className="gap-1.5"
-              data-testid="button-generate-routes">
+            <Button
+              onClick={handleGroupRoutes}
+              disabled={generating}
+              className="gap-1.5"
+              data-testid="button-generate-routes"
+            >
               <Sparkles className="w-4 h-4" />
               {generating ? "Agrupando..." : "Gerar Rotas"}
             </Button>
@@ -653,16 +807,32 @@ export default function Routes() {
         {(routes.length > 0 || pendingOrdersRenderable.length > 0) && (
           <div className="flex items-center gap-3 flex-wrap">
             {[
-              { label: "Aguardando rota", count: pendingOrdersRenderable.length },
-              { label: "Disponíveis", count: activeRoutes.filter((r) => r.status === "available").length },
-              { label: "Em andamento", count: activeRoutes.filter((r) => r.status === "in_progress").length },
+              {
+                label: "Aguardando rota",
+                count: pendingOrdersRenderable.length,
+              },
+              {
+                label: "Disponíveis",
+                count: activeRoutes.filter((r) => r.status === "available")
+                  .length,
+              },
+              {
+                label: "Em andamento",
+                count: activeRoutes.filter((r) => r.status === "in_progress")
+                  .length,
+              },
               { label: "Concluídas hoje", count: completedTodayRoutes.length },
             ].map((s) => (
-              <div key={s.label} className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2">
+              <div
+                key={s.label}
+                className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2"
+              >
                 <span className="min-w-[1.75rem] h-7 rounded-md bg-[#0F172A] text-white text-sm font-bold flex items-center justify-center px-1.5">
                   {s.count}
                 </span>
-                <span className="text-xs font-medium text-[#0F172A]">{s.label}</span>
+                <span className="text-xs font-medium text-[#0F172A]">
+                  {s.label}
+                </span>
               </div>
             ))}
           </div>
@@ -677,16 +847,20 @@ export default function Routes() {
         )}
 
         {/* ── Empty ── */}
-        {!loading && routes.length === 0 && pendingOrdersRenderable.length === 0 && (
-          <div className="text-center py-16 border-2 border-dashed rounded-xl text-muted-foreground">
-            <Truck className="w-12 h-12 mx-auto mb-3 opacity-20" />
-            <p className="text-lg font-semibold mb-1">Nenhum pedido delivery</p>
-            <p className="text-sm max-w-xs mx-auto">
-              Pedidos de delivery aparecem aqui assim que registrados. Use{" "}
-              <strong>Gerar Rotas</strong> para agrupá-los.
-            </p>
-          </div>
-        )}
+        {!loading &&
+          routes.length === 0 &&
+          pendingOrdersRenderable.length === 0 && (
+            <div className="text-center py-16 border-2 border-dashed rounded-xl text-muted-foreground">
+              <Truck className="w-12 h-12 mx-auto mb-3 opacity-20" />
+              <p className="text-lg font-semibold mb-1">
+                Nenhum pedido delivery
+              </p>
+              <p className="text-sm max-w-xs mx-auto">
+                Pedidos de delivery aparecem aqui assim que registrados. Use{" "}
+                <strong>Gerar Rotas</strong> para agrupá-los.
+              </p>
+            </div>
+          )}
 
         {/* ── Route navigation moves up while orders are only waiting for route generation ── */}
         {!loading && hasPendingOrders && !hasActiveRoutes && routeNavigation}
@@ -696,7 +870,10 @@ export default function Routes() {
           <section id="pending-routes-section">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <h2 className="text-base font-semibold">Aguardando Rota</h2>
-              <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+              <Badge
+                variant="secondary"
+                className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+              >
                 {pendingOrdersRenderable.length}
               </Badge>
               <div className="flex items-center gap-2 ml-auto flex-wrap">
@@ -706,12 +883,18 @@ export default function Routes() {
                   className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                   data-testid="btn-select-all-pending"
                 >
-                  <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors ${pendingSelected.size === pendingOrdersRenderable.length && pendingOrdersRenderable.length > 0 ? "bg-primary border-primary" : pendingSelected.size > 0 ? "bg-primary/40 border-primary" : "border-[#CBD5E1] hover:border-primary"}`}>
+                  <div
+                    className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors ${pendingSelected.size === pendingOrdersRenderable.length && pendingOrdersRenderable.length > 0 ? "bg-primary border-primary" : pendingSelected.size > 0 ? "bg-primary/40 border-primary" : "border-[#CBD5E1] hover:border-primary"}`}
+                  >
                     {pendingSelected.size > 0 && (
-                      <div className={`${pendingSelected.size === pendingOrdersRenderable.length ? "w-2 h-1.5" : "w-1.5 h-0.5"} bg-white rounded`} />
+                      <div
+                        className={`${pendingSelected.size === pendingOrdersRenderable.length ? "w-2 h-1.5" : "w-1.5 h-0.5"} bg-white rounded`}
+                      />
                     )}
                   </div>
-                  {pendingSelected.size === 0 ? "Selecionar todos" : `${pendingSelected.size} selecionado${pendingSelected.size !== 1 ? "s" : ""}`}
+                  {pendingSelected.size === 0
+                    ? "Selecionar todos"
+                    : `${pendingSelected.size} selecionado${pendingSelected.size !== 1 ? "s" : ""}`}
                 </button>
 
                 {/* Bulk actions */}
@@ -728,7 +911,12 @@ export default function Routes() {
                   </Button>
                 )}
                 {pendingSelected.size > 0 && (
-                  <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setPendingSelected(new Set())}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs text-muted-foreground"
+                    onClick={() => setPendingSelected(new Set())}
+                  >
                     Limpar
                   </Button>
                 )}
@@ -745,7 +933,12 @@ export default function Routes() {
                   isLast={idx === pendingOrdersRenderable.length - 1}
                   selected={pendingSelected.has(order.id)}
                   onToggle={() => togglePending(order.id)}
-                  onAddToRoute={() => setAddPendingState({ orderId: order.id, customerName: order.customerName })}
+                  onAddToRoute={() =>
+                    setAddPendingState({
+                      orderId: order.id,
+                      customerName: order.customerName,
+                    })
+                  }
                   onEmergency={() => handleCreateEmergency(order.id)}
                   onOpenOrder={() => openOrderDetail(order.id)}
                 />
@@ -768,52 +961,76 @@ export default function Routes() {
                   index={idx}
                   allActiveRoutes={activeRoutes}
                   maxOrders={maxOrdersPerRoute}
-                  onAssign={() => { setAssignRoute(route); setCourierName(""); }}
+                  onAssign={() => {
+                    setAssignRoute(route);
+                    setCourierName("");
+                  }}
                   onComplete={() => handleComplete(route)}
                   onQrCode={() => setQrRoute(route)}
                   onMoveOrder={(orderId, customerName) =>
-                    setMoveOrderState({ orderId, routeId: route.id, customerName })
+                    setMoveOrderState({
+                      orderId,
+                      routeId: route.id,
+                      customerName,
+                    })
                   }
-                  onDirectRemove={(orderId) => handleDirectRemoveFromRoute(route.id, orderId)}
+                  onDirectRemove={(orderId) =>
+                    handleDirectRemoveFromRoute(route.id, orderId)
+                  }
                   onOpenOrder={openOrderDetail}
                   completing={completing === route.id}
                 />
               ))}
             </div>
-          ) : !loading && (
-            <div className="text-center py-10 border-2 border-dashed rounded-xl text-muted-foreground">
-              <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p className="text-sm font-medium">Nenhuma rota disponível</p>
-              <p className="text-xs mt-1">Clique em <strong>Gerar Rotas</strong> para agrupar os pedidos</p>
-            </div>
+          ) : (
+            !loading && (
+              <div className="text-center py-10 border-2 border-dashed rounded-xl text-muted-foreground">
+                <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm font-medium">Nenhuma rota disponível</p>
+                <p className="text-xs mt-1">
+                  Clique em <strong>Gerar Rotas</strong> para agrupar os pedidos
+                </p>
+              </div>
+            )
           )
+        ) : inProgressRoutes.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {inProgressRoutes.map((route, idx) => (
+              <RouteCard
+                key={route.id}
+                route={route}
+                index={idx}
+                allActiveRoutes={activeRoutes}
+                maxOrders={maxOrdersPerRoute}
+                onAssign={() => {
+                  setAssignRoute(route);
+                  setCourierName("");
+                }}
+                onComplete={() => handleComplete(route)}
+                onQrCode={() => setQrRoute(route)}
+                onMoveOrder={(orderId, customerName) =>
+                  setMoveOrderState({
+                    orderId,
+                    routeId: route.id,
+                    customerName,
+                  })
+                }
+                onDirectRemove={(orderId) =>
+                  handleDirectRemoveFromRoute(route.id, orderId)
+                }
+                onOpenOrder={openOrderDetail}
+                completing={completing === route.id}
+              />
+            ))}
+          </div>
         ) : (
-          inProgressRoutes.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {inProgressRoutes.map((route, idx) => (
-                <RouteCard
-                  key={route.id}
-                  route={route}
-                  index={idx}
-                  allActiveRoutes={activeRoutes}
-                  maxOrders={maxOrdersPerRoute}
-                  onAssign={() => { setAssignRoute(route); setCourierName(""); }}
-                  onComplete={() => handleComplete(route)}
-                  onQrCode={() => setQrRoute(route)}
-                  onMoveOrder={(orderId, customerName) =>
-                    setMoveOrderState({ orderId, routeId: route.id, customerName })
-                  }
-                  onDirectRemove={(orderId) => handleDirectRemoveFromRoute(route.id, orderId)}
-                  onOpenOrder={openOrderDetail}
-                  completing={completing === route.id}
-                />
-              ))}
-            </div>
-          ) : !loading && (
+          !loading && (
             <div className="text-center py-10 border-2 border-dashed rounded-xl text-muted-foreground">
               <Truck className="w-8 h-8 mx-auto mb-2 opacity-30" />
               <p className="text-sm font-medium">Nenhuma rota em andamento</p>
-              <p className="text-xs mt-1">Rotas assumidas por motoboys aparecerão aqui</p>
+              <p className="text-xs mt-1">
+                Rotas assumidas por motoboys aparecerão aqui
+              </p>
             </div>
           )
         )}
@@ -827,9 +1044,13 @@ export default function Routes() {
             >
               <CheckCircle2 className="w-4 h-4" />
               <span className="font-medium">
-                {showCompleted ? "Ocultar concluídas" : `Ver histórico de concluídas (${completedRoutes.length})`}
+                {showCompleted
+                  ? "Ocultar concluídas"
+                  : `Ver histórico de concluídas (${completedRoutes.length})`}
               </span>
-              <ChevronRight className={`w-4 h-4 transition-transform ${showCompleted ? "rotate-90" : ""}`} />
+              <ChevronRight
+                className={`w-4 h-4 transition-transform ${showCompleted ? "rotate-90" : ""}`}
+              />
             </button>
             {showCompleted && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-3 opacity-60">
@@ -862,30 +1083,53 @@ export default function Routes() {
       />
 
       {/* ── QR Code Modal ── */}
-      <Dialog open={!!qrRoute} onOpenChange={(open) => { if (!open) setQrRoute(null); }}>
+      <Dialog
+        open={!!qrRoute}
+        onOpenChange={(open) => {
+          if (!open) setQrRoute(null);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <QrCode className="w-5 h-5" />
               QR Code — {qrRoute?.name}
             </DialogTitle>
-            <DialogDescription>Escaneie para abrir no Google Maps</DialogDescription>
+            <DialogDescription>
+              Escaneie para abrir no Google Maps
+            </DialogDescription>
           </DialogHeader>
           {qrRoute?.mapsUrl ? (
             <div className="space-y-3">
               <div className="flex justify-center p-4 bg-white rounded-xl border">
-                <QRCodeSVG value={qrRoute.mapsUrl} size={210} level="M" includeMargin={false} />
+                <QRCodeSVG
+                  value={qrRoute.mapsUrl}
+                  size={210}
+                  level="M"
+                  includeMargin={false}
+                />
               </div>
               <div className="text-xs text-muted-foreground space-y-1">
-                <p className="font-medium">Paradas ({qrRoute.orders.length}):</p>
+                <p className="font-medium">
+                  Paradas ({qrRoute.orders.length}):
+                </p>
                 {[...qrRoute.orders]
                   .sort((a, b) => a.stopOrder - b.stopOrder)
                   .map((o) => (
                     <div key={o.id} className="flex items-start gap-1.5">
-                      <span className="font-bold text-primary shrink-0">{o.stopOrder}.</span>
+                      <span className="font-bold text-primary shrink-0">
+                        {o.stopOrder}.
+                      </span>
                       <div>
-                        <p>{o.customerName ?? `Pedido #${o.orderId}`} · {o.deliveryAddress ?? "—"}</p>
-                        {o.deliveryCep && <p className="text-muted-foreground">CEP: {o.deliveryCep}</p>}
+                        <p>
+                          {o.customerName ?? `Pedido #${o.orderId}`} ·{" "}
+                          {o.deliveryAddress ?? "—"}
+                        </p>
+                        {o.deliveryCep && (
+                          <p className="text-muted-foreground">
+                            CEP: {o.deliveryCep}
+                          </p>
+                        )}
                         {o.paymentTiming === "on_delivery" && (
                           <p className="text-amber-600 font-medium">
                             💰 Cobrar R$ {o.totalAmount.toFixed(2)}
@@ -898,7 +1142,12 @@ export default function Routes() {
                     </div>
                   ))}
               </div>
-              <a href={qrRoute.mapsUrl} target="_blank" rel="noopener noreferrer" className="block">
+              <a
+                href={qrRoute.mapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block"
+              >
                 <Button variant="outline" size="sm" className="w-full gap-1.5">
                   <MapPin className="w-3.5 h-3.5" />
                   Abrir no Maps
@@ -906,15 +1155,24 @@ export default function Routes() {
               </a>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-4">Nenhum endereço configurado</p>
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Nenhum endereço configurado
+            </p>
           )}
         </DialogContent>
       </Dialog>
 
       {/* ── Assign Modal ── */}
-      <Dialog open={!!assignRoute} onOpenChange={(open) => {
-        if (!open) { setAssignRoute(null); setSelectedCourierId(null); setCourierName(""); }
-      }}>
+      <Dialog
+        open={!!assignRoute}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAssignRoute(null);
+            setSelectedCourierId(null);
+            setCourierName("");
+          }
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -930,9 +1188,17 @@ export default function Routes() {
                 <p className="font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-2">
                   <Banknote className="w-4 h-4" /> Valores a receber
                 </p>
-                <p>Total a cobrar: <strong>R$ {assignRoute.totalToReceive.toFixed(2)}</strong></p>
+                <p>
+                  Total a cobrar:{" "}
+                  <strong>R$ {assignRoute.totalToReceive.toFixed(2)}</strong>
+                </p>
                 {assignRoute.totalChangeNeeded > 0 && (
-                  <p>Troco necessário: <strong>R$ {assignRoute.totalChangeNeeded.toFixed(2)}</strong></p>
+                  <p>
+                    Troco necessário:{" "}
+                    <strong>
+                      R$ {assignRoute.totalChangeNeeded.toFixed(2)}
+                    </strong>
+                  </p>
                 )}
               </div>
             )}
@@ -940,16 +1206,26 @@ export default function Routes() {
             {/* Courier list */}
             {couriers.length > 0 ? (
               <div className="space-y-1.5">
-                <p className="text-xs font-medium text-muted-foreground">Selecione o motoboy:</p>
+                <p className="text-xs font-medium text-muted-foreground">
+                  Selecione o motoboy:
+                </p>
                 <div className="grid gap-1.5 max-h-48 overflow-y-auto pr-0.5">
                   {couriers.map((c) => {
                     const isSelected = selectedCourierId === c.id;
-                    const vehicleEmoji = c.vehicle === "bike" ? "🚲" : c.vehicle === "carro" ? "🚗" : "🏍️";
+                    const vehicleEmoji =
+                      c.vehicle === "bike"
+                        ? "🚲"
+                        : c.vehicle === "carro"
+                          ? "🚗"
+                          : "🏍️";
                     return (
                       <button
                         key={c.id}
                         type="button"
-                        onClick={() => { setSelectedCourierId(c.id); setCourierName(""); }}
+                        onClick={() => {
+                          setSelectedCourierId(c.id);
+                          setCourierName("");
+                        }}
                         className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
                           isSelected
                             ? "border-primary bg-primary/5 ring-1 ring-primary"
@@ -960,37 +1236,64 @@ export default function Routes() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium">{c.name}</p>
                         </div>
-                        {isSelected && <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />}
+                        {isSelected && (
+                          <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                        )}
                       </button>
                     );
                   })}
                 </div>
                 <div className="relative">
-                  <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
                   <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">ou digite manualmente</span>
+                    <span className="bg-background px-2 text-muted-foreground">
+                      ou digite manualmente
+                    </span>
                   </div>
                 </div>
               </div>
             ) : (
               <p className="text-xs text-muted-foreground text-center py-2">
-                Nenhum motoboy cadastrado. <a href="/motoboys" className="underline text-primary">Cadastrar agora</a>
+                Nenhum motoboy cadastrado.{" "}
+                <a href="/motoboys" className="underline text-primary">
+                  Cadastrar agora
+                </a>
               </p>
             )}
 
             <Input
               placeholder="Nome do motoboy (avulso)"
               value={courierName}
-              onChange={(e) => { setCourierName(e.target.value); if (e.target.value) setSelectedCourierId(null); }}
+              onChange={(e) => {
+                setCourierName(e.target.value);
+                if (e.target.value) setSelectedCourierId(null);
+              }}
               onKeyDown={(e) => e.key === "Enter" && handleAssign()}
               data-testid="input-courier-name"
             />
 
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => { setAssignRoute(null); setSelectedCourierId(null); setCourierName(""); }}>Cancelar</Button>
-              <Button className="flex-1" onClick={() => handleAssign()}
-                disabled={assigning || (!selectedCourierId && !courierName.trim())}
-                data-testid="button-confirm-assign">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setAssignRoute(null);
+                  setSelectedCourierId(null);
+                  setCourierName("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={() => handleAssign()}
+                disabled={
+                  assigning || (!selectedCourierId && !courierName.trim())
+                }
+                data-testid="button-confirm-assign"
+              >
                 {assigning ? "Salvando..." : "Confirmar"}
               </Button>
             </div>
@@ -999,14 +1302,33 @@ export default function Routes() {
               <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 p-3 text-sm space-y-2">
                 <p className="font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4" />
-                  {assignRoute?.orders.filter((o) => o.deliveryStatus === "preparing").length} pedido(s) ainda em preparo
+                  {
+                    assignRoute?.orders.filter(
+                      (o) => o.deliveryStatus === "preparing",
+                    ).length
+                  }{" "}
+                  pedido(s) ainda em preparo
                 </p>
                 <p className="text-amber-700 dark:text-amber-400 text-xs">
-                  O motoboy sairá com pedidos que ainda não estão prontos na cozinha. Eles continuarão como "Em preparo" na rota até ficarem prontos. Confirma?
+                  O motoboy sairá com pedidos que ainda não estão prontos na
+                  cozinha. Eles continuarão como "Em preparo" na rota até
+                  ficarem prontos. Confirma?
                 </p>
                 <div className="flex gap-2 pt-1">
-                  <Button variant="outline" size="sm" className="flex-1" onClick={() => setPreparingConfirm(false)}>Voltar</Button>
-                  <Button size="sm" className="flex-1 bg-amber-600 hover:bg-amber-700 text-white" onClick={() => handleAssign(true)} disabled={assigning}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setPreparingConfirm(false)}
+                  >
+                    Voltar
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1 bg-amber-600 hover:bg-amber-700 text-white"
+                    onClick={() => handleAssign(true)}
+                    disabled={assigning}
+                  >
                     {assigning ? "Salvando..." : "Confirmar mesmo assim"}
                   </Button>
                 </div>
@@ -1017,7 +1339,12 @@ export default function Routes() {
       </Dialog>
 
       {/* ── Add Pending to Route Modal ── */}
-      <Dialog open={!!addPendingState} onOpenChange={(open) => { if (!open) setAddPendingState(null); }}>
+      <Dialog
+        open={!!addPendingState}
+        onOpenChange={(open) => {
+          if (!open) setAddPendingState(null);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1026,13 +1353,18 @@ export default function Routes() {
             </DialogTitle>
             <DialogDescription>
               Pedido de{" "}
-              <strong>{addPendingState?.customerName ?? `#${addPendingState?.orderId}`}</strong>
+              <strong>
+                {addPendingState?.customerName ??
+                  `#${addPendingState?.orderId}`}
+              </strong>
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             {activeRoutes.length > 0 ? (
               <>
-                <p className="text-sm text-muted-foreground">Escolha a rota de destino:</p>
+                <p className="text-sm text-muted-foreground">
+                  Escolha a rota de destino:
+                </p>
                 {activeRoutes.map((r) => {
                   const ts = getTimeStatus(r.dispatchDeadline);
                   return (
@@ -1044,16 +1376,25 @@ export default function Routes() {
                       disabled={addingToRoute}
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
+                        <span
+                          className="w-3 h-3 rounded-full shrink-0"
+                          style={{ backgroundColor: r.color }}
+                        />
                         <div className="text-left min-w-0">
-                          <p className="text-sm font-medium truncate">{r.name}</p>
+                          <p className="text-sm font-medium truncate">
+                            {r.name}
+                          </p>
                           <p className="text-xs text-muted-foreground">
-                            {r.orders.length} pedido{r.orders.length !== 1 ? "s" : ""} · {r.mainNeighborhood}
+                            {r.orders.length} pedido
+                            {r.orders.length !== 1 ? "s" : ""} ·{" "}
+                            {r.mainNeighborhood}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <span className={`text-xs ${URGENCY_TEXT[ts.urgency]}`}>{ts.label}</span>
+                        <span className={`text-xs ${URGENCY_TEXT[ts.urgency]}`}>
+                          {ts.label}
+                        </span>
                         <ChevronRight className="w-4 h-4 text-muted-foreground" />
                       </div>
                     </Button>
@@ -1063,7 +1404,10 @@ export default function Routes() {
                   <Button
                     variant="outline"
                     className="w-full gap-2 border-red-300 text-[#D91F16] hover:bg-red-50 dark:border-red-800 dark:text-red-300"
-                    onClick={() => addPendingState && handleCreateEmergency(addPendingState.orderId)}
+                    onClick={() =>
+                      addPendingState &&
+                      handleCreateEmergency(addPendingState.orderId)
+                    }
                     disabled={addingToRoute}
                   >
                     <Zap className="w-4 h-4" />
@@ -1073,10 +1417,16 @@ export default function Routes() {
               </>
             ) : (
               <>
-                <p className="text-sm text-muted-foreground">Não há rotas ativas. Criar uma rota solitária para este pedido?</p>
+                <p className="text-sm text-muted-foreground">
+                  Não há rotas ativas. Criar uma rota solitária para este
+                  pedido?
+                </p>
                 <Button
                   className="w-full gap-2"
-                  onClick={() => addPendingState && handleCreateEmergency(addPendingState.orderId)}
+                  onClick={() =>
+                    addPendingState &&
+                    handleCreateEmergency(addPendingState.orderId)
+                  }
                   disabled={addingToRoute}
                 >
                   <Zap className="w-4 h-4" />
@@ -1084,7 +1434,12 @@ export default function Routes() {
                 </Button>
               </>
             )}
-            <Button variant="ghost" className="w-full" onClick={() => setAddPendingState(null)} disabled={addingToRoute}>
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => setAddPendingState(null)}
+              disabled={addingToRoute}
+            >
               Cancelar
             </Button>
           </div>
@@ -1092,43 +1447,63 @@ export default function Routes() {
       </Dialog>
 
       {/* ── Bulk Add to Route Modal ── */}
-      <Dialog open={bulkAddOpen} onOpenChange={(open) => { if (!open) setBulkAddOpen(false); }}>
+      <Dialog
+        open={bulkAddOpen}
+        onOpenChange={(open) => {
+          if (!open) setBulkAddOpen(false);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Plus className="w-5 h-5" />
-              Adicionar {pendingSelected.size} pedido{pendingSelected.size !== 1 ? "s" : ""} à rota
+              Adicionar {pendingSelected.size} pedido
+              {pendingSelected.size !== 1 ? "s" : ""} à rota
             </DialogTitle>
             <DialogDescription>Escolha a rota de destino</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            {activeRoutes.filter((r) => r.status !== "completed").map((r) => {
-              const ts = getTimeStatus(r.dispatchDeadline);
-              return (
-                <Button
-                  key={r.id}
-                  variant="outline"
-                  className="w-full justify-between gap-2 h-auto py-2.5"
-                  onClick={() => handleBulkAddToRoute(r.id)}
-                  disabled={bulkAdding}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
-                    <div className="text-left min-w-0">
-                      <p className="text-sm font-medium truncate">{r.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {r.orders.length} pedido{r.orders.length !== 1 ? "s" : ""} · {r.mainNeighborhood}
-                      </p>
+            {activeRoutes
+              .filter((r) => r.status !== "completed")
+              .map((r) => {
+                const ts = getTimeStatus(r.dispatchDeadline);
+                return (
+                  <Button
+                    key={r.id}
+                    variant="outline"
+                    className="w-full justify-between gap-2 h-auto py-2.5"
+                    onClick={() => handleBulkAddToRoute(r.id)}
+                    disabled={bulkAdding}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="w-3 h-3 rounded-full shrink-0"
+                        style={{ backgroundColor: r.color }}
+                      />
+                      <div className="text-left min-w-0">
+                        <p className="text-sm font-medium truncate">{r.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {r.orders.length} pedido
+                          {r.orders.length !== 1 ? "s" : ""} ·{" "}
+                          {r.mainNeighborhood}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className={`text-xs ${URGENCY_TEXT[ts.urgency]}`}>{ts.label}</span>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                  </div>
-                </Button>
-              );
-            })}
-            <Button variant="ghost" className="w-full" onClick={() => setBulkAddOpen(false)} disabled={bulkAdding}>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className={`text-xs ${URGENCY_TEXT[ts.urgency]}`}>
+                        {ts.label}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                  </Button>
+                );
+              })}
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => setBulkAddOpen(false)}
+              disabled={bulkAdding}
+            >
               Cancelar
             </Button>
           </div>
@@ -1136,7 +1511,12 @@ export default function Routes() {
       </Dialog>
 
       {/* ── Move Order Modal (from route card) ── */}
-      <Dialog open={!!moveOrderState} onOpenChange={(open) => { if (!open) setMoveOrderState(null); }}>
+      <Dialog
+        open={!!moveOrderState}
+        onOpenChange={(open) => {
+          if (!open) setMoveOrderState(null);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1144,15 +1524,27 @@ export default function Routes() {
               Mover Pedido
             </DialogTitle>
             <DialogDescription>
-              Pedido de <strong>{moveOrderState?.customerName ?? `#${moveOrderState?.orderId}`}</strong>
+              Pedido de{" "}
+              <strong>
+                {moveOrderState?.customerName ?? `#${moveOrderState?.orderId}`}
+              </strong>
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            {routes.filter((r) => r.status !== "completed" && r.id !== moveOrderState?.routeId).length > 0 && (
+            {routes.filter(
+              (r) =>
+                r.status !== "completed" && r.id !== moveOrderState?.routeId,
+            ).length > 0 && (
               <div className="space-y-1.5">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Mover para</p>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Mover para
+                </p>
                 {routes
-                  .filter((r) => r.status !== "completed" && r.id !== moveOrderState?.routeId)
+                  .filter(
+                    (r) =>
+                      r.status !== "completed" &&
+                      r.id !== moveOrderState?.routeId,
+                  )
                   .map((r) => (
                     <Button
                       key={r.id}
@@ -1162,9 +1554,14 @@ export default function Routes() {
                       disabled={movingOrder}
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
+                        <span
+                          className="w-3 h-3 rounded-full shrink-0"
+                          style={{ backgroundColor: r.color }}
+                        />
                         <span className="truncate text-sm">{r.name}</span>
-                        <span className="text-xs text-muted-foreground shrink-0">({r.orders.length} ped.)</span>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          ({r.orders.length} ped.)
+                        </span>
                       </div>
                       <ChevronRight className="w-4 h-4 shrink-0 text-muted-foreground" />
                     </Button>
@@ -1175,7 +1572,10 @@ export default function Routes() {
               <Button
                 variant="outline"
                 className="w-full gap-2 border-red-300 text-[#D91F16] hover:bg-red-50 dark:border-red-800 dark:text-red-300"
-                onClick={() => moveOrderState && handleCreateEmergency(moveOrderState.orderId, true)}
+                onClick={() =>
+                  moveOrderState &&
+                  handleCreateEmergency(moveOrderState.orderId, true)
+                }
                 disabled={movingOrder}
               >
                 <Zap className="w-4 h-4" />
@@ -1191,7 +1591,12 @@ export default function Routes() {
                 Remover (volta para aguardando)
               </Button>
             </div>
-            <Button variant="ghost" className="w-full" onClick={() => setMoveOrderState(null)} disabled={movingOrder}>
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => setMoveOrderState(null)}
+              disabled={movingOrder}
+            >
               Cancelar
             </Button>
           </div>
@@ -1227,7 +1632,9 @@ function PendingOrderRow({
   const deadlineMs = order.kitchenAcceptedAt
     ? new Date(order.kitchenAcceptedAt).getTime() + dispatchMinutes * 60_000
     : null;
-  const timeStatus = deadlineMs ? getTimeStatus(new Date(deadlineMs).toISOString()) : null;
+  const timeStatus = deadlineMs
+    ? getTimeStatus(new Date(deadlineMs).toISOString())
+    : null;
 
   const ds = order.deliveryStatus as DeliveryOrderStatus | null;
   const dsLabel = ds ? DELIVERY_STATUS_LABELS[ds] : null;
@@ -1251,13 +1658,26 @@ function PendingOrderRow({
         title={selected ? "Desmarcar" : "Selecionar"}
       >
         {selected && (
-          <svg viewBox="0 0 10 8" className="w-2.5 h-2 fill-white" xmlns="http://www.w3.org/2000/svg">
-            <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+          <svg
+            viewBox="0 0 10 8"
+            className="w-2.5 h-2 fill-white"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M1 4l2.5 2.5L9 1"
+              stroke="white"
+              strokeWidth="1.5"
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         )}
       </button>
       {/* Urgency dot */}
-      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${timeStatus ? URGENCY_DOT[urgency] : "bg-gray-300"}`} />
+      <span
+        className={`w-2.5 h-2.5 rounded-full shrink-0 ${timeStatus ? URGENCY_DOT[urgency] : "bg-gray-300"}`}
+      />
 
       {/* Info */}
       <div className="flex-1 min-w-0">
@@ -1266,7 +1686,9 @@ function PendingOrderRow({
             {order.customerName ?? `Pedido #${order.id}`}
           </span>
           {dsLabel && (
-            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium shrink-0 ${dsColor}`}>
+            <span
+              className={`text-xs px-1.5 py-0.5 rounded-full font-medium shrink-0 ${dsColor}`}
+            >
               {dsLabel}
             </span>
           )}
@@ -1279,10 +1701,14 @@ function PendingOrderRow({
         <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
           <MapPin className="w-3 h-3 shrink-0" />
           <span className="truncate">
-            {[order.deliveryNeighborhood, order.deliveryCep].filter(Boolean).join(" · ")}
+            {[order.deliveryNeighborhood, order.deliveryCep]
+              .filter(Boolean)
+              .join(" · ")}
           </span>
           <span className="mx-1 opacity-40">·</span>
-          <span className="font-semibold text-[#D91F16]">Clique para ver comanda</span>
+          <span className="font-semibold text-[#D91F16]">
+            Clique para ver comanda
+          </span>
           {order.customerPhone && (
             <>
               <span className="mx-1 opacity-40">·</span>
@@ -1296,7 +1722,9 @@ function PendingOrderRow({
       {/* Timer */}
       <div className="shrink-0 text-right hidden sm:block">
         {timeStatus ? (
-          <div className={`flex items-center gap-1 text-xs font-medium ${URGENCY_TEXT[urgency]}`}>
+          <div
+            className={`flex items-center gap-1 text-xs font-medium ${URGENCY_TEXT[urgency]}`}
+          >
             <UrgencyIcon className="w-3 h-3" />
             {timeStatus.label}
           </div>
@@ -1348,20 +1776,23 @@ function PendingOrderRow({
 
 // ─── Route value color based on total delivery fee ────────────────────────────
 
-function getRouteDistanceColor(distKm: number): { color: string; glow: string } {
-  if (distKm > 8) return { color: "#EAB308", glow: "rgba(234,179,8,0.20)"   };
-  if (distKm > 6) return { color: "#8B5CF6", glow: "rgba(139,92,246,0.20)"  };
-  if (distKm > 4) return { color: "#EC4899", glow: "rgba(236,72,153,0.20)"  };
-  if (distKm > 2) return { color: "#22C55E", glow: "rgba(34,197,94,0.20)"   };
-  return          { color: "#3B82F6", glow: "rgba(59,130,246,0.20)"  };
+function getRouteDistanceColor(distKm: number): {
+  color: string;
+  glow: string;
+} {
+  if (distKm > 8) return { color: "#EAB308", glow: "rgba(234,179,8,0.20)" };
+  if (distKm > 6) return { color: "#8B5CF6", glow: "rgba(139,92,246,0.20)" };
+  if (distKm > 4) return { color: "#EC4899", glow: "rgba(236,72,153,0.20)" };
+  if (distKm > 2) return { color: "#22C55E", glow: "rgba(34,197,94,0.20)" };
+  return { color: "#3B82F6", glow: "rgba(59,130,246,0.20)" };
 }
 
 const ROUTE_DISTANCE_LEGEND = [
-  { color: "#3B82F6", label: "até 2 km"       },
-  { color: "#22C55E", label: "2–4 km"          },
-  { color: "#EC4899", label: "4–6 km"          },
-  { color: "#8B5CF6", label: "6–8 km"          },
-  { color: "#EAB308", label: "acima de 8 km"   },
+  { color: "#3B82F6", label: "até 2 km" },
+  { color: "#22C55E", label: "2–4 km" },
+  { color: "#EC4899", label: "4–6 km" },
+  { color: "#8B5CF6", label: "6–8 km" },
+  { color: "#EAB308", label: "acima de 8 km" },
 ] as const;
 
 // ─── RouteCard ────────────────────────────────────────────────────────────────
@@ -1396,7 +1827,9 @@ function RouteCard({
   const isAvailable = route.status === "available";
   const isInProgress = route.status === "in_progress";
   const isCompleted = route.status === "completed";
-  const sortedOrders = [...route.orders].sort((a, b) => a.stopOrder - b.stopOrder);
+  const sortedOrders = [...route.orders].sort(
+    (a, b) => a.stopOrder - b.stopOrder,
+  );
   const canMoveOrders = isAvailable || isInProgress;
 
   // Card expand/collapse (default: collapsed)
@@ -1405,30 +1838,59 @@ function RouteCard({
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
 
   const hiddenCount = Math.max(0, sortedOrders.length - COMPACT_MAX_ORDERS);
-  const visibleOrders = expanded ? sortedOrders : sortedOrders.slice(0, COMPACT_MAX_ORDERS);
+  const visibleOrders = expanded
+    ? sortedOrders
+    : sortedOrders.slice(0, COMPACT_MAX_ORDERS);
 
   const totalFridges = sortedOrders
     .flatMap((o) => o.items ?? [])
     .filter((i) => i.productName.toLowerCase().includes("refri"))
     .reduce((sum, i) => sum + i.quantity, 0);
 
-  const timeStatus = !isCompleted ? getTimeStatus(route.dispatchDeadline) : null;
+  const timeStatus = !isCompleted
+    ? getTimeStatus(route.dispatchDeadline)
+    : null;
   const urgency = timeStatus?.urgency ?? "ok";
   const TimeIcon = URGENCY_ICON[urgency];
 
-  const readyCount = route.orders.filter((o) => o.deliveryStatus === "ready").length;
+  const readyCount = route.orders.filter(
+    (o) => o.deliveryStatus === "ready",
+  ).length;
   const totalCount = route.orders.length;
   const allOrdersReady = totalCount > 0 && readyCount === totalCount;
 
-  const maxDistKm = route.orders.length > 0
-    ? Math.max(...route.orders.map((o) => o.estimatedDistanceKm ?? 5))
-    : 5;
+  const maxDistKm =
+    route.orders.length > 0
+      ? Math.max(...route.orders.map((o) => o.estimatedDistanceKm ?? 5))
+      : 5;
   const vc = getRouteDistanceColor(maxDistKm);
-  const readinessPct = totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
-  const otherNeighborhoods = route.includedNeighborhoods.filter((n) => n !== route.mainNeighborhood);
+  const readinessPct =
+    totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
+  const otherNeighborhoods = route.includedNeighborhoods.filter(
+    (n) => n !== route.mainNeighborhood,
+  );
+
+  const routeOrderTimes = route.orders
+    .map((o) =>
+      o.orderCreatedAt ? new Date(o.orderCreatedAt).getTime() : null,
+    )
+    .filter(
+      (value): value is number => value !== null && Number.isFinite(value),
+    );
+  const routeTimeSpreadMinutes =
+    routeOrderTimes.length >= 2
+      ? Math.round(
+          (Math.max(...routeOrderTimes) - Math.min(...routeOrderTimes)) /
+            60_000,
+        )
+      : 0;
+  const isWithinAutomaticTimeWindow =
+    routeTimeSpreadMinutes <= ROUTE_TIME_WINDOW_MINUTES;
 
   const hasDetailedContent =
-    !isCompleted && (totalFridges > 0 || sortedOrders.some((o) => o.paymentTiming === "on_delivery"));
+    !isCompleted &&
+    (totalFridges > 0 ||
+      sortedOrders.some((o) => o.paymentTiming === "on_delivery"));
   const showExpandToggle = sortedOrders.length >= 2 || hasDetailedContent;
 
   const handleToggleExpand = () => {
@@ -1450,15 +1912,20 @@ function RouteCard({
       }}
     >
       <div className="p-4 flex flex-col gap-3 flex-1">
-
         {/* ── Header ── */}
         <div className="flex items-start gap-3">
           {/* Readiness pill */}
           <div
             className="flex flex-col items-center justify-center shrink-0 rounded-xl px-2.5 py-2 min-w-[58px]"
-            style={{ backgroundColor: `${vc.color}12`, border: `1px solid ${vc.color}40` }}
+            style={{
+              backgroundColor: `${vc.color}12`,
+              border: `1px solid ${vc.color}40`,
+            }}
           >
-            <span className="text-xl font-black leading-none" style={{ color: vc.color }}>
+            <span
+              className="text-xl font-black leading-none"
+              style={{ color: vc.color }}
+            >
               {totalCount}
             </span>
             <span className="text-[10px] font-semibold text-[#0F172A] leading-tight mt-0.5">
@@ -1470,7 +1937,8 @@ function RouteCard({
                   className="h-full rounded-full transition-all duration-500"
                   style={{
                     width: `${readinessPct}%`,
-                    backgroundColor: readinessPct === 100 ? "#22C55E" : vc.color,
+                    backgroundColor:
+                      readinessPct === 100 ? "#22C55E" : vc.color,
                   }}
                 />
               </div>
@@ -1482,14 +1950,21 @@ function RouteCard({
 
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-sm leading-snug text-[#0F172A]">
-              <span style={{ color: vc.color }} className="font-black">{index + 1}</span>
-              {" "}{route.mainNeighborhood}
+              <span style={{ color: vc.color }} className="font-black">
+                {index + 1}
+              </span>{" "}
+              {route.mainNeighborhood}
             </h3>
-            <div className="flex items-center gap-1 mt-0.5 text-xs" style={{ color: "#64748B" }}>
+            <div
+              className="flex items-center gap-1 mt-0.5 text-xs"
+              style={{ color: "#64748B" }}
+            >
               <MapPin className="w-3 h-3 shrink-0" />
               <span className="font-medium">{route.mainNeighborhood}</span>
               {otherNeighborhoods.length > 0 && (
-                <span className="opacity-70 truncate">· {otherNeighborhoods.join(", ")}</span>
+                <span className="opacity-70 truncate">
+                  · {otherNeighborhoods.join(", ")}
+                </span>
               )}
             </div>
             {isInProgress && route.courierName && (
@@ -1498,19 +1973,33 @@ function RouteCard({
                 <span className="font-medium">{route.courierName}</span>
               </div>
             )}
-            <div className="flex items-center gap-1 mt-0.5 text-xs" style={{ color: vc.color }}>
+            <div
+              className="flex items-center gap-1 mt-0.5 text-xs"
+              style={{ color: vc.color }}
+            >
               <MapPin className="w-3 h-3 shrink-0" />
-              <span className="font-semibold">~{maxDistKm.toFixed(1)} km (máx.)</span>
+              <span className="font-semibold">
+                ~{maxDistKm.toFixed(1)} km (máx.)
+              </span>
+            </div>
+            <div
+              className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${isWithinAutomaticTimeWindow ? "bg-blue-50 text-blue-700" : "bg-amber-100 text-amber-700"}`}
+            >
+              <Timer className="w-3 h-3" />
+              Janela {routeTimeSpreadMinutes} min / limite{" "}
+              {ROUTE_TIME_WINDOW_MINUTES} min
             </div>
           </div>
 
           {/* Time pill */}
           {timeStatus && !isCompleted && (
-            <div className={`shrink-0 flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full
+            <div
+              className={`shrink-0 flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full
               ${urgency === "ok" ? "bg-emerald-100 text-emerald-700" : ""}
               ${urgency === "warning" ? "bg-amber-100 text-amber-700" : ""}
               ${urgency === "danger" ? "bg-red-100 text-red-700" : ""}
-            `}>
+            `}
+            >
               <TimeIcon className="w-3 h-3 shrink-0" />
               <span>{timeStatus.label}</span>
             </div>
@@ -1518,7 +2007,10 @@ function RouteCard({
           {isCompleted && route.completedAt && (
             <div className="shrink-0 flex items-center gap-1 text-xs text-emerald-600">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              {new Date(route.completedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+              {new Date(route.completedAt).toLocaleTimeString("pt-BR", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </div>
           )}
         </div>
@@ -1534,41 +2026,56 @@ function RouteCard({
             const dotColor = isReady
               ? "bg-emerald-400"
               : isPrep
-              ? "bg-amber-400"
-              : isOut
-              ? "bg-blue-400"
-              : isDelivered
-              ? "bg-zinc-500"
-              : "bg-zinc-600";
+                ? "bg-amber-400"
+                : isOut
+                  ? "bg-blue-400"
+                  : isDelivered
+                    ? "bg-zinc-500"
+                    : "bg-zinc-600";
             const dsLabel = ds ? DELIVERY_STATUS_LABELS[ds] : null;
             const PayIcon =
-              order.paymentTiming === "on_delivery" && order.deliveryPaymentMethod
-                ? (PAYMENT_METHOD_ICONS[order.deliveryPaymentMethod] ?? Banknote)
+              order.paymentTiming === "on_delivery" &&
+              order.deliveryPaymentMethod
+                ? (PAYMENT_METHOD_ICONS[order.deliveryPaymentMethod] ??
+                  Banknote)
                 : null;
             const changeAmt =
               order.needsChange === "true" && order.changeFor
                 ? Math.max(0, order.changeFor - order.totalAmount)
                 : null;
 
-            const isOrderExpanded = expanded && expandedOrderId === order.orderId;
-            const orderFridges = (order.items ?? []).filter((i) => i.productName.toLowerCase().includes("refri"));
+            const isOrderExpanded =
+              expanded && expandedOrderId === order.orderId;
+            const orderFridges = (order.items ?? []).filter((i) =>
+              i.productName.toLowerCase().includes("refri"),
+            );
             const hasFridges = orderFridges.length > 0;
 
             return (
               <div
                 key={order.id}
                 className="overflow-hidden transition-all"
-                style={{ borderColor: isOrderExpanded ? `${vc.color}40` : "transparent" }}
+                style={{
+                  borderColor: isOrderExpanded
+                    ? `${vc.color}40`
+                    : "transparent",
+                }}
               >
                 {/* Order row */}
                 <div
                   className="group flex cursor-pointer items-center gap-2.5 px-3 py-2.5 text-xs transition-colors select-none hover:bg-slate-100"
-                  style={{ backgroundColor: isOrderExpanded ? `${vc.color}08` : "#F8FAFC" }}
+                  style={{
+                    backgroundColor: isOrderExpanded
+                      ? `${vc.color}08`
+                      : "#F8FAFC",
+                  }}
                   onMouseEnter={(e) => {
-                    if (!isOrderExpanded) e.currentTarget.style.backgroundColor = "#F1F5F9";
+                    if (!isOrderExpanded)
+                      e.currentTarget.style.backgroundColor = "#F1F5F9";
                   }}
                   onMouseLeave={(e) => {
-                    if (!isOrderExpanded) e.currentTarget.style.backgroundColor = "#F8FAFC";
+                    if (!isOrderExpanded)
+                      e.currentTarget.style.backgroundColor = "#F8FAFC";
                   }}
                   onClick={() => onOpenOrder(order.orderId)}
                   title="Clique para ver comanda"
@@ -1577,13 +2084,19 @@ function RouteCard({
                   {/* Stop number */}
                   <div
                     className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-black shrink-0 border"
-                    style={{ backgroundColor: `${vc.color}18`, borderColor: vc.color, color: vc.color }}
+                    style={{
+                      backgroundColor: `${vc.color}18`,
+                      borderColor: vc.color,
+                      color: vc.color,
+                    }}
                   >
                     {order.stopOrder}
                   </div>
 
                   {/* Status dot */}
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`}
+                  />
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
@@ -1591,7 +2104,9 @@ function RouteCard({
                       <span className="shrink-0 rounded-md bg-[#0F172A] px-1.5 py-0.5 text-[10px] font-black leading-none text-white">
                         #{order.orderId}
                       </span>
-                      <span className="truncate">{order.customerName ?? "Cliente não informado"}</span>
+                      <span className="truncate">
+                        {order.customerName ?? "Cliente não informado"}
+                      </span>
                     </p>
                     <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                       {order.paymentTiming === "on_delivery" && (
@@ -1602,17 +2117,22 @@ function RouteCard({
                       )}
                       {hasFridges && (
                         <span className="text-blue-500 font-semibold flex items-center gap-0.5">
-                          🥤 {orderFridges.reduce((s, i) => s + i.quantity, 0)} refri
+                          🥤 {orderFridges.reduce((s, i) => s + i.quantity, 0)}{" "}
+                          refri
                         </span>
                       )}
-                      <p className="mt-0.5 text-[10px] font-semibold text-[#D91F16]">Clique para ver comanda</p>
+                      <p className="mt-0.5 text-[10px] font-semibold text-[#D91F16]">
+                        Clique para ver comanda
+                      </p>
                     </div>
                   </div>
 
                   {/* Right: status + move + chevron */}
                   <div className="flex items-center gap-1.5 shrink-0">
                     {dsLabel && (
-                      <span className={`px-1.5 py-px rounded-full font-medium text-[10px] ${DELIVERY_STATUS_COLORS[ds!]}`}>
+                      <span
+                        className={`px-1.5 py-px rounded-full font-medium text-[10px] ${DELIVERY_STATUS_COLORS[ds!]}`}
+                      >
                         {dsLabel}
                       </span>
                     )}
@@ -1651,7 +2171,9 @@ function RouteCard({
                         className="rounded-md p-0.5 hover:bg-slate-200"
                         onClick={(event) => {
                           event.stopPropagation();
-                          setExpandedOrderId(isOrderExpanded ? null : order.orderId);
+                          setExpandedOrderId(
+                            isOrderExpanded ? null : order.orderId,
+                          );
                         }}
                         title="Ver itens rápidos da entrega"
                       >
@@ -1665,28 +2187,40 @@ function RouteCard({
 
                 {/* Expanded items panel (per-order, only when card is expanded) */}
                 {isOrderExpanded && (
-                  <div className="px-3 pb-3 pt-1 space-y-1.5" style={{ backgroundColor: `${vc.color}06` }}>
+                  <div
+                    className="px-3 pb-3 pt-1 space-y-1.5"
+                    style={{ backgroundColor: `${vc.color}06` }}
+                  >
                     <p className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wide flex items-center gap-1">
-                      <ShoppingBag className="w-3 h-3" /> Itens do pedido #{order.orderId}
+                      <ShoppingBag className="w-3 h-3" /> Itens do pedido #
+                      {order.orderId}
                     </p>
                     {(order.items ?? []).length === 0 ? (
-                      <p className="text-[11px] text-[#94A3B8] italic">Nenhum item registrado</p>
+                      <p className="text-[11px] text-[#94A3B8] italic">
+                        Nenhum item registrado
+                      </p>
                     ) : (
                       <div className="space-y-0.5">
                         {(order.items ?? []).map((item, itemIdx) => {
-                          const isFridge = item.productName.toLowerCase().includes("refri");
+                          const isFridge = item.productName
+                            .toLowerCase()
+                            .includes("refri");
                           return (
                             <div
                               key={itemIdx}
                               className={`flex items-center justify-between text-[11px] px-2 py-1 rounded-md ${
-                                isFridge ? "bg-blue-50 text-blue-800 font-semibold" : "text-[#334155]"
+                                isFridge
+                                  ? "bg-blue-50 text-blue-800 font-semibold"
+                                  : "text-[#334155]"
                               }`}
                             >
                               <span className="flex items-center gap-1">
                                 {isFridge && <span>🥤</span>}
                                 {item.productName}
                               </span>
-                              <span className={`font-bold shrink-0 ml-2 ${isFridge ? "text-blue-600" : "text-[#0F172A]"}`}>
+                              <span
+                                className={`font-bold shrink-0 ml-2 ${isFridge ? "text-blue-600" : "text-[#0F172A]"}`}
+                              >
                                 × {item.quantity}
                               </span>
                             </div>
@@ -1696,14 +2230,18 @@ function RouteCard({
                     )}
                     <p className="text-[#64748B] text-[10px] truncate pt-0.5">
                       📍 {order.deliveryAddress ?? "—"}
-                      {order.deliveryNeighborhood ? ` · ${order.deliveryNeighborhood}` : ""}
+                      {order.deliveryNeighborhood
+                        ? ` · ${order.deliveryNeighborhood}`
+                        : ""}
                     </p>
                     {order.paymentTiming === "on_delivery" && (
                       <div className="flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 rounded-md px-2 py-1">
                         <Banknote className="w-3 h-3 shrink-0" />
                         Cobrar R$ {order.totalAmount.toFixed(2)}
                         {changeAmt !== null && (
-                          <span className="ml-1 text-orange-500">· Troco R$ {changeAmt.toFixed(2)}</span>
+                          <span className="ml-1 text-orange-500">
+                            · Troco R$ {changeAmt.toFixed(2)}
+                          </span>
                         )}
                       </div>
                     )}
@@ -1724,8 +2262,8 @@ function RouteCard({
               style={{ color: vc.color }}
               data-testid={`btn-show-more-${route.id}`}
             >
-              <Plus className="w-3 h-3" />
-              +{hiddenCount} entrega{hiddenCount > 1 ? "s" : ""}
+              <Plus className="w-3 h-3" />+{hiddenCount} entrega
+              {hiddenCount > 1 ? "s" : ""}
             </button>
           )}
         </div>
@@ -1734,19 +2272,26 @@ function RouteCard({
         {isAvailable && (
           <div
             className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl ${
-              allOrdersReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"
+              allOrdersReady
+                ? "bg-emerald-50 text-emerald-700"
+                : "bg-amber-50 text-amber-800"
             }`}
           >
             {allOrdersReady ? (
               <>
                 <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                <span className="font-medium">Todos prontos — pronto para sair!</span>
+                <span className="font-medium">
+                  Todos prontos — pronto para sair!
+                </span>
               </>
             ) : (
               <>
                 <Clock className="w-3.5 h-3.5 shrink-0" />
                 <span>
-                  <strong>{readyCount}/{totalCount}</strong> pedidos prontos na cozinha
+                  <strong>
+                    {readyCount}/{totalCount}
+                  </strong>{" "}
+                  pedidos prontos na cozinha
                 </span>
               </>
             )}
@@ -1767,13 +2312,17 @@ function RouteCard({
           {route.totalToReceive > 0 && (
             <div className="flex items-center justify-between">
               <span className="text-[#64748B]">Receber na entrega</span>
-              <span className="font-semibold text-amber-600">R$ {route.totalToReceive.toFixed(2)}</span>
+              <span className="font-semibold text-amber-600">
+                R$ {route.totalToReceive.toFixed(2)}
+              </span>
             </div>
           )}
           {route.totalChangeNeeded > 0 && (
             <div className="flex items-center justify-between">
               <span className="text-[#64748B]">Troco necessário</span>
-              <span className="font-semibold text-orange-500">R$ {route.totalChangeNeeded.toFixed(2)}</span>
+              <span className="font-semibold text-orange-500">
+                R$ {route.totalChangeNeeded.toFixed(2)}
+              </span>
             </div>
           )}
           <div className="flex items-center justify-between">
@@ -1788,14 +2337,21 @@ function RouteCard({
             className="rounded-xl border px-3 py-2 text-xs space-y-1.5"
             style={{ backgroundColor: "#F8FAFC", borderColor: "#E2E8F0" }}
           >
-            <p className="font-semibold text-[#0F172A] text-[11px] uppercase tracking-wide">Resumo da rota</p>
+            <p className="font-semibold text-[#0F172A] text-[11px] uppercase tracking-wide">
+              Resumo da rota
+            </p>
             {totalFridges > 0 && (
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1 text-blue-700 font-medium">🥤 Refrigerantes</span>
-                <span className="font-bold text-blue-700">{totalFridges} un.</span>
+                <span className="flex items-center gap-1 text-blue-700 font-medium">
+                  🥤 Refrigerantes
+                </span>
+                <span className="font-bold text-blue-700">
+                  {totalFridges} un.
+                </span>
               </div>
             )}
-            {sortedOrders.filter((o) => o.paymentTiming === "on_delivery").length > 0 && (
+            {sortedOrders.filter((o) => o.paymentTiming === "on_delivery")
+              .length > 0 && (
               <div className="border-t border-[#E2E8F0] pt-1.5">
                 <p className="flex items-center gap-1 text-amber-700 font-semibold mb-1">
                   <Banknote className="w-3 h-3" /> Cobranças na entrega
@@ -1808,12 +2364,21 @@ function RouteCard({
                         ? Math.max(0, o.changeFor - o.totalAmount)
                         : null;
                     return (
-                      <div key={o.orderId} className="flex items-center justify-between py-0.5">
-                        <span className="font-bold text-amber-800">#{o.orderId}</span>
+                      <div
+                        key={o.orderId}
+                        className="flex items-center justify-between py-0.5"
+                      >
+                        <span className="font-bold text-amber-800">
+                          #{o.orderId}
+                        </span>
                         <div className="text-right">
-                          <span className="font-bold text-amber-700">R$ {o.totalAmount.toFixed(2)}</span>
+                          <span className="font-bold text-amber-700">
+                            R$ {o.totalAmount.toFixed(2)}
+                          </span>
                           {chg !== null && chg > 0 && (
-                            <span className="text-orange-500 ml-1.5">· Troco R$ {chg.toFixed(2)}</span>
+                            <span className="text-orange-500 ml-1.5">
+                              · Troco R$ {chg.toFixed(2)}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -1821,7 +2386,9 @@ function RouteCard({
                   })}
                 <div className="border-t border-amber-200 mt-1 pt-1 flex items-center justify-between">
                   <span className="text-amber-700">Total</span>
-                  <span className="font-bold text-amber-700">R$ {route.totalToReceive.toFixed(2)}</span>
+                  <span className="font-bold text-amber-700">
+                    R$ {route.totalToReceive.toFixed(2)}
+                  </span>
                 </div>
               </div>
             )}
@@ -1847,7 +2414,10 @@ function RouteCard({
         )}
 
         {/* ── Footer ── */}
-        <div className="flex items-center gap-2 pt-1 mt-auto" style={{ borderTop: "1px solid #E2E8F0" }}>
+        <div
+          className="flex items-center gap-2 pt-1 mt-auto"
+          style={{ borderTop: "1px solid #E2E8F0" }}
+        >
           <div className="flex-1" />
 
           <Button
