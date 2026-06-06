@@ -534,9 +534,63 @@ export default function Routes() {
   const activeRoutes = routes.filter((r) => r.status !== "completed");
   const availableRoutes = routes.filter((r) => r.status === "available");
   const inProgressRoutes = routes.filter((r) => r.status === "in_progress");
+  const hasActiveRoutes = availableRoutes.length + inProgressRoutes.length > 0;
+  const hasPendingOrders = pendingOrdersRenderable.length > 0;
   const completedTodayRoutes = routes.filter((r) => r.status === "completed" && isTodayLocal(r.completedAt));
   const oldCompletedRoutes = routes.filter((r) => r.status === "completed" && !isTodayLocal(r.completedAt));
   const completedRoutes = showCompleted ? [...completedTodayRoutes, ...oldCompletedRoutes] : completedTodayRoutes;
+
+  const routeNavigation = (
+    <div className="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-[#E2E8F0] bg-white p-2 shadow-sm">
+      <button
+        type="button"
+        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${hasPendingOrders && !hasActiveRoutes ? "bg-[#0F172A] text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
+        onClick={() => document.getElementById("pending-routes-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        disabled={!hasPendingOrders}
+        data-testid="tab-pending-routes"
+      >
+        <span>Aguardando rota</span>
+        <span className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${hasPendingOrders && !hasActiveRoutes ? "bg-white text-[#0F172A]" : "bg-[#E2E8F0] text-[#0F172A]"}`}>
+          {pendingOrdersRenderable.length}
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={() => setRouteView("available")}
+        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "available" ? "bg-[#D91F16] text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
+        data-testid="tab-available"
+      >
+        <span className={`h-2 w-2 shrink-0 rounded-full ${routeView === "available" ? "bg-white" : "bg-[#D91F16]"}`} />
+        <span>Rotas disponíveis</span>
+        <span className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "available" ? "bg-white text-[#D91F16]" : "bg-[#E2E8F0] text-[#0F172A]"}`}>
+          {availableRoutes.length}
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={() => setRouteView("in_progress")}
+        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "in_progress" ? "bg-[#0F172A] text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
+        data-testid="tab-in-progress"
+      >
+        <span className={`h-2 w-2 shrink-0 rounded-full ${routeView === "in_progress" ? "bg-white" : "bg-[#0F172A]"}`} />
+        <span>Em andamento</span>
+        <span className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "in_progress" ? "bg-white text-[#0F172A]" : "bg-[#E2E8F0] text-[#0F172A]"}`}>
+          {inProgressRoutes.length}
+        </span>
+      </button>
+      <button
+        type="button"
+        className="flex items-center gap-2 rounded-xl bg-[#F8FAFC] px-3 py-2 text-sm font-semibold text-[#334155] transition-all hover:bg-[#F1F5F9]"
+        onClick={() => setShowCompleted((v) => !v)}
+        data-testid="tab-completed-today"
+      >
+        <span>Concluídas hoje</span>
+        <span className="min-w-6 rounded-full bg-[#E2E8F0] px-2 py-0.5 text-center text-xs font-black text-[#0F172A]">
+          {completedTodayRoutes.length}
+        </span>
+      </button>
+    </div>
+  );
 
   return (
     <Layout>
@@ -634,9 +688,12 @@ export default function Routes() {
           </div>
         )}
 
+        {/* ── Route navigation moves up while orders are only waiting for route generation ── */}
+        {!loading && hasPendingOrders && !hasActiveRoutes && routeNavigation}
+
         {/* ── Pending orders (compact list) ── */}
         {!loading && pendingOrdersRenderable.length > 0 && (
-          <section>
+          <section id="pending-routes-section">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <h2 className="text-base font-semibold">Aguardando Rota</h2>
               <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
@@ -698,44 +755,7 @@ export default function Routes() {
         )}
 
         {/* ── View toggle tabs ── */}
-        {(availableRoutes.length > 0 || inProgressRoutes.length > 0 || !loading) && (
-          <div className="flex items-center gap-1 bg-muted/40 rounded-xl p-1 self-start w-fit">
-            <button
-              onClick={() => setRouteView("available")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                routeView === "available"
-                  ? "bg-white shadow-sm text-[#0F172A]"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-              data-testid="tab-available"
-            >
-              <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
-              Rotas Disponíveis
-              {availableRoutes.length > 0 && (
-                <span className={`text-xs font-semibold rounded-full px-1.5 leading-5 min-w-[1.2rem] text-center ${routeView === "available" ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground"}`}>
-                  {availableRoutes.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setRouteView("in_progress")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                routeView === "in_progress"
-                  ? "bg-white shadow-sm text-[#0F172A]"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-              data-testid="tab-in-progress"
-            >
-              <span className={`w-2 h-2 rounded-full shrink-0 ${inProgressRoutes.length > 0 ? "bg-amber-400 animate-pulse" : "bg-amber-300"}`} />
-              Rotas em Andamento
-              {inProgressRoutes.length > 0 && (
-                <span className={`text-xs font-semibold rounded-full px-1.5 leading-5 min-w-[1.2rem] text-center ${routeView === "in_progress" ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground"}`}>
-                  {inProgressRoutes.length}
-                </span>
-              )}
-            </button>
-          </div>
-        )}
+        {!loading && (!hasPendingOrders || hasActiveRoutes) && routeNavigation}
 
         {/* ── Routes grid (tab-controlled) ── */}
         {routeView === "available" ? (
@@ -1409,7 +1429,7 @@ function RouteCard({
 
   const hasDetailedContent =
     !isCompleted && (totalFridges > 0 || sortedOrders.some((o) => o.paymentTiming === "on_delivery"));
-  const showExpandToggle = hiddenCount > 0 || hasDetailedContent;
+  const showExpandToggle = sortedOrders.length >= 2 || hasDetailedContent;
 
   const handleToggleExpand = () => {
     setExpanded((v) => {
@@ -1567,8 +1587,11 @@ function RouteCard({
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-[#0F172A] truncate">
-                      {order.customerName ?? `Pedido #${order.orderId}`}
+                    <p className="flex min-w-0 items-center gap-1.5 font-semibold text-[#0F172A]">
+                      <span className="shrink-0 rounded-md bg-[#0F172A] px-1.5 py-0.5 text-[10px] font-black leading-none text-white">
+                        #{order.orderId}
+                      </span>
+                      <span className="truncate">{order.customerName ?? "Cliente não informado"}</span>
                     </p>
                     <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                       {order.paymentTiming === "on_delivery" && (
@@ -1844,7 +1867,7 @@ function RouteCard({
             <Button
               size="sm"
               className="h-8 gap-1.5 rounded-lg font-semibold text-white border-0"
-              style={{ backgroundColor: "#F97316", color: "#FFFFFF" }}
+              style={{ backgroundColor: "#D91F16", color: "#FFFFFF" }}
               onClick={(event) => {
                 event.stopPropagation();
                 onAssign();
