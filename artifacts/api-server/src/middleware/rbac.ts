@@ -250,6 +250,9 @@ export const rbacRouteGuard: RequestHandler = async (req, res, next) => {
   const path = req.path;
   const method = req.method.toUpperCase();
 
+  const orderDetailReadPattern = /^\/orders\/\d+$/;
+  const canReadOrderDetail = method === "GET" && orderDetailReadPattern.test(path);
+
   const allowedByRole: Record<ActorRole, RegExp[]> = {
     max_control: [/.*/],
     atendente: [],
@@ -260,7 +263,8 @@ export const rbacRouteGuard: RequestHandler = async (req, res, next) => {
   const allowed =
     actor.role === "atendente"
       ? canAtendenteAccess(method, path)
-      : allowedByRole[actor.role].some((pattern) => pattern.test(path));
+      : canReadOrderDetail ||
+        allowedByRole[actor.role].some((pattern) => pattern.test(path));
 
   if (!allowed) {
     res
