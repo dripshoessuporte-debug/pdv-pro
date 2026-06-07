@@ -293,9 +293,9 @@ export default function Routes() {
   const [addingToRoute, setAddingToRoute] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
   const [maxOrdersPerRoute, setMaxOrdersPerRoute] = useState(4);
-  const [routeView, setRouteView] = useState<"available" | "in_progress">(
-    "available",
-  );
+  const [routeView, setRouteView] = useState<
+    "pending" | "available" | "in_progress" | "completed"
+  >("pending");
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [isOrderDetailOpen, setIsOrderDetailOpen] = useState(false);
 
@@ -364,6 +364,7 @@ export default function Routes() {
         { method: "POST" },
       );
       await refreshDeliveryAndFinanceViews();
+      setRouteView("available");
       toast({
         title:
           created === 0
@@ -658,18 +659,13 @@ export default function Routes() {
     <div className="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-[#E2E8F0] bg-white p-2 shadow-sm">
       <button
         type="button"
-        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${hasPendingOrders && !hasActiveRoutes ? "bg-[#0F172A] text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
-        onClick={() =>
-          document
-            .getElementById("pending-routes-section")
-            ?.scrollIntoView({ behavior: "smooth", block: "start" })
-        }
-        disabled={!hasPendingOrders}
+        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "pending" ? "bg-[#0F172A] text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
+        onClick={() => setRouteView("pending")}
         data-testid="tab-pending-routes"
       >
         <span>Aguardando rota</span>
         <span
-          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${hasPendingOrders && !hasActiveRoutes ? "bg-white text-[#0F172A]" : "bg-[#E2E8F0] text-[#0F172A]"}`}
+          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "pending" ? "bg-white text-[#0F172A]" : "bg-[#E2E8F0] text-[#0F172A]"}`}
         >
           {pendingOrdersRenderable.length}
         </span>
@@ -708,12 +704,14 @@ export default function Routes() {
       </button>
       <button
         type="button"
-        className="flex items-center gap-2 rounded-xl bg-[#F8FAFC] px-3 py-2 text-sm font-semibold text-[#334155] transition-all hover:bg-[#F1F5F9]"
-        onClick={() => setShowCompleted((v) => !v)}
+        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "completed" ? "bg-emerald-600 text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
+        onClick={() => setRouteView("completed")}
         data-testid="tab-completed-today"
       >
         <span>Concluídas hoje</span>
-        <span className="min-w-6 rounded-full bg-[#E2E8F0] px-2 py-0.5 text-center text-xs font-black text-[#0F172A]">
+        <span
+          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "completed" ? "bg-white text-emerald-700" : "bg-[#E2E8F0] text-[#0F172A]"}`}
+        >
           {completedTodayRoutes.length}
         </span>
       </button>
@@ -862,93 +860,92 @@ export default function Routes() {
             </div>
           )}
 
-        {/* ── Route navigation moves up while orders are only waiting for route generation ── */}
-        {!loading && hasPendingOrders && !hasActiveRoutes && routeNavigation}
+        {/* ── Route navigation ── */}
+        {!loading && routeNavigation}
 
         {/* ── Pending orders (compact list) ── */}
-        {!loading && pendingOrdersRenderable.length > 0 && (
-          <section id="pending-routes-section">
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <h2 className="text-base font-semibold">Aguardando Rota</h2>
-              <Badge
-                variant="secondary"
-                className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-              >
-                {pendingOrdersRenderable.length}
-              </Badge>
-              <div className="flex items-center gap-2 ml-auto flex-wrap">
-                {/* Select all toggle */}
-                <button
-                  onClick={toggleSelectAllPending}
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  data-testid="btn-select-all-pending"
+        {!loading &&
+          routeView === "pending" &&
+          pendingOrdersRenderable.length > 0 && (
+            <section id="pending-routes-section">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <h2 className="text-base font-semibold">Aguardando Rota</h2>
+                <Badge
+                  variant="secondary"
+                  className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
                 >
-                  <div
-                    className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors ${pendingSelected.size === pendingOrdersRenderable.length && pendingOrdersRenderable.length > 0 ? "bg-primary border-primary" : pendingSelected.size > 0 ? "bg-primary/40 border-primary" : "border-[#CBD5E1] hover:border-primary"}`}
+                  {pendingOrdersRenderable.length}
+                </Badge>
+                <div className="flex items-center gap-2 ml-auto flex-wrap">
+                  {/* Select all toggle */}
+                  <button
+                    onClick={toggleSelectAllPending}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    data-testid="btn-select-all-pending"
                   >
-                    {pendingSelected.size > 0 && (
-                      <div
-                        className={`${pendingSelected.size === pendingOrdersRenderable.length ? "w-2 h-1.5" : "w-1.5 h-0.5"} bg-white rounded`}
-                      />
-                    )}
-                  </div>
-                  {pendingSelected.size === 0
-                    ? "Selecionar todos"
-                    : `${pendingSelected.size} selecionado${pendingSelected.size !== 1 ? "s" : ""}`}
-                </button>
+                    <div
+                      className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors ${pendingSelected.size === pendingOrdersRenderable.length && pendingOrdersRenderable.length > 0 ? "bg-primary border-primary" : pendingSelected.size > 0 ? "bg-primary/40 border-primary" : "border-[#CBD5E1] hover:border-primary"}`}
+                    >
+                      {pendingSelected.size > 0 && (
+                        <div
+                          className={`${pendingSelected.size === pendingOrdersRenderable.length ? "w-2 h-1.5" : "w-1.5 h-0.5"} bg-white rounded`}
+                        />
+                      )}
+                    </div>
+                    {pendingSelected.size === 0
+                      ? "Selecionar todos"
+                      : `${pendingSelected.size} selecionado${pendingSelected.size !== 1 ? "s" : ""}`}
+                  </button>
 
-                {/* Bulk actions */}
-                {pendingSelected.size > 0 && activeRoutes.length > 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs gap-1 border-primary/40 text-primary hover:bg-primary/5"
-                    onClick={() => setBulkAddOpen(true)}
-                    data-testid="btn-bulk-add-route"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Adicionar {pendingSelected.size} à rota
-                  </Button>
-                )}
-                {pendingSelected.size > 0 && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 text-xs text-muted-foreground"
-                    onClick={() => setPendingSelected(new Set())}
-                  >
-                    Limpar
-                  </Button>
-                )}
+                  {/* Bulk actions */}
+                  {pendingSelected.size > 0 && activeRoutes.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1 border-primary/40 text-primary hover:bg-primary/5"
+                      onClick={() => setBulkAddOpen(true)}
+                      data-testid="btn-bulk-add-route"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Adicionar {pendingSelected.size} à rota
+                    </Button>
+                  )}
+                  {pendingSelected.size > 0 && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs text-muted-foreground"
+                      onClick={() => setPendingSelected(new Set())}
+                    >
+                      Limpar
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
 
-            <div className="rounded-xl border border-border overflow-hidden bg-card">
-              {pendingOrdersRenderable.map((order, idx) => (
-                <PendingOrderRow
-                  key={order.id}
-                  order={order}
-                  dispatchMinutes={dispatchMinutes}
-                  activeRoutes={activeRoutes}
-                  isLast={idx === pendingOrdersRenderable.length - 1}
-                  selected={pendingSelected.has(order.id)}
-                  onToggle={() => togglePending(order.id)}
-                  onAddToRoute={() =>
-                    setAddPendingState({
-                      orderId: order.id,
-                      customerName: order.customerName,
-                    })
-                  }
-                  onEmergency={() => handleCreateEmergency(order.id)}
-                  onOpenOrder={() => openOrderDetail(order.id)}
-                />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* ── View toggle tabs ── */}
-        {!loading && (!hasPendingOrders || hasActiveRoutes) && routeNavigation}
+              <div className="rounded-xl border border-border overflow-hidden bg-card">
+                {pendingOrdersRenderable.map((order, idx) => (
+                  <PendingOrderRow
+                    key={order.id}
+                    order={order}
+                    dispatchMinutes={dispatchMinutes}
+                    activeRoutes={activeRoutes}
+                    isLast={idx === pendingOrdersRenderable.length - 1}
+                    selected={pendingSelected.has(order.id)}
+                    onToggle={() => togglePending(order.id)}
+                    onAddToRoute={() =>
+                      setAddPendingState({
+                        orderId: order.id,
+                        customerName: order.customerName,
+                      })
+                    }
+                    onEmergency={() => handleCreateEmergency(order.id)}
+                    onOpenOrder={() => openOrderDetail(order.id)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
 
         {/* ── Routes grid (tab-controlled) ── */}
         {routeView === "available" ? (
@@ -993,7 +990,7 @@ export default function Routes() {
               </div>
             )
           )
-        ) : inProgressRoutes.length > 0 ? (
+        ) : routeView === "in_progress" && inProgressRoutes.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {inProgressRoutes.map((route, idx) => (
               <RouteCard
@@ -1023,7 +1020,7 @@ export default function Routes() {
               />
             ))}
           </div>
-        ) : (
+        ) : routeView === "in_progress" ? (
           !loading && (
             <div className="text-center py-10 border-2 border-dashed rounded-xl text-muted-foreground">
               <Truck className="w-8 h-8 mx-auto mb-2 opacity-30" />
@@ -1033,28 +1030,26 @@ export default function Routes() {
               </p>
             </div>
           )
-        )}
+        ) : routeView === "pending" && pendingOrdersRenderable.length === 0 ? (
+          !loading && (
+            <div className="text-center py-10 border-2 border-dashed rounded-xl text-muted-foreground">
+              <Package className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm font-medium">
+                Nenhum pedido aguardando rota
+              </p>
+              <p className="text-xs mt-1">
+                Novos pedidos preparados aparecerão nesta aba
+              </p>
+            </div>
+          )
+        ) : null}
 
         {/* ── Completed routes ── */}
-        {(completedTodayRoutes.length > 0 || oldCompletedRoutes.length > 0) && (
-          <section>
-            <button
-              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors group"
-              onClick={() => setShowCompleted((v) => !v)}
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span className="font-medium">
-                {showCompleted
-                  ? "Ocultar concluídas"
-                  : `Ver histórico de concluídas (${completedRoutes.length})`}
-              </span>
-              <ChevronRight
-                className={`w-4 h-4 transition-transform ${showCompleted ? "rotate-90" : ""}`}
-              />
-            </button>
-            {showCompleted && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-3 opacity-60">
-                {completedRoutes.map((route, idx) => (
+        {routeView === "completed" &&
+          (completedTodayRoutes.length > 0 ? (
+            <section className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 opacity-75">
+                {completedTodayRoutes.map((route, idx) => (
                   <RouteCard
                     key={route.id}
                     route={route}
@@ -1071,9 +1066,59 @@ export default function Routes() {
                   />
                 ))}
               </div>
-            )}
-          </section>
-        )}
+
+              {oldCompletedRoutes.length > 0 && (
+                <div className="space-y-3">
+                  <button
+                    className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors group"
+                    onClick={() => setShowCompleted((v) => !v)}
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span className="font-medium">
+                      {showCompleted
+                        ? "Ocultar histórico anterior"
+                        : `Ver histórico anterior (${oldCompletedRoutes.length})`}
+                    </span>
+                    <ChevronRight
+                      className={`w-4 h-4 transition-transform ${showCompleted ? "rotate-90" : ""}`}
+                    />
+                  </button>
+                  {showCompleted && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 opacity-50">
+                      {oldCompletedRoutes.map((route, idx) => (
+                        <RouteCard
+                          key={route.id}
+                          route={route}
+                          index={idx}
+                          allActiveRoutes={[]}
+                          maxOrders={maxOrdersPerRoute}
+                          onAssign={() => {}}
+                          onComplete={() => {}}
+                          onQrCode={() => setQrRoute(route)}
+                          onMoveOrder={() => {}}
+                          onDirectRemove={() => {}}
+                          onOpenOrder={openOrderDetail}
+                          completing={false}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          ) : (
+            !loading && (
+              <div className="text-center py-10 border-2 border-dashed rounded-xl text-muted-foreground">
+                <CheckCircle2 className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm font-medium">
+                  Nenhuma rota concluída hoje
+                </p>
+                <p className="text-xs mt-1">
+                  Rotas finalizadas aparecerão nesta aba
+                </p>
+              </div>
+            )
+          ))}
       </div>
 
       <OrderDetailDialog

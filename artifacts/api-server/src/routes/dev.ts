@@ -230,69 +230,7 @@ const curitibaDeliveryAddresses = [
     address: "Rua Roraima, 420",
     fee: 8.25,
   },
-  // Bloco leste/nordeste próximo por região e CEP.
-  {
-    neighborhood: "Tarumã",
-    cep: "82800-000",
-    address: "Avenida Victor Ferreira do Amaral, 2200",
-    fee: 7.5,
-  },
-  {
-    neighborhood: "Capão da Imbuia",
-    cep: "82810-000",
-    address: "Rua Delegado Leopoldo Belczak, 1330",
-    fee: 7.75,
-  },
-  {
-    neighborhood: "Bairro Alto",
-    cep: "82820-000",
-    address: "Rua Alberico Flores Bueno, 1510",
-    fee: 9.25,
-  },
-  {
-    neighborhood: "Atuba",
-    cep: "82630-000",
-    address: "Rua Margarida de Conto Gava, 275",
-    fee: 8.9,
-  },
-  {
-    neighborhood: "Tingui",
-    cep: "82620-000",
-    address: "Rua Fredolin Wolf, 640",
-    fee: 8.75,
-  },
-  // Bloco norte.
-  {
-    neighborhood: "Bacacheri",
-    cep: "82510-000",
-    address: "Rua Nicarágua, 1200",
-    fee: 7.9,
-  },
-  {
-    neighborhood: "Boa Vista",
-    cep: "82560-000",
-    address: "Avenida Paraná, 3450",
-    fee: 8.5,
-  },
-  {
-    neighborhood: "Santa Cândida",
-    cep: "82640-000",
-    address: "Rua Theodoro Makiolka, 980",
-    fee: 9.5,
-  },
-  {
-    neighborhood: "Ahu",
-    cep: "80540-000",
-    address: "Rua Deputado Mário de Barros, 900",
-    fee: 8.25,
-  },
-  {
-    neighborhood: "Cabral",
-    cep: "80035-000",
-    address: "Avenida Munhoz da Rocha, 840",
-    fee: 8.5,
-  },
-  // Bloco sul/sudeste.
+  // Bloco Uberaba.
   {
     neighborhood: "Uberaba",
     cep: "81560-000",
@@ -300,28 +238,94 @@ const curitibaDeliveryAddresses = [
     fee: 10.5,
   },
   {
-    neighborhood: "Hauer",
-    cep: "81630-000",
-    address: "Rua Anne Frank, 2100",
-    fee: 9.5,
-  },
-  {
-    neighborhood: "Boqueirão",
-    cep: "81650-000",
-    address: "Avenida Marechal Floriano Peixoto, 6500",
+    neighborhood: "Uberaba",
+    cep: "81560-210",
+    address: "Rua Velcy Bolivar Grandó, 620",
     fee: 10.25,
   },
   {
-    neighborhood: "Xaxim",
-    cep: "81720-000",
-    address: "Rua Francisco Derosso, 3900",
+    neighborhood: "Uberaba",
+    cep: "81570-000",
+    address: "Rua Capitão Leônidas Marques, 1580",
     fee: 10.75,
   },
+  // Bloco Capão da Imbuia.
   {
-    neighborhood: "Portão",
-    cep: "81070-000",
-    address: "Avenida República Argentina, 3000",
-    fee: 9.75,
+    neighborhood: "Capão da Imbuia",
+    cep: "82810-000",
+    address: "Rua Delegado Leopoldo Belczak, 1330",
+    fee: 7.75,
+  },
+  {
+    neighborhood: "Capão da Imbuia",
+    cep: "82810-220",
+    address: "Rua Professor Nivaldo Braga, 980",
+    fee: 7.9,
+  },
+  {
+    neighborhood: "Capão da Imbuia",
+    cep: "82810-340",
+    address: "Rua Paulo Setúbal, 2500",
+    fee: 8.1,
+  },
+  // Bloco Tarumã.
+  {
+    neighborhood: "Tarumã",
+    cep: "82800-000",
+    address: "Avenida Victor Ferreira do Amaral, 2200",
+    fee: 7.5,
+  },
+  {
+    neighborhood: "Tarumã",
+    cep: "82800-130",
+    address: "Rua Konrad Adenauer, 780",
+    fee: 7.65,
+  },
+  // Bloco Bairro Alto.
+  {
+    neighborhood: "Bairro Alto",
+    cep: "82820-000",
+    address: "Rua Alberico Flores Bueno, 1510",
+    fee: 9.25,
+  },
+  {
+    neighborhood: "Bairro Alto",
+    cep: "82840-000",
+    address: "Rua Rio Jari, 1120",
+    fee: 9.4,
+  },
+  // Bloco Boa Vista.
+  {
+    neighborhood: "Boa Vista",
+    cep: "82560-000",
+    address: "Avenida Paraná, 3450",
+    fee: 8.5,
+  },
+  {
+    neighborhood: "Boa Vista",
+    cep: "82540-000",
+    address: "Rua Lodovico Geronazzo, 1240",
+    fee: 8.65,
+  },
+  // Bloco Bacacheri.
+  {
+    neighborhood: "Bacacheri",
+    cep: "82510-000",
+    address: "Rua Nicarágua, 1200",
+    fee: 7.9,
+  },
+  {
+    neighborhood: "Bacacheri",
+    cep: "82515-260",
+    address: "Rua Estados Unidos, 1680",
+    fee: 8.1,
+  },
+  // Fechamento do bloco norte.
+  {
+    neighborhood: "Santa Cândida",
+    cep: "82640-000",
+    address: "Rua Theodoro Makiolka, 980",
+    fee: 9.5,
   },
 ];
 
@@ -344,17 +348,19 @@ function formatCep(cep: string): string {
   return cep.replace(/\D/g, "").replace(/^(\d{5})(\d{3})$/, "$1-$2");
 }
 
-function getSeedCount(value: unknown): number {
-  if (value == null || value === "") return 20;
-  const parsed = Number.parseInt(String(value), 10);
-  if (!Number.isFinite(parsed) || parsed < 1) return 20;
-  return Math.min(parsed, 100);
-}
+const seedMinuteGaps = [
+  6, 7, 5, 8, 10, 6, 7, 8, 5, 9, 6, 7, 10, 5, 8, 6, 7, 9, 5,
+];
+const SEED_ORDER_COUNT = curitibaDeliveryAddresses.length;
+const ROUTE_TIME_WINDOW_MINUTES = 30;
 
-function getSeedMinutesAgo(index: number, count: number): number {
-  // Keeps test deliveries 8 minutes apart. With the default 20 orders this
-  // creates coherent chronological blocks while preserving a 5–10 minute gap.
-  return (count - index) * 8;
+function getSeedMinutesAgo(index: number): number {
+  // The first seed orders are the oldest. Each next order is 5–10 minutes
+  // newer than the previous one, and the last order remains recent.
+  const laterGaps = seedMinuteGaps
+    .slice(index)
+    .reduce((sum, gap) => sum + gap, 0);
+  return laterGaps + 5;
 }
 
 router.post(
@@ -369,7 +375,7 @@ router.post(
     }
 
     const { storeId } = await getCurrentActor(req);
-    const count = getSeedCount(req.body?.count);
+    const count = SEED_ORDER_COUNT;
 
     const products = (await db
       .select({
@@ -413,7 +419,17 @@ router.post(
       }
     }
 
-    const created: { orderId: number; items: number }[] = [];
+    const created: {
+      orderId: number;
+      neighborhood: string;
+      createdAt: string;
+      kitchenAcceptedAt: string;
+      items: number;
+      paymentTiming: string;
+      deliveryPaymentMethod: string | null;
+      needsChange: string;
+      changeFor: string | null;
+    }[] = [];
 
     await db.transaction(async (tx) => {
       for (let i = 0; i < count; i += 1) {
@@ -450,15 +466,44 @@ router.post(
             };
           },
         );
-        const itemsTotal = selectedItems.reduce(
+        if ([1, 4, 7, 12, 16, 19].includes(i)) {
+          selectedItems.push({
+            product: null,
+            variant: null,
+            fallback: { name: "Refrigerante 2L", quantity: 1, unitPrice: 12 },
+            quantity: 1,
+            unitPrice: 12,
+            totalPrice: 12,
+          });
+        }
+
+        const totalWithBeverage = selectedItems.reduce(
           (sum, item) => sum + item.totalPrice,
           0,
         );
-        const totalAmount = itemsTotal + deliveryFee;
+        const finalTotalAmount = totalWithBeverage + deliveryFee;
         const now = new Date();
-        const kitchenAcceptedAt = new Date(
-          now.getTime() - getSeedMinutesAgo(i, count) * 60_000,
+        const createdAt = new Date(
+          now.getTime() - getSeedMinutesAgo(i) * 60_000,
         );
+        const kitchenAcceptedAt = new Date(createdAt.getTime() + 2 * 60_000);
+        const paymentTiming = i % 3 === 0 ? "now" : "on_delivery";
+        const deliveryPaymentMethod = [
+          "pix",
+          "cartao",
+          "dinheiro",
+          "pix",
+          "cartao",
+        ][i % 5];
+        const needsChange =
+          paymentTiming === "on_delivery" &&
+          deliveryPaymentMethod === "dinheiro"
+            ? "true"
+            : "false";
+        const changeFor =
+          needsChange === "true"
+            ? formatMoney(Math.ceil((finalTotalAmount + 15) / 10) * 10)
+            : null;
 
         const [order] = await tx
           .insert(ordersTable)
@@ -474,10 +519,17 @@ router.post(
             deliveryReference:
               "Pedido temporário criado pela ferramenta de desenvolvimento.",
             deliveryFee: formatMoney(deliveryFee),
-            totalAmount: formatMoney(totalAmount),
-            paymentTiming: i % 2 === 0 ? "now" : "on_delivery",
-            deliveryPaymentMethod: i % 2 === 0 ? null : "pix",
+            totalAmount: formatMoney(finalTotalAmount),
+            paymentTiming,
+            deliveryPaymentMethod,
+            needsChange,
+            changeFor,
+            deliveryPaymentNotes:
+              paymentTiming === "now"
+                ? "Pedido marcado como pago agora no seed."
+                : "Cobrar no momento da entrega.",
             deliveryStatus: "preparing",
+            createdAt,
             kitchenAcceptedAt,
             source: "dev_seed",
             integrationStatus: "received",
@@ -507,7 +559,17 @@ router.post(
           createdAt: kitchenAcceptedAt,
         });
 
-        created.push({ orderId: order.id, items: selectedItems.length });
+        created.push({
+          orderId: order.id,
+          neighborhood: address.neighborhood,
+          createdAt: createdAt.toISOString(),
+          kitchenAcceptedAt: kitchenAcceptedAt.toISOString(),
+          items: selectedItems.length,
+          paymentTiming,
+          deliveryPaymentMethod,
+          needsChange,
+          changeFor,
+        });
       }
     });
 
@@ -517,8 +579,9 @@ router.post(
     );
     res.json({
       created: created.length,
-      timeGapMinutes: 8,
-      routeTimeWindowMinutes: 30,
+      timeGapMinutes: { min: 5, max: 10 },
+      routeTimeWindowMinutes: ROUTE_TIME_WINDOW_MINUTES,
+      seedMinuteGaps,
       results: created,
     });
   },
