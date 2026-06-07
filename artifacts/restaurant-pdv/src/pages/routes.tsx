@@ -31,6 +31,7 @@ import {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type RouteStatus = "available" | "in_progress" | "completed";
+type RouteTab = "pending" | "available" | "in_progress" | "completed";
 type DeliveryOrderStatus = "pending" | "preparing" | "ready" | "out_for_delivery" | "delivered";
 
 interface RouteOrderItem {
@@ -246,7 +247,8 @@ export default function Routes() {
   const [addingToRoute, setAddingToRoute] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
   const [maxOrdersPerRoute, setMaxOrdersPerRoute] = useState(4);
-  const [routeView, setRouteView] = useState<"available" | "in_progress">("available");
+  const [routeView, setRouteView] = useState<RouteTab>("pending");
+  const hasUserSelectedRouteTab = useRef(false);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [isOrderDetailOpen, setIsOrderDetailOpen] = useState(false);
 
@@ -310,6 +312,10 @@ export default function Routes() {
         { method: "POST" }
       );
       await refreshDeliveryAndFinanceViews();
+      if (created > 0) {
+        hasUserSelectedRouteTab.current = true;
+        setRouteView("available");
+      }
       toast({
         title:
           created === 0
@@ -535,60 +541,79 @@ export default function Routes() {
   const availableRoutes = routes.filter((r) => r.status === "available");
   const inProgressRoutes = routes.filter((r) => r.status === "in_progress");
   const hasActiveRoutes = availableRoutes.length + inProgressRoutes.length > 0;
-  const hasPendingOrders = pendingOrdersRenderable.length > 0;
   const completedTodayRoutes = routes.filter((r) => r.status === "completed" && isTodayLocal(r.completedAt));
   const oldCompletedRoutes = routes.filter((r) => r.status === "completed" && !isTodayLocal(r.completedAt));
   const completedRoutes = showCompleted ? [...completedTodayRoutes, ...oldCompletedRoutes] : completedTodayRoutes;
 
+  useEffect(() => {
+    if (loading || hasUserSelectedRouteTab.current) return;
+
+    if (availableRoutes.length > 0) {
+      setRouteView("available");
+      return;
+    }
+
+    if (pendingOrdersRenderable.length > 0 && !hasActiveRoutes) {
+      setRouteView("pending");
+      return;
+    }
+
+    if (inProgressRoutes.length > 0) {
+      setRouteView("in_progress");
+      return;
+    }
+
+    setRouteView("pending");
+  }, [availableRoutes.length, hasActiveRoutes, inProgressRoutes.length, loading, pendingOrdersRenderable.length]);
+
+  const selectRouteTab = (tab: RouteTab) => {
+    hasUserSelectedRouteTab.current = true;
+    setRouteView(tab);
+  };
+
+  const routeTabs: { key: RouteTab; label: string; count: number }[] = [
+    { key: "pending", label: "Aguardando rota", count: pendingOrdersRenderable.length },
+    { key: "available", label: "Rotas disponíveis", count: availableRoutes.length },
+    { key: "in_progress", label: "Em andamento", count: inProgressRoutes.length },
+    { key: "completed", label: "Concluídas hoje", count: completedTodayRoutes.length },
+  ];
+
   const routeNavigation = (
     <div className="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-[#E2E8F0] bg-white p-2 shadow-sm">
-      <button
-        type="button"
-        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${hasPendingOrders && !hasActiveRoutes ? "bg-[#0F172A] text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
-        onClick={() => document.getElementById("pending-routes-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-        disabled={!hasPendingOrders}
-        data-testid="tab-pending-routes"
-      >
-        <span>Aguardando rota</span>
-        <span className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${hasPendingOrders && !hasActiveRoutes ? "bg-white text-[#0F172A]" : "bg-[#E2E8F0] text-[#0F172A]"}`}>
-          {pendingOrdersRenderable.length}
-        </span>
-      </button>
-      <button
-        type="button"
-        onClick={() => setRouteView("available")}
-        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "available" ? "bg-[#D91F16] text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
-        data-testid="tab-available"
-      >
-        <span className={`h-2 w-2 shrink-0 rounded-full ${routeView === "available" ? "bg-white" : "bg-[#D91F16]"}`} />
-        <span>Rotas disponíveis</span>
-        <span className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "available" ? "bg-white text-[#D91F16]" : "bg-[#E2E8F0] text-[#0F172A]"}`}>
-          {availableRoutes.length}
-        </span>
-      </button>
-      <button
-        type="button"
-        onClick={() => setRouteView("in_progress")}
-        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "in_progress" ? "bg-[#0F172A] text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
-        data-testid="tab-in-progress"
-      >
-        <span className={`h-2 w-2 shrink-0 rounded-full ${routeView === "in_progress" ? "bg-white" : "bg-[#0F172A]"}`} />
-        <span>Em andamento</span>
-        <span className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "in_progress" ? "bg-white text-[#0F172A]" : "bg-[#E2E8F0] text-[#0F172A]"}`}>
-          {inProgressRoutes.length}
-        </span>
-      </button>
-      <button
-        type="button"
-        className="flex items-center gap-2 rounded-xl bg-[#F8FAFC] px-3 py-2 text-sm font-semibold text-[#334155] transition-all hover:bg-[#F1F5F9]"
-        onClick={() => setShowCompleted((v) => !v)}
-        data-testid="tab-completed-today"
-      >
-        <span>Concluídas hoje</span>
-        <span className="min-w-6 rounded-full bg-[#E2E8F0] px-2 py-0.5 text-center text-xs font-black text-[#0F172A]">
-          {completedTodayRoutes.length}
-        </span>
-      </button>
+      {routeTabs.map((tab) => {
+        const active = routeView === tab.key;
+        const testId =
+          tab.key === "pending"
+            ? "tab-pending-routes"
+            : tab.key === "available"
+            ? "tab-available"
+            : tab.key === "in_progress"
+            ? "tab-in-progress"
+            : "tab-completed-today";
+
+        return (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => selectRouteTab(tab.key)}
+            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition-all ${
+              active
+                ? "border-[#D91F16] bg-[#D91F16] text-white shadow-sm"
+                : "border-[#E2E8F0] bg-[#F8FAFC] text-[#0F172A] hover:bg-white hover:border-[#CBD5E1]"
+            }`}
+            data-testid={testId}
+          >
+            <span>{tab.label}</span>
+            <span
+              className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${
+                active ? "bg-white text-[#D91F16]" : "bg-[#E2E8F0] text-[#0F172A]"
+              }`}
+            >
+              {tab.count}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 
@@ -688,11 +713,11 @@ export default function Routes() {
           </div>
         )}
 
-        {/* ── Route navigation moves up while orders are only waiting for route generation ── */}
-        {!loading && hasPendingOrders && !hasActiveRoutes && routeNavigation}
+        {/* ── Main route tabs ── */}
+        {!loading && routeNavigation}
 
         {/* ── Pending orders (compact list) ── */}
-        {!loading && pendingOrdersRenderable.length > 0 && (
+        {!loading && routeView === "pending" && pendingOrdersRenderable.length > 0 && (
           <section id="pending-routes-section">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <h2 className="text-base font-semibold">Aguardando Rota</h2>
@@ -754,9 +779,6 @@ export default function Routes() {
           </section>
         )}
 
-        {/* ── View toggle tabs ── */}
-        {!loading && (!hasPendingOrders || hasActiveRoutes) && routeNavigation}
-
         {/* ── Routes grid (tab-controlled) ── */}
         {routeView === "available" ? (
           availableRoutes.length > 0 ? (
@@ -787,7 +809,7 @@ export default function Routes() {
               <p className="text-xs mt-1">Clique em <strong>Gerar Rotas</strong> para agrupar os pedidos</p>
             </div>
           )
-        ) : (
+        ) : routeView === "in_progress" ? (
           inProgressRoutes.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {inProgressRoutes.map((route, idx) => (
@@ -816,23 +838,10 @@ export default function Routes() {
               <p className="text-xs mt-1">Rotas assumidas por motoboys aparecerão aqui</p>
             </div>
           )
-        )}
-
-        {/* ── Completed routes ── */}
-        {(completedTodayRoutes.length > 0 || oldCompletedRoutes.length > 0) && (
-          <section>
-            <button
-              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors group"
-              onClick={() => setShowCompleted((v) => !v)}
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span className="font-medium">
-                {showCompleted ? "Ocultar concluídas" : `Ver histórico de concluídas (${completedRoutes.length})`}
-              </span>
-              <ChevronRight className={`w-4 h-4 transition-transform ${showCompleted ? "rotate-90" : ""}`} />
-            </button>
-            {showCompleted && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-3 opacity-60">
+        ) : routeView === "completed" ? (
+          <section className="space-y-3">
+            {completedRoutes.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 opacity-80">
                 {completedRoutes.map((route, idx) => (
                   <RouteCard
                     key={route.id}
@@ -850,9 +859,32 @@ export default function Routes() {
                   />
                 ))}
               </div>
+            ) : (
+              <div className="text-center py-10 border-2 border-dashed rounded-xl text-muted-foreground">
+                <CheckCircle2 className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm font-medium">Nenhuma rota concluída hoje</p>
+                <p className="text-xs mt-1">Rotas finalizadas hoje aparecerão aqui</p>
+              </div>
+            )}
+            {oldCompletedRoutes.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-muted-foreground"
+                onClick={() => setShowCompleted((v) => !v)}
+              >
+                <ChevronRight className={`w-4 h-4 transition-transform ${showCompleted ? "rotate-90" : ""}`} />
+                {showCompleted ? "Ocultar histórico antigo" : `Mostrar histórico antigo (${oldCompletedRoutes.length})`}
+              </Button>
             )}
           </section>
-        )}
+        ) : !loading && pendingOrdersRenderable.length === 0 ? (
+          <div className="text-center py-10 border-2 border-dashed rounded-xl text-muted-foreground">
+            <Package className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            <p className="text-sm font-medium">Nenhum pedido aguardando rota</p>
+            <p className="text-xs mt-1">Pedidos em preparo ou prontos aparecerão nesta aba</p>
+          </div>
+        ) : null}
       </div>
 
       <OrderDetailDialog
