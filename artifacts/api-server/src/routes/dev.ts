@@ -198,41 +198,75 @@ type SeedItemTemplate = {
 };
 
 const curitibaDeliveryAddresses = [
+  // Bloco 1: Jardim das Américas — quatro pedidos próximos no tempo.
   {
-    neighborhood: "Bacacheri",
-    cep: "82510-000",
-    address: "Rua Nicarágua, 1200",
+    neighborhood: "Jardim das Américas",
+    cep: "81530-000",
+    address: "Rua Professor João Doetzer, 610",
+    fee: 7.5,
+  },
+  {
+    neighborhood: "Jardim das Américas",
+    cep: "81540-000",
+    address: "Rua Frei Henrique de Coimbra, 420",
+    fee: 7.5,
+  },
+  {
+    neighborhood: "Jardim das Américas",
+    cep: "81530-120",
+    address: "Avenida Nossa Senhora de Lourdes, 980",
+    fee: 7.75,
+  },
+  {
+    neighborhood: "Jardim das Américas",
+    cep: "81530-290",
+    address: "Rua Tenente Ricardo Kirch, 145",
+    fee: 7.75,
+  },
+  // Logo depois do bloco Jardim das Américas.
+  {
+    neighborhood: "Cajuru",
+    cep: "82900-000",
+    address: "Rua Roraima, 420",
+    fee: 8.25,
+  },
+  // Bloco sul/sudeste próximo por região e CEP.
+  {
+    neighborhood: "Uberaba",
+    cep: "81560-000",
+    address: "Avenida Senador Salgado Filho, 4850",
+    fee: 10.5,
+  },
+  {
+    neighborhood: "Uberaba",
+    cep: "81570-000",
+    address: "Rua Capitão Leônidas Marques, 1350",
+    fee: 10.25,
+  },
+  {
+    neighborhood: "Uberaba",
+    cep: "81550-000",
+    address: "Rua Velcy Bolívar Grandó, 720",
+    fee: 10.25,
+  },
+  // Bloco leste.
+  {
+    neighborhood: "Capão da Imbuia",
+    cep: "82810-000",
+    address: "Rua Delegado Leopoldo Belczak, 1330",
+    fee: 7.75,
+  },
+  {
+    neighborhood: "Capão da Imbuia",
+    cep: "82810-120",
+    address: "Rua Professor Nivaldo Braga, 880",
+    fee: 7.75,
+  },
+  {
+    neighborhood: "Capão da Imbuia",
+    cep: "82810-290",
+    address: "Rua Osmário de Lima, 510",
     fee: 7.9,
-  },
-  {
-    neighborhood: "Boa Vista",
-    cep: "82560-000",
-    address: "Avenida Paraná, 3450",
-    fee: 8.5,
-  },
-  {
-    neighborhood: "Santa Cândida",
-    cep: "82640-000",
-    address: "Rua Theodoro Makiolka, 980",
-    fee: 9.5,
-  },
-  {
-    neighborhood: "Atuba",
-    cep: "82630-000",
-    address: "Rua Margarida de Conto Gava, 275",
-    fee: 8.9,
-  },
-  {
-    neighborhood: "Tingui",
-    cep: "82620-000",
-    address: "Rua Fredolin Wolf, 640",
-    fee: 8.75,
-  },
-  {
-    neighborhood: "Bairro Alto",
-    cep: "82820-000",
-    address: "Rua Alberico Flores Bueno, 1510",
-    fee: 9.25,
   },
   {
     neighborhood: "Tarumã",
@@ -241,22 +275,53 @@ const curitibaDeliveryAddresses = [
     fee: 7.5,
   },
   {
-    neighborhood: "Capão da Imbuia",
-    cep: "82810-000",
-    address: "Rua Delegado Leopoldo Belczak, 1330",
-    fee: 7.75,
+    neighborhood: "Tarumã",
+    cep: "82800-180",
+    address: "Rua Konrad Adenauer, 940",
+    fee: 7.6,
   },
   {
-    neighborhood: "Cajuru",
-    cep: "82900-000",
-    address: "Rua Roraima, 420",
-    fee: 8.25,
+    neighborhood: "Bairro Alto",
+    cep: "82820-000",
+    address: "Rua Alberico Flores Bueno, 1510",
+    fee: 9.25,
   },
   {
-    neighborhood: "Uberaba",
-    cep: "81560-000",
-    address: "Avenida Senador Salgado Filho, 4850",
-    fee: 10.5,
+    neighborhood: "Bairro Alto",
+    cep: "82820-240",
+    address: "Rua Rio Juruá, 680",
+    fee: 9.25,
+  },
+  // Bloco norte.
+  {
+    neighborhood: "Boa Vista",
+    cep: "82560-000",
+    address: "Avenida Paraná, 3450",
+    fee: 8.5,
+  },
+  {
+    neighborhood: "Boa Vista",
+    cep: "82560-160",
+    address: "Rua Fernando de Noronha, 1150",
+    fee: 8.5,
+  },
+  {
+    neighborhood: "Bacacheri",
+    cep: "82510-000",
+    address: "Rua Nicarágua, 1200",
+    fee: 7.9,
+  },
+  {
+    neighborhood: "Bacacheri",
+    cep: "82515-000",
+    address: "Rua Estados Unidos, 780",
+    fee: 7.9,
+  },
+  {
+    neighborhood: "Santa Cândida",
+    cep: "82640-000",
+    address: "Rua Theodoro Makiolka, 980",
+    fee: 9.5,
   },
 ];
 
@@ -284,6 +349,20 @@ function getSeedCount(value: unknown): number {
   const parsed = Number.parseInt(String(value), 10);
   if (!Number.isFinite(parsed) || parsed < 1) return 20;
   return Math.min(parsed, 100);
+}
+
+const seedMinuteGaps = [
+  8, 7, 9, 6, 8, 10, 5, 8, 7, 9, 6, 8, 10, 5, 8, 7, 9, 6, 8,
+];
+
+function getSeedMinutesAgo(index: number, count: number): number {
+  // Keeps test deliveries 5–10 minutes apart. The first generated order is the
+  // oldest, so temporal grouping can be tested before CEP/neighborhood grouping.
+  let minutesAgo = 5;
+  for (let i = index; i < count - 1; i += 1) {
+    minutesAgo += seedMinuteGaps[i % seedMinuteGaps.length];
+  }
+  return minutesAgo;
 }
 
 router.post(
@@ -379,6 +458,17 @@ router.post(
             };
           },
         );
+        if (i % 4 === 0) {
+          selectedItems.push({
+            product: null,
+            variant: null,
+            fallback: { name: "Refrigerante", quantity: 1, unitPrice: 8 },
+            quantity: 1,
+            unitPrice: 8,
+            totalPrice: 8,
+          });
+        }
+
         const itemsTotal = selectedItems.reduce(
           (sum, item) => sum + item.totalPrice,
           0,
@@ -386,8 +476,22 @@ router.post(
         const totalAmount = itemsTotal + deliveryFee;
         const now = new Date();
         const kitchenAcceptedAt = new Date(
-          now.getTime() - ((i % 10) + 1) * 60_000,
+          now.getTime() - getSeedMinutesAgo(i, count) * 60_000,
         );
+        const createdAt = new Date(kitchenAcceptedAt.getTime() - 2 * 60_000);
+        const paymentTiming = i % 3 === 0 ? "now" : "on_delivery";
+        const deliveryPaymentMethod =
+          paymentTiming === "now"
+            ? null
+            : i % 3 === 1
+              ? "pix"
+              : i % 3 === 2
+                ? "dinheiro"
+                : "cartao";
+        const needsChange = deliveryPaymentMethod === "dinheiro" && i % 2 === 0;
+        const changeFor = needsChange
+          ? Math.ceil(totalAmount / 20) * 20 + 20
+          : null;
 
         const [order] = await tx
           .insert(ordersTable)
@@ -404,10 +508,18 @@ router.post(
               "Pedido temporário criado pela ferramenta de desenvolvimento.",
             deliveryFee: formatMoney(deliveryFee),
             totalAmount: formatMoney(totalAmount),
-            paymentTiming: i % 2 === 0 ? "now" : "on_delivery",
-            deliveryPaymentMethod: i % 2 === 0 ? null : "pix",
+            paymentTiming,
+            deliveryPaymentMethod,
+            needsChange: needsChange ? "true" : "false",
+            changeFor: changeFor == null ? null : formatMoney(changeFor),
+            deliveryPaymentNotes: needsChange
+              ? `Troco para R$ ${formatMoney(changeFor ?? 0)}`
+              : paymentTiming === "on_delivery"
+                ? "Receber na entrega"
+                : null,
             deliveryStatus: "preparing",
             kitchenAcceptedAt,
+            createdAt,
             source: "dev_seed",
             integrationStatus: "received",
             deliveryFeeCalculated: "false",
@@ -444,7 +556,13 @@ router.post(
       { storeId, count: created.length },
       "dev seed-curitiba-delivery-orders: created",
     );
-    res.json({ created: created.length, results: created });
+    res.json({
+      created: created.length,
+      timeGapMinutes: "5-10",
+      routeTimeWindowMinutes: 30,
+      seedMinuteGaps,
+      results: created,
+    });
   },
 );
 
