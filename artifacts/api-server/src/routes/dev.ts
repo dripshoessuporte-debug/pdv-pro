@@ -483,10 +483,12 @@ router.post(
         );
         const finalTotalAmount = totalWithBeverage + deliveryFee;
         const now = new Date();
-        const createdAt = new Date(
+        const kitchenAcceptedAt = new Date(
           now.getTime() - getSeedMinutesAgo(i) * 60_000,
         );
-        const kitchenAcceptedAt = new Date(createdAt.getTime() + 2 * 60_000);
+        const createdAt = new Date(
+          kitchenAcceptedAt.getTime() - (1 + (i % 2)) * 60_000,
+        );
         const paymentTiming = i % 3 === 0 ? "now" : "on_delivery";
         const deliveryPaymentMethod = [
           "pix",
