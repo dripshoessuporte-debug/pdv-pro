@@ -141,6 +141,7 @@ async function getRouteWithOrders(
       changeFor: ordersTable.changeFor,
       deliveryPaymentNotes: ordersTable.deliveryPaymentNotes,
       orderCreatedAt: ordersTable.createdAt,
+      orderKitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
     })
     .from(deliveryRouteOrdersTable)
     .leftJoin(ordersTable, eq(deliveryRouteOrdersTable.orderId, ordersTable.id))
@@ -210,6 +211,9 @@ async function getRouteWithOrders(
       totalAmount: parseFloat(String(o.totalAmount ?? "0")),
       changeFor: o.changeFor ? parseFloat(String(o.changeFor)) : null,
       orderCreatedAt: o.orderCreatedAt?.toISOString() ?? null,
+      orderKitchenAcceptedAt: o.orderKitchenAcceptedAt?.toISOString() ?? null,
+      routeTimeAt:
+        (o.orderKitchenAcceptedAt ?? o.orderCreatedAt)?.toISOString() ?? null,
       items: allItems
         .filter((i) => i.orderId === o.orderId)
         .map((i) => ({
@@ -304,8 +308,16 @@ const MIN_PAIR_SCORE = 18;
 const ROUTE_TIME_WINDOW_MINUTES = 30;
 const MAX_ROUTE_ORDER_TIME_GAP_MS = ROUTE_TIME_WINDOW_MINUTES * 60_000;
 
-/** Returns the reference time used for urgency (kitchen acceptance, or creation). */
-function kitchenTimeMs(o: EligibleOrder): number {
+/** Returns the operational route time (kitchen acceptance, or creation fallback). */
+function routeTimeMs(o: EligibleOrder): number;
+function routeTimeMs(o: {
+  kitchenAcceptedAt: Date | null;
+  createdAt: Date;
+}): number;
+function routeTimeMs(o: {
+  kitchenAcceptedAt: Date | null;
+  createdAt: Date;
+}): number {
   return o.kitchenAcceptedAt?.getTime() ?? o.createdAt.getTime();
 }
 
@@ -317,9 +329,7 @@ function kitchenTimeMs(o: EligibleOrder): number {
  * starts a new temporal group even when CEP/neighborhood are very close.
  */
 function groupOrdersByTimeWindow(orders: EligibleOrder[]): EligibleOrder[][] {
-  const byUrgency = [...orders].sort(
-    (a, b) => kitchenTimeMs(a) - kitchenTimeMs(b),
-  );
+  const byUrgency = [...orders].sort((a, b) => routeTimeMs(a) - routeTimeMs(b));
   const groups: EligibleOrder[][] = [];
 
   for (const order of byUrgency) {
@@ -329,8 +339,8 @@ function groupOrdersByTimeWindow(orders: EligibleOrder[]): EligibleOrder[][] {
       continue;
     }
 
-    const referenceTime = kitchenTimeMs(current[0]);
-    if (kitchenTimeMs(order) - referenceTime > MAX_ROUTE_ORDER_TIME_GAP_MS) {
+    const referenceTime = routeTimeMs(current[0]);
+    if (routeTimeMs(order) - referenceTime > MAX_ROUTE_ORDER_TIME_GAP_MS) {
       groups.push([order]);
     } else {
       current.push(order);
@@ -393,7 +403,7 @@ function generateRoutePlan(
 
       assigned.add(seed.id);
       const batch: EligibleOrder[] = [seed];
-      const routeReferenceTime = kitchenTimeMs(seed);
+      const routeReferenceTime = routeTimeMs(seed);
 
       while (batch.length < maxPerRoute) {
         let bestOrder: EligibleOrder | null = null;
@@ -405,7 +415,7 @@ function generateRoutePlan(
           // Defensive gate: never let automatic routing mix orders outside the
           // route seed's temporal window, even inside a temporal group boundary.
           if (
-            kitchenTimeMs(o) - routeReferenceTime >
+            routeTimeMs(o) - routeReferenceTime >
             MAX_ROUTE_ORDER_TIME_GAP_MS
           ) {
             continue;
@@ -419,7 +429,7 @@ function generateRoutePlan(
             bestScore = score;
             bestOrder = o;
           } else if (score === bestScore && bestOrder !== null) {
-            if (kitchenTimeMs(o) < kitchenTimeMs(bestOrder)) {
+            if (routeTimeMs(o) < routeTimeMs(bestOrder)) {
               bestOrder = o;
             }
           }
@@ -480,9 +490,7 @@ async function recalcRoute(
     ...new Set(rows.map((r) => (r.deliveryNeighborhood ?? "Outros").trim())),
   ];
 
-  const earliest = Math.min(
-    ...rows.map((r) => r.kitchenAcceptedAt?.getTime() ?? r.createdAt.getTime()),
-  );
+  const earliest = Math.min(...rows.map(routeTimeMs));
   const dispatchDeadline = new Date(earliest + dispatchMinutes * 60_000);
 
   const mapsUrl = buildMapsUrl(
@@ -618,11 +626,7 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     const sortedOrders = orders;
 
     // Dispatch deadline = earliest order's kitchen time + dispatchMinutes
-    const earliest = Math.min(
-      ...sortedOrders.map(
-        (o) => o.kitchenAcceptedAt?.getTime() ?? o.createdAt.getTime(),
-      ),
-    );
+    const earliest = Math.min(...sortedOrders.map(routeTimeMs));
     const dispatchDeadline = new Date(earliest + dispatchMinutes * 60_000);
 
     const mapsUrl = buildMapsUrl(
@@ -820,8 +824,7 @@ router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
   const mainNeighborhood = (order.deliveryNeighborhood ?? "Entrega").trim();
   const name = `Rota ${routeNumber} — ${mainNeighborhood} ⚡`;
 
-  const startTime =
-    order.kitchenAcceptedAt?.getTime() ?? order.createdAt.getTime();
+  const startTime = routeTimeMs(order);
   const dispatchDeadline = new Date(
     startTime + settings.deliveryDispatchTimeMinutes * 60_000,
   );
