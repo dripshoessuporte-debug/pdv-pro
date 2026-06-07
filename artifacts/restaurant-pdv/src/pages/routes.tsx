@@ -182,8 +182,6 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cartao: "Cartão",
 };
 
-const ROUTE_TIME_WINDOW_MINUTES = 30;
-
 const PAYMENT_METHOD_ICONS: Record<string, typeof Banknote> = {
   dinheiro: Banknote,
   pix: Smartphone,
@@ -747,11 +745,6 @@ export default function Routes() {
                   </span>
                 </div>
               ))}
-              <div className="flex items-center gap-1.5 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                <Timer className="w-3 h-3" />
-                Agrupamento automático: horário primeiro (janela{" "}
-                {ROUTE_TIME_WINDOW_MINUTES} min), distância/CEP depois
-              </div>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -1917,37 +1910,6 @@ function RouteCard({
     (n) => n !== route.mainNeighborhood,
   );
 
-  const routeOrderTimes = route.orders
-    .map((o) => (o.routeTimeAt ? new Date(o.routeTimeAt).getTime() : null))
-    .filter(
-      (value): value is number => value !== null && Number.isFinite(value),
-    );
-  const routeTimeSpreadMinutes =
-    routeOrderTimes.length >= 2
-      ? Math.round(
-          (Math.max(...routeOrderTimes) - Math.min(...routeOrderTimes)) /
-            60_000,
-        )
-      : 0;
-  const isWithinAutomaticTimeWindow =
-    routeTimeSpreadMinutes <= ROUTE_TIME_WINDOW_MINUTES;
-  const routeFirstOrderTime =
-    routeOrderTimes.length > 0 ? Math.min(...routeOrderTimes) : null;
-  const routeLastOrderTime =
-    routeOrderTimes.length > 0 ? Math.max(...routeOrderTimes) : null;
-  const routeFirstOrderTimeLabel = routeFirstOrderTime
-    ? new Date(routeFirstOrderTime).toLocaleTimeString("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : null;
-  const routeLastOrderTimeLabel = routeLastOrderTime
-    ? new Date(routeLastOrderTime).toLocaleTimeString("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : null;
-
   const hasDetailedContent =
     !isCompleted &&
     (totalFridges > 0 ||
@@ -2042,22 +2004,6 @@ function RouteCard({
               <span className="font-semibold">
                 ~{maxDistKm.toFixed(1)} km (máx.)
               </span>
-            </div>
-            <div
-              className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${isWithinAutomaticTimeWindow ? "bg-blue-50 text-blue-700" : "bg-amber-100 text-amber-700"}`}
-            >
-              <Timer className="w-3 h-3" />
-              {totalCount <= 1 ? (
-                <span>1 entrega — sem agrupamento por tempo</span>
-              ) : (
-                <span>
-                  Entrada na cozinha: {routeTimeSpreadMinutes} min entre pedidos
-                  / limite {ROUTE_TIME_WINDOW_MINUTES} min
-                  {routeFirstOrderTimeLabel && routeLastOrderTimeLabel
-                    ? ` · primeiro ${routeFirstOrderTimeLabel} · último ${routeLastOrderTimeLabel}`
-                    : ""}
-                </span>
-              )}
             </div>
           </div>
 

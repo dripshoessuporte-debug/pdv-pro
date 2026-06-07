@@ -378,7 +378,7 @@ function buildRouteFromBatch(
 /**
  * Greedy grouping algorithm — time window first, proximity second.
  *
- * 1. Sort all orders by kitchen acceptance time (oldest = most urgent first).
+ * 1. Sort all orders by kitchen acceptance time (createdAt fallback; oldest first).
  * 2. Create chronological groups using ROUTE_TIME_WINDOW_MINUTES from the
  *    oldest order in each group.
  * 3. Inside each temporal group only, form routes by CEP/neighborhood score.
@@ -625,7 +625,7 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     // Orders are already sorted by proximity from generateRoutePlan
     const sortedOrders = orders;
 
-    // Dispatch deadline = earliest order's kitchen time + dispatchMinutes
+    // Dispatch deadline = earliest operational route time + dispatchMinutes
     const earliest = Math.min(...sortedOrders.map(routeTimeMs));
     const dispatchDeadline = new Date(earliest + dispatchMinutes * 60_000);
 
@@ -724,9 +724,8 @@ router.get("/delivery/orders/pending", async (req, res): Promise<void> => {
     deliveryPaymentMethod: o.deliveryPaymentMethod,
     createdAt: o.createdAt.toISOString(),
     kitchenAcceptedAt: o.kitchenAcceptedAt?.toISOString() ?? null,
-    dispatchDeadline: o.kitchenAcceptedAt
-      ? new Date(o.kitchenAcceptedAt.getTime() + dp * 60_000).toISOString()
-      : null,
+    routeTimeAt: new Date(routeTimeMs(o)).toISOString(),
+    dispatchDeadline: new Date(routeTimeMs(o) + dp * 60_000).toISOString(),
   }));
 
   res.json(result);
