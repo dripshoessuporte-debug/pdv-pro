@@ -940,7 +940,7 @@ export default function Routes() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-border overflow-hidden bg-card">
+              <div className="space-y-2">
                 {pendingOrdersRenderable.map((order, idx) => (
                   <PendingOrderRow
                     key={order.id}
@@ -1674,7 +1674,7 @@ function PendingOrderRow({
   order,
   dispatchMinutes,
   activeRoutes,
-  isLast,
+  isLast: _isLast,
   selected,
   onToggle,
   onAddToRoute,
@@ -1704,135 +1704,144 @@ function PendingOrderRow({
   const dsColor = ds ? DELIVERY_STATUS_COLORS[ds] : "";
   const urgency = timeStatus?.urgency ?? "ok";
   const UrgencyIcon = URGENCY_ICON[urgency];
+  const receiveOnDelivery = order.paymentTiming === "on_delivery";
+  const paymentLabel = receiveOnDelivery ? "Na entrega" : "Pago agora";
+  const addressLine = [order.deliveryNeighborhood, order.deliveryCep]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div
-      className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors ${selected ? "bg-blue-50 dark:bg-blue-900/20" : "hover:bg-slate-50"} ${!isLast ? "border-b border-border" : ""}`}
+      className={`grid cursor-pointer gap-4 rounded-2xl border bg-white p-4 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50/60 hover:shadow-md md:grid-cols-[minmax(0,1.2fr)_minmax(220px,1fr)_auto] md:items-center dark:bg-card ${selected ? "border-primary bg-blue-50/70 ring-1 ring-primary/20 dark:bg-blue-900/20" : "border-slate-200"}`}
       onClick={onOpenOrder}
+      data-testid={`pending-delivery-${order.id}`}
     >
-      {/* Checkbox */}
-      <button
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggle();
-        }}
-        className={`shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${selected ? "bg-primary border-primary" : "border-[#CBD5E1] hover:border-primary"}`}
-        title={selected ? "Desmarcar" : "Selecionar"}
-      >
-        {selected && (
-          <svg
-            viewBox="0 0 10 8"
-            className="w-2.5 h-2 fill-white"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M1 4l2.5 2.5L9 1"
-              stroke="white"
-              strokeWidth="1.5"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        )}
-      </button>
-      {/* Urgency dot */}
-      <span
-        className={`w-2.5 h-2.5 rounded-full shrink-0 ${timeStatus ? URGENCY_DOT[urgency] : "bg-gray-300"}`}
-      />
-
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-sm truncate">
-            Pedido #{order.id} · {order.customerName ?? "Cliente não informado"}
-          </span>
-          {dsLabel && (
-            <span
-              className={`text-xs px-1.5 py-0.5 rounded-full font-medium shrink-0 ${dsColor}`}
+      {/* Left: identity */}
+      <div className="flex min-w-0 items-start gap-3">
+        <button
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggle();
+          }}
+          className={`mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition-colors ${selected ? "border-primary bg-primary" : "border-[#CBD5E1] hover:border-primary"}`}
+          title={selected ? "Desmarcar" : "Selecionar"}
+        >
+          {selected && (
+            <svg
+              viewBox="0 0 10 8"
+              className="h-2.5 w-3 fill-white"
+              xmlns="http://www.w3.org/2000/svg"
             >
-              {dsLabel}
-            </span>
+              <path
+                d="M1 4l2.5 2.5L9 1"
+                stroke="white"
+                strokeWidth="1.5"
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           )}
-          {order.paymentTiming === "on_delivery" && (
-            <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 px-1.5 py-0.5 rounded-full shrink-0">
-              💰 R$ {order.totalAmount.toFixed(2)} na entrega
-            </span>
-          )}
-        </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        </button>
+        <span
+          className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${timeStatus ? URGENCY_DOT[urgency] : "bg-gray-300"}`}
+        />
+        <div className="min-w-0 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-sm font-bold text-slate-900">
+              Pedido #{order.id} · {order.customerName ?? "Cliente não informado"}
+            </p>
+            {dsLabel && (
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${dsColor}`}>
+                {dsLabel}
+              </span>
+            )}
+          </div>
           <OrderTimeBadge
             createdAt={order.createdAt}
             compact
             showIcon={false}
+            className="text-xs text-muted-foreground"
           />
-          <span className="text-slate-300">·</span>
-          <MapPin className="w-3 h-3 shrink-0" />
-          <span className="truncate">
-            {[order.deliveryNeighborhood, order.deliveryCep]
-              .filter(Boolean)
-              .join(" · ")}
+        </div>
+      </div>
+
+      {/* Center: delivery */}
+      <div className="min-w-0 space-y-1.5 text-sm text-slate-600">
+        <div className="flex min-w-0 items-center gap-2">
+          <MapPin className="h-4 w-4 shrink-0 text-slate-400" />
+          <span className="truncate font-medium">
+            {addressLine || order.deliveryAddress || "Endereço não informado"}
           </span>
-          {order.customerPhone && (
-            <>
-              <span className="mx-1 opacity-40">·</span>
-              <Phone className="w-3 h-3 shrink-0" />
-              <span>{order.customerPhone}</span>
-            </>
+        </div>
+        {order.customerPhone && (
+          <div className="flex items-center gap-2">
+            <Phone className="h-4 w-4 shrink-0 text-slate-400" />
+            <span>{order.customerPhone}</span>
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Banknote className="h-4 w-4 shrink-0 text-slate-400" />
+          <span className="font-medium">{paymentLabel}</span>
+          {receiveOnDelivery && (
+            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">
+              Receber R$ {order.totalAmount.toFixed(2)}
+            </span>
           )}
         </div>
       </div>
 
-      {/* Timer */}
-      <div className="shrink-0 text-right hidden sm:block">
-        {timeStatus ? (
-          <div
-            className={`flex items-center gap-1 text-xs font-medium ${URGENCY_TEXT[urgency]}`}
-          >
-            <UrgencyIcon className="w-3 h-3" />
-            {timeStatus.label}
+      {/* Right: deadline and actions */}
+      <div className="flex items-center justify-between gap-3 md:min-w-[170px] md:flex-col md:items-end">
+        <div className="text-left md:text-right">
+          {timeStatus ? (
+            <div className={`flex items-center gap-1 text-sm font-bold md:justify-end ${URGENCY_TEXT[urgency]}`}>
+              <UrgencyIcon className="h-4 w-4" />
+              {timeStatus.label}
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 text-sm font-medium text-muted-foreground md:justify-end">
+              <Clock className="h-4 w-4" />
+              Prazo cozinha
+            </div>
+          )}
+          <div className="mt-1 text-sm font-semibold text-slate-900">
+            Total R$ {order.totalAmount.toFixed(2)}
           </div>
-        ) : (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Clock className="w-3 h-3" />
-            Cozinha
+          <div className="text-xs text-muted-foreground">
+            Taxa R$ {order.deliveryFee.toFixed(2)}
           </div>
-        )}
-        <div className="text-xs text-muted-foreground mt-0.5">
-          R$ {order.deliveryFee.toFixed(2)}
         </div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex items-center gap-1 shrink-0">
-        {activeRoutes.length > 0 && (
+        <div className="flex items-center gap-1.5 shrink-0">
+          {activeRoutes.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 px-2 text-xs gap-1 border-primary/40 text-primary hover:bg-primary/5"
+              onClick={(event) => {
+                event.stopPropagation();
+                onAddToRoute();
+              }}
+              title="Adicionar a uma rota existente"
+            >
+              <PlusCircle className="h-3.5 w-3.5" />
+              <span className="hidden lg:inline">Adicionar</span>
+            </Button>
+          )}
           <Button
             size="sm"
             variant="outline"
-            className="h-7 px-2 text-xs gap-1 border-primary/40 text-primary hover:bg-primary/5"
+            className="h-8 px-2 text-xs gap-1 border-red-200 text-[#D91F16] hover:text-[#D91F16] hover:bg-red-50 dark:text-red-300"
             onClick={(event) => {
               event.stopPropagation();
-              onAddToRoute();
+              onEmergency();
             }}
-            title="Adicionar a uma rota existente"
+            title="Criar rota solitária"
           >
-            <PlusCircle className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Adicionar à rota</span>
+            <Zap className="h-3.5 w-3.5" />
+            <span>Solitária</span>
           </Button>
-        )}
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 px-2 text-xs gap-1 text-[#D91F16] hover:text-[#D91F16] hover:bg-red-50 dark:text-red-300"
-          onClick={(event) => {
-            event.stopPropagation();
-            onEmergency();
-          }}
-          title="Criar rota solitária"
-        >
-          <Zap className="w-3.5 h-3.5" />
-          <span className="hidden lg:inline">Solitária</span>
-        </Button>
+        </div>
       </div>
     </div>
   );
@@ -2190,22 +2199,14 @@ function RouteCard({
                   />
 
                   {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="flex min-w-0 items-center gap-1.5 font-semibold text-[#0F172A]">
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                       <span className="shrink-0 rounded-md bg-[#0F172A] px-1.5 py-0.5 text-[10px] font-black leading-none text-white">
                         #{order.orderId}
                       </span>
-                      <span className="truncate">
+                      <span className="truncate font-semibold text-[#0F172A]">
                         {order.customerName ?? "Cliente não informado"}
                       </span>
-                    </p>
-                    <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                      <OrderTimeBadge
-                        createdAt={order.orderCreatedAt}
-                        compact
-                        showIcon={false}
-                        className="text-[10px]"
-                      />
                       {dsLabel && (
                         <span
                           className={`px-1.5 py-px rounded-full font-medium text-[10px] ${DELIVERY_STATUS_COLORS[ds!]}`}
@@ -2213,16 +2214,46 @@ function RouteCard({
                           {dsLabel}
                         </span>
                       )}
-                      {order.paymentTiming === "on_delivery" && (
-                        <span className="text-amber-600 font-semibold flex items-center gap-0.5">
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-[#64748B]">
+                      <OrderTimeBadge
+                        createdAt={order.orderCreatedAt}
+                        compact
+                        showIcon={false}
+                        className="text-[10px]"
+                      />
+                      <span className="text-slate-300">·</span>
+                      <MapPin className="w-3 h-3 shrink-0" />
+                      <span className="truncate">
+                        {[order.deliveryNeighborhood, order.deliveryCep]
+                          .filter(Boolean)
+                          .join(" · ") || order.deliveryAddress || "Endereço não informado"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                      {order.paymentTiming === "on_delivery" ? (
+                        <span className="text-amber-700 font-semibold flex items-center gap-0.5 rounded-full bg-amber-50 px-1.5 py-0.5">
                           {PayIcon && <PayIcon className="w-3 h-3 shrink-0" />}
-                          Cobrar R$ {order.totalAmount.toFixed(2)}
+                          Na entrega · Receber R$ {order.totalAmount.toFixed(2)}
+                        </span>
+                      ) : (
+                        <span className="text-emerald-700 font-semibold flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5">
+                          <CheckCircle2 className="w-3 h-3 shrink-0" />
+                          Pago agora
                         </span>
                       )}
                       {hasFridges && (
-                        <span className="text-blue-500 font-semibold flex items-center gap-0.5">
-                          🥤 {orderFridges.reduce((s, i) => s + i.quantity, 0)}{" "}
-                          refri
+                        <span className="text-blue-600 font-semibold flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5">
+                          🥤 {orderFridges.reduce((sum, item) => sum + item.quantity, 0)} refri
+                        </span>
+                      )}
+                      {(order.items ?? []).length > 0 && (
+                        <span className="truncate text-[#64748B]">
+                          {(order.items ?? [])
+                            .slice(0, 2)
+                            .map((item) => `${item.quantity}× ${item.productName}`)
+                            .join(" · ")}
+                          {(order.items ?? []).length > 2 ? " · …" : ""}
                         </span>
                       )}
                     </div>
