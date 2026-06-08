@@ -520,9 +520,9 @@ export default function Menu() {
       toast({ title: "Informe o nome do grupo de adicionais.", variant: "destructive" });
       return;
     }
-    const minSelected = Number(addonGroupForm.minSelected);
-    if (!addonGroupForm.minSelected.trim() || !Number.isInteger(minSelected) || minSelected < 0) {
-      toast({ title: "Mínimo precisa ser um inteiro maior ou igual a 0.", variant: "destructive" });
+    const minSelected = addonGroupForm.required ? Number(addonGroupForm.minSelected) : 0;
+    if (addonGroupForm.required && (!addonGroupForm.minSelected.trim() || !Number.isInteger(minSelected) || minSelected < 0)) {
+      toast({ title: "Mínimo obrigatório precisa ser um inteiro maior ou igual a 0.", variant: "destructive" });
       return;
     }
     const hasMaxSelected = addonGroupForm.maxSelected.trim() !== "";
@@ -559,7 +559,7 @@ export default function Menu() {
       name: group.name,
       description: group.description ?? "",
       required: group.required,
-      minSelected: String(group.minSelected ?? 0),
+      minSelected: group.required ? String(group.minSelected ?? 0) : "0",
       maxSelected: group.maxSelected != null ? String(group.maxSelected) : "",
       active: group.active,
     });
@@ -1148,8 +1148,17 @@ export default function Menu() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label>Mínimo</Label>
-                    <Input type="number" min="0" value={addonGroupForm.minSelected} onChange={(e) => setAddonGroupForm({ ...addonGroupForm, minSelected: e.target.value })} />
+                    <Label>Mínimo obrigatório</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={addonGroupForm.required ? addonGroupForm.minSelected : "0"}
+                      disabled={!addonGroupForm.required}
+                      onChange={(e) => setAddonGroupForm({ ...addonGroupForm, minSelected: e.target.value })}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {addonGroupForm.required ? "Usado para exigir escolhas no pedido." : "Grupo opcional: o cliente pode não escolher nada."}
+                    </p>
                   </div>
                   <div>
                     <Label>Máximo</Label>
@@ -1158,8 +1167,8 @@ export default function Menu() {
                 </div>
                 <div className="flex flex-wrap gap-3">
                   <label className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-                    <Switch checked={addonGroupForm.required} onCheckedChange={(checked) => setAddonGroupForm({ ...addonGroupForm, required: checked })} />
-                    Obrigatório
+                    <Switch checked={addonGroupForm.required} onCheckedChange={(checked) => setAddonGroupForm({ ...addonGroupForm, required: checked, minSelected: checked ? addonGroupForm.minSelected : "0" })} />
+                    {addonGroupForm.required ? "Obrigatório" : "Opcional"}
                   </label>
                   <label className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
                     <Switch checked={addonGroupForm.active} onCheckedChange={(checked) => setAddonGroupForm({ ...addonGroupForm, active: checked })} />
@@ -1209,11 +1218,11 @@ export default function Menu() {
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="font-semibold">{group.name}</h3>
                             <Badge variant={group.active ? "default" : "outline"}>{group.active ? "Ativo" : "Inativo"}</Badge>
-                            {group.required ? <Badge variant="outline">Obrigatório</Badge> : null}
+                            <Badge variant="outline">{group.required ? "Obrigatório" : "Opcional"}</Badge>
                           </div>
                           {group.description ? <p className="mt-1 text-sm text-muted-foreground">{group.description}</p> : null}
                           <p className="mt-1 text-xs text-muted-foreground">
-                            Seleção: mín. {group.minSelected ?? 0}{group.maxSelected != null ? ` • máx. ${group.maxSelected}` : " • sem máximo"}
+                            Seleção: {group.required ? `mín. ${Math.max(1, group.minSelected ?? 0)}` : "opcional (mín. 0)"}{group.maxSelected != null ? ` • máx. ${group.maxSelected}` : " • sem máximo"}
                           </p>
                         </div>
                         <div className="flex gap-2">
