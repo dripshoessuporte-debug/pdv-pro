@@ -62,6 +62,9 @@ async function getTicketWithItems(ticketId: number, storeId?: number) {
       unitPrice: orderItemsTable.unitPrice,
       totalPrice: orderItemsTable.totalPrice,
       notes: orderItemsTable.notes,
+      variantId: orderItemsTable.variantId,
+      variantName: orderItemsTable.variantName,
+      variantPrice: orderItemsTable.variantPrice,
     })
     .from(orderItemsTable)
     .leftJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
@@ -77,6 +80,7 @@ async function getTicketWithItems(ticketId: number, storeId?: number) {
       ...item,
       unitPrice: parseFloat(String(item.unitPrice)),
       totalPrice: parseFloat(String(item.totalPrice)),
+      variantPrice: item.variantPrice == null ? null : parseFloat(String(item.variantPrice)),
       addons: (await db.select().from(orderItemAddonsTable).where(eq(orderItemAddonsTable.orderItemId, item.id))).map((addon) => ({
         ...addon,
         addonPrice: parseFloat(String(addon.addonPrice)),
@@ -124,11 +128,16 @@ router.get("/kitchen/queue", async (req, res): Promise<void> => {
           id: orderItemsTable.id,
           orderId: orderItemsTable.orderId,
           productId: orderItemsTable.productId,
-          productName: productsTable.name,
+          productName: sql<
+            string | null
+          >`coalesce(${productsTable.name}, ${orderItemsTable.externalProductName})`,
           quantity: orderItemsTable.quantity,
           unitPrice: orderItemsTable.unitPrice,
           totalPrice: orderItemsTable.totalPrice,
           notes: orderItemsTable.notes,
+          variantId: orderItemsTable.variantId,
+          variantName: orderItemsTable.variantName,
+          variantPrice: orderItemsTable.variantPrice,
         })
         .from(orderItemsTable)
         .leftJoin(
@@ -147,6 +156,7 @@ router.get("/kitchen/queue", async (req, res): Promise<void> => {
           ...item,
           unitPrice: parseFloat(String(item.unitPrice)),
           totalPrice: parseFloat(String(item.totalPrice)),
+          variantPrice: item.variantPrice == null ? null : parseFloat(String(item.variantPrice)),
           addons: (await db.select().from(orderItemAddonsTable).where(eq(orderItemAddonsTable.orderItemId, item.id))).map((addon) => ({
             ...addon,
             addonPrice: parseFloat(String(addon.addonPrice)),
