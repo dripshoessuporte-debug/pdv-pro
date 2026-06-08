@@ -156,7 +156,7 @@ const STATUS_LABELS: Record<RouteStatus, string> = {
 const STATUS_COLORS: Record<RouteStatus, string> = {
   available: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
   in_progress:
-    "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+    "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
   completed:
     "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
 };
@@ -258,9 +258,9 @@ export default function Routes() {
     [],
   );
   const [dispatchMinutes, setDispatchMinutes] = useState<number | null>(null);
-  const [storeDispatchMinutes, setStoreDispatchMinutes] = useState<number | null>(
-    null,
-  );
+  const [storeDispatchMinutes, setStoreDispatchMinutes] = useState<
+    number | null
+  >(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const savingDispatch = false;
@@ -589,15 +589,23 @@ export default function Routes() {
 
   const pendingOrdersRenderable = pendingOrders
     .filter((order) => {
-      const isEligibleDeliveryStatus = ["pending", "preparing", "ready"].includes(
-        order.deliveryStatus ?? "",
-      );
-      const hasRouteLink = (order as { routeId?: number | null }).routeId != null;
+      const isEligibleDeliveryStatus = [
+        "pending",
+        "preparing",
+        "ready",
+      ].includes(order.deliveryStatus ?? "");
+      const hasRouteLink =
+        (order as { routeId?: number | null }).routeId != null;
       return (
-        isEligibleDeliveryStatus && !hasRouteLink && isTodayLocal(order.createdAt)
+        isEligibleDeliveryStatus &&
+        !hasRouteLink &&
+        isTodayLocal(order.createdAt)
       );
     })
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [bulkAdding, setBulkAdding] = useState(false);
 
@@ -658,16 +666,16 @@ export default function Routes() {
     : completedTodayRoutes;
 
   const routeNavigation = (
-    <div className="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-[#E2E8F0] bg-white p-2 shadow-sm">
+    <div className="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900 p-2 shadow-sm">
       <button
         type="button"
-        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "pending" ? "bg-[#0F172A] text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
+        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "pending" ? "bg-[#D91F16] text-white shadow-sm" : "bg-white/10 text-slate-200 hover:bg-white/15"}`}
         onClick={() => setRouteView("pending")}
         data-testid="tab-pending-routes"
       >
         <span>Aguardando rota</span>
         <span
-          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "pending" ? "bg-white text-[#0F172A]" : "bg-[#E2E8F0] text-[#0F172A]"}`}
+          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "pending" ? "bg-white text-[#D91F16]" : "bg-slate-700 text-white"}`}
         >
           {pendingOrdersRenderable.length}
         </span>
@@ -675,7 +683,7 @@ export default function Routes() {
       <button
         type="button"
         onClick={() => setRouteView("available")}
-        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "available" ? "bg-[#D91F16] text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
+        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "available" ? "bg-[#D91F16] text-white shadow-sm" : "bg-white/10 text-slate-200 hover:bg-white/15"}`}
         data-testid="tab-available"
       >
         <span
@@ -683,7 +691,7 @@ export default function Routes() {
         />
         <span>Rotas disponíveis</span>
         <span
-          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "available" ? "bg-white text-[#D91F16]" : "bg-[#E2E8F0] text-[#0F172A]"}`}
+          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "available" ? "bg-white text-[#D91F16]" : "bg-slate-700 text-white"}`}
         >
           {availableRoutes.length}
         </span>
@@ -691,7 +699,7 @@ export default function Routes() {
       <button
         type="button"
         onClick={() => setRouteView("in_progress")}
-        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "in_progress" ? "bg-[#0F172A] text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
+        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "in_progress" ? "bg-[#D91F16] text-white shadow-sm" : "bg-white/10 text-slate-200 hover:bg-white/15"}`}
         data-testid="tab-in-progress"
       >
         <span
@@ -699,20 +707,20 @@ export default function Routes() {
         />
         <span>Em andamento</span>
         <span
-          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "in_progress" ? "bg-white text-[#0F172A]" : "bg-[#E2E8F0] text-[#0F172A]"}`}
+          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "in_progress" ? "bg-white text-[#D91F16]" : "bg-slate-700 text-white"}`}
         >
           {inProgressRoutes.length}
         </span>
       </button>
       <button
         type="button"
-        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "completed" ? "bg-emerald-600 text-white shadow-sm" : "bg-[#F8FAFC] text-[#334155] hover:bg-[#F1F5F9]"}`}
+        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "completed" ? "bg-[#D91F16] text-white shadow-sm" : "bg-white/10 text-slate-200 hover:bg-white/15"}`}
         onClick={() => setRouteView("completed")}
         data-testid="tab-completed-today"
       >
         <span>Concluídas hoje</span>
         <span
-          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "completed" ? "bg-white text-emerald-700" : "bg-[#E2E8F0] text-[#0F172A]"}`}
+          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "completed" ? "bg-white text-[#D91F16]" : "bg-slate-700 text-white"}`}
         >
           {completedTodayRoutes.length}
         </span>
@@ -737,10 +745,9 @@ export default function Routes() {
             {/* ── Legenda de cores por distância ── */}
             <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-2">
               {ROUTE_DISTANCE_LEGEND.map((entry) => (
-                <div key={entry.color} className="flex items-center gap-1.5">
+                <div key={entry.label} className="flex items-center gap-1.5">
                   <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: entry.color }}
+                    className={`w-2 h-2 rounded-full shrink-0 ${entry.tone}`}
                   />
                   <span className="text-xs text-muted-foreground">
                     {entry.label}
@@ -1702,7 +1709,6 @@ function PendingOrderRow({
     <div
       className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors ${selected ? "bg-blue-50 dark:bg-blue-900/20" : "hover:bg-slate-50"} ${!isLast ? "border-b border-border" : ""}`}
       onClick={onOpenOrder}
-      title="Clique para ver comanda"
     >
       {/* Checkbox */}
       <button
@@ -1755,17 +1761,17 @@ function PendingOrderRow({
           )}
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-          <OrderTimeBadge createdAt={order.createdAt} compact showIcon={false} />
+          <OrderTimeBadge
+            createdAt={order.createdAt}
+            compact
+            showIcon={false}
+          />
           <span className="text-slate-300">·</span>
           <MapPin className="w-3 h-3 shrink-0" />
           <span className="truncate">
             {[order.deliveryNeighborhood, order.deliveryCep]
               .filter(Boolean)
               .join(" · ")}
-          </span>
-          <span className="mx-1 opacity-40">·</span>
-          <span className="font-semibold text-[#D91F16]">
-            Clique para ver comanda
           </span>
           {order.customerPhone && (
             <>
@@ -1834,23 +1840,84 @@ function PendingOrderRow({
 
 // ─── Route value color based on total delivery fee ────────────────────────────
 
-function getRouteDistanceColor(distKm: number): {
-  color: string;
-  glow: string;
+const ROUTE_DISTANCE_TONES = {
+  short: {
+    accent: "bg-emerald-500",
+    border: "border-emerald-200",
+    badge: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    text: "text-emerald-700",
+    hex: "#059669",
+  },
+  medium: {
+    accent: "bg-blue-500",
+    border: "border-blue-200",
+    badge: "bg-blue-50 text-blue-700 border-blue-200",
+    text: "text-blue-700",
+    hex: "#2563EB",
+  },
+  long: {
+    accent: "bg-violet-500",
+    border: "border-violet-200",
+    badge: "bg-violet-50 text-violet-700 border-violet-200",
+    text: "text-violet-700",
+    hex: "#7C3AED",
+  },
+  extended: {
+    accent: "bg-amber-500",
+    border: "border-amber-200",
+    badge: "bg-amber-50 text-amber-700 border-amber-200",
+    text: "text-amber-700",
+    hex: "#D97706",
+  },
+  far: {
+    accent: "bg-red-500",
+    border: "border-red-200",
+    badge: "bg-red-50 text-red-700 border-red-200",
+    text: "text-red-700",
+    hex: "#DC2626",
+  },
+} as const;
+
+type RouteDistanceTone = keyof typeof ROUTE_DISTANCE_TONES;
+
+function getRouteDistanceTone(distKm: number): {
+  key: RouteDistanceTone;
+  label: string;
+  classes: (typeof ROUTE_DISTANCE_TONES)[RouteDistanceTone];
 } {
-  if (distKm > 8) return { color: "#EAB308", glow: "rgba(234,179,8,0.20)" };
-  if (distKm > 6) return { color: "#8B5CF6", glow: "rgba(139,92,246,0.20)" };
-  if (distKm > 4) return { color: "#EC4899", glow: "rgba(236,72,153,0.20)" };
-  if (distKm > 2) return { color: "#22C55E", glow: "rgba(34,197,94,0.20)" };
-  return { color: "#3B82F6", glow: "rgba(59,130,246,0.20)" };
+  if (distKm > 8)
+    return {
+      key: "far",
+      label: "acima de 8 km",
+      classes: ROUTE_DISTANCE_TONES.far,
+    };
+  if (distKm > 6)
+    return {
+      key: "extended",
+      label: "6–8 km",
+      classes: ROUTE_DISTANCE_TONES.extended,
+    };
+  if (distKm > 4)
+    return { key: "long", label: "4–6 km", classes: ROUTE_DISTANCE_TONES.long };
+  if (distKm > 2)
+    return {
+      key: "medium",
+      label: "2–4 km",
+      classes: ROUTE_DISTANCE_TONES.medium,
+    };
+  return {
+    key: "short",
+    label: "até 2 km",
+    classes: ROUTE_DISTANCE_TONES.short,
+  };
 }
 
 const ROUTE_DISTANCE_LEGEND = [
-  { color: "#3B82F6", label: "até 2 km" },
-  { color: "#22C55E", label: "2–4 km" },
-  { color: "#EC4899", label: "4–6 km" },
-  { color: "#8B5CF6", label: "6–8 km" },
-  { color: "#EAB308", label: "acima de 8 km" },
+  { tone: ROUTE_DISTANCE_TONES.short.accent, label: "até 2 km" },
+  { tone: ROUTE_DISTANCE_TONES.medium.accent, label: "2–4 km" },
+  { tone: ROUTE_DISTANCE_TONES.long.accent, label: "4–6 km" },
+  { tone: ROUTE_DISTANCE_TONES.extended.accent, label: "6–8 km" },
+  { tone: ROUTE_DISTANCE_TONES.far.accent, label: "acima de 8 km" },
 ] as const;
 
 // ─── RouteCard ────────────────────────────────────────────────────────────────
@@ -1921,7 +1988,7 @@ function RouteCard({
     route.orders.length > 0
       ? Math.max(...route.orders.map((o) => o.estimatedDistanceKm ?? 5))
       : 5;
-  const vc = getRouteDistanceColor(maxDistKm);
+  const distanceTone = getRouteDistanceTone(maxDistKm);
   const readinessPct =
     totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
   const otherNeighborhoods = route.includedNeighborhoods.filter(
@@ -1943,30 +2010,20 @@ function RouteCard({
 
   return (
     <div
-      className="rounded-2xl overflow-hidden flex flex-col transition-shadow"
+      className={`relative rounded-2xl overflow-hidden flex flex-col border bg-white shadow-sm transition-shadow hover:shadow-md ${distanceTone.classes.border}`}
       data-testid={`card-route-${route.id}`}
-      style={{
-        backgroundColor: "#FFFFFF",
-        border: `2px solid ${vc.color}99`,
-        boxShadow: `0 0 10px 0 ${vc.glow}, 0 1px 4px rgba(0,0,0,0.06)`,
-        color: "#0F172A",
-      }}
     >
-      <div className="p-4 flex flex-col gap-3 flex-1">
+      <div
+        className={`absolute inset-y-0 left-0 w-1.5 ${distanceTone.classes.accent}`}
+      />
+      <div className="p-4 pl-5 flex flex-col gap-3 flex-1">
         {/* ── Header ── */}
         <div className="flex items-start gap-3">
           {/* Readiness pill */}
           <div
-            className="flex flex-col items-center justify-center shrink-0 rounded-xl px-2.5 py-2 min-w-[58px]"
-            style={{
-              backgroundColor: `${vc.color}12`,
-              border: `1px solid ${vc.color}40`,
-            }}
+            className={`flex flex-col items-center justify-center shrink-0 rounded-xl border px-2.5 py-2 min-w-[58px] ${distanceTone.classes.badge}`}
           >
-            <span
-              className="text-xl font-black leading-none"
-              style={{ color: vc.color }}
-            >
+            <span className="text-xl font-black leading-none">
               {totalCount}
             </span>
             <span className="text-[10px] font-semibold text-[#0F172A] leading-tight mt-0.5">
@@ -1979,7 +2036,9 @@ function RouteCard({
                   style={{
                     width: `${readinessPct}%`,
                     backgroundColor:
-                      readinessPct === 100 ? "#22C55E" : vc.color,
+                      readinessPct === 100
+                        ? "#22C55E"
+                        : distanceTone.classes.hex,
                   }}
                 />
               </div>
@@ -1991,7 +2050,7 @@ function RouteCard({
 
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-sm leading-snug text-[#0F172A]">
-              <span style={{ color: vc.color }} className="font-black">
+              <span className={`font-black ${distanceTone.classes.text}`}>
                 {index + 1}
               </span>{" "}
               {route.mainNeighborhood}
@@ -2015,12 +2074,13 @@ function RouteCard({
               </div>
             )}
             <div
-              className="flex items-center gap-1 mt-0.5 text-xs"
-              style={{ color: vc.color }}
+              className={`flex items-center gap-1 mt-1 text-xs ${distanceTone.classes.text}`}
             >
               <MapPin className="w-3 h-3 shrink-0" />
-              <span className="font-semibold">
-                ~{maxDistKm.toFixed(1)} km (máx.)
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${distanceTone.classes.badge}`}
+              >
+                ~{maxDistKm.toFixed(1)} km · {distanceTone.label}
               </span>
             </div>
           </div>
@@ -2091,7 +2151,7 @@ function RouteCard({
                 className="overflow-hidden transition-all"
                 style={{
                   borderColor: isOrderExpanded
-                    ? `${vc.color}40`
+                    ? distanceTone.classes.hex
                     : "transparent",
                 }}
               >
@@ -2099,9 +2159,7 @@ function RouteCard({
                 <div
                   className="group flex cursor-pointer items-center gap-2.5 px-3 py-2.5 text-xs transition-colors select-none hover:bg-slate-100"
                   style={{
-                    backgroundColor: isOrderExpanded
-                      ? `${vc.color}08`
-                      : "#F8FAFC",
+                    backgroundColor: isOrderExpanded ? "#F8FAFC" : "#FFFFFF",
                   }}
                   onMouseEnter={(e) => {
                     if (!isOrderExpanded)
@@ -2112,16 +2170,15 @@ function RouteCard({
                       e.currentTarget.style.backgroundColor = "#F8FAFC";
                   }}
                   onClick={() => onOpenOrder(order.orderId)}
-                  title="Clique para ver comanda"
                   data-testid={`route-order-${order.orderId}`}
                 >
                   {/* Stop number */}
                   <div
                     className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-black shrink-0 border"
                     style={{
-                      backgroundColor: `${vc.color}18`,
-                      borderColor: vc.color,
-                      color: vc.color,
+                      backgroundColor: "#F8FAFC",
+                      borderColor: distanceTone.classes.hex,
+                      color: distanceTone.classes.hex,
                     }}
                   >
                     {order.stopOrder}
@@ -2143,9 +2200,16 @@ function RouteCard({
                       </span>
                     </p>
                     <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                      <OrderTimeBadge createdAt={order.orderCreatedAt} compact showIcon={false} className="text-[10px]" />
+                      <OrderTimeBadge
+                        createdAt={order.orderCreatedAt}
+                        compact
+                        showIcon={false}
+                        className="text-[10px]"
+                      />
                       {dsLabel && (
-                        <span className={`px-1.5 py-px rounded-full font-medium text-[10px] ${DELIVERY_STATUS_COLORS[ds!]}`}>
+                        <span
+                          className={`px-1.5 py-px rounded-full font-medium text-[10px] ${DELIVERY_STATUS_COLORS[ds!]}`}
+                        >
                           {dsLabel}
                         </span>
                       )}
@@ -2161,9 +2225,6 @@ function RouteCard({
                           refri
                         </span>
                       )}
-                      <p className="mt-0.5 text-[10px] font-semibold text-[#D91F16]">
-                        Clique para ver comanda
-                      </p>
                     </div>
                   </div>
 
@@ -2222,7 +2283,7 @@ function RouteCard({
                 {isOrderExpanded && (
                   <div
                     className="px-3 pb-3 pt-1 space-y-1.5"
-                    style={{ backgroundColor: `${vc.color}06` }}
+                    style={{ backgroundColor: "#F8FAFC" }}
                   >
                     <p className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wide flex items-center gap-1">
                       <ShoppingBag className="w-3 h-3" /> Itens do pedido #
@@ -2292,7 +2353,6 @@ function RouteCard({
                 setExpanded(true);
               }}
               className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium hover:bg-slate-50 transition-colors"
-              style={{ color: vc.color }}
               data-testid={`btn-show-more-${route.id}`}
             >
               <Plus className="w-3 h-3" />+{hiddenCount} entrega
@@ -2338,7 +2398,7 @@ function RouteCard({
         >
           <div className="flex items-center justify-between">
             <span className="text-[#64748B]">Valor da rota</span>
-            <span className="font-bold" style={{ color: vc.color }}>
+            <span className={`font-bold ${distanceTone.classes.text}`}>
               R$ {route.totalDeliveryFee.toFixed(2)}
             </span>
           </div>

@@ -405,9 +405,7 @@ export default function NewOrder() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            storeCep: storeSettings.storeCep,
             customerCep: digits,
-            storeAddress: storeSettings.storeAddress ?? undefined,
             customerAddress: deliveryAddress || undefined,
             customerCity: undefined,
           }),

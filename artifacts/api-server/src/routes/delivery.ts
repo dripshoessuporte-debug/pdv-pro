@@ -29,15 +29,13 @@ import { getOrCreateSettings } from "./settings";
 const router: IRouter = Router();
 
 const ROUTE_COLORS = [
-  "#ef4444",
-  "#3b82f6",
-  "#22c55e",
-  "#f97316",
-  "#a855f7",
-  "#ec4899",
-  "#14b8a6",
-  "#eab308",
-];
+  "#2563eb",
+  "#059669",
+  "#7c3aed",
+  "#d97706",
+  "#0f766e",
+  "#475569",
+] as const;
 
 // ─── Eligible delivery statuses for routing ───────────────────────────────────
 
@@ -70,6 +68,38 @@ function deliveryOrderCanEnterRouteWhereClause(
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function buildStoreRouteOrigin(
+  settings: Awaited<ReturnType<typeof getOrCreateSettings>>,
+): {
+  origin: string;
+  hasStoreCep: boolean;
+  hasCompleteAddress: boolean;
+} {
+  const storeCep = normalizeCep(settings.storeCep ?? "");
+  const addressParts = [
+    settings.storeAddress,
+    settings.storeNumber,
+    settings.storeNeighborhood,
+    settings.storeCity,
+    settings.storeState,
+    settings.storeCountry,
+  ]
+    .map((part) => (part ? String(part).trim() : ""))
+    .filter(Boolean);
+  const hasCompleteAddress = Boolean(
+    settings.storeAddress && settings.storeCity && settings.storeState,
+  );
+
+  return {
+    origin: [storeCep, ...addressParts].filter(Boolean).join(", "),
+    hasStoreCep: Boolean(storeCep),
+    hasCompleteAddress,
+  };
+}
+
+const MISSING_STORE_CEP_ROUTE_ERROR =
+  "Configure o CEP da loja em Configurações para calcular rotas com precisão.";
 
 function buildMapsUrl(
   storeAddress: string,
@@ -550,21 +580,18 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
   const settings = await getOrCreateSettings(actor.storeId);
   const maxPerRoute = settings.maxOrdersPerRoute;
 
-  // Build store origin string from settings
-  const storeOriginParts = [
-    settings.storeAddress,
-    settings.storeNumber,
-    settings.storeNeighborhood,
-    settings.storeCity,
-    settings.storeState,
-    settings.storeCountry,
-  ].filter(Boolean);
-  const storeOrigin = storeOriginParts.join(", ");
-  if (!settings.storeCity || !settings.storeState) {
+  const storeOriginInfo = buildStoreRouteOrigin(settings);
+  if (!storeOriginInfo.hasStoreCep) {
+    res.status(400).json({ error: MISSING_STORE_CEP_ROUTE_ERROR });
+    return;
+  }
+  if (!storeOriginInfo.hasCompleteAddress) {
     req.log.warn(
-      "Configure cidade e estado da loja para melhorar cálculo de entrega e rotas.",
+      { storeId: actor.storeId },
+      "Configure endereço completo da loja para melhorar cálculo de entrega e rotas.",
     );
   }
+  const storeOrigin = storeOriginInfo.origin;
 
   // Eligible orders: only logistic whitelist deliveryStatus values.
   // Any missing/invalid deliveryStatus is treated as NOT eligible.
@@ -666,7 +693,7 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
   }
 
   const full = await Promise.all(
-    createdRoutes.map((id) => getRouteWithOrders(id)),
+    createdRoutes.map((id) => getRouteWithOrders(id, actor.storeId)),
   );
   res.json({ created: full.length, routes: full.filter(Boolean) });
 });
@@ -762,15 +789,11 @@ router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
   }
 
   const settings = await getOrCreateSettings(actor.storeId);
-  const storeOriginParts = [
-    settings.storeAddress,
-    settings.storeNumber,
-    settings.storeNeighborhood,
-    settings.storeCity,
-    settings.storeState,
-    settings.storeCountry,
-  ].filter(Boolean);
-  const storeOrigin = storeOriginParts.join(", ");
+  const storeOriginInfo = buildStoreRouteOrigin(settings);
+  const storeOrigin = storeOriginInfo.origin;
+  if (!storeOriginInfo.hasStoreCep) {
+    req.log.warn({ storeId: actor.storeId }, MISSING_STORE_CEP_ROUTE_ERROR);
+  }
 
   // Remove from any existing active route
   const existingAssignments = await db
@@ -1048,10 +1071,16 @@ router.post(
       return;
     }
 
+    const actor = await getCurrentActor(req);
     const [route] = await db
       .select()
       .from(deliveryRoutesTable)
-      .where(eq(deliveryRoutesTable.id, routeId));
+      .where(
+        and(
+          eq(deliveryRoutesTable.id, routeId),
+          eq(deliveryRoutesTable.storeId, actor.storeId),
+        ),
+      );
     if (!route) {
       res.status(404).json({ error: "Route not found" });
       return;
@@ -1093,7 +1122,12 @@ router.post(
     const [route] = await db
       .select()
       .from(deliveryRoutesTable)
-      .where(eq(deliveryRoutesTable.id, routeId));
+      .where(
+        and(
+          eq(deliveryRoutesTable.id, routeId),
+          eq(deliveryRoutesTable.storeId, actor.storeId),
+        ),
+      );
     if (!route) {
       res.status(404).json({ error: "Route not found" });
       return;
@@ -1141,15 +1175,11 @@ router.post(
     }
 
     const settings = await getOrCreateSettings(actor.storeId);
-    const storeOriginParts = [
-      settings.storeAddress,
-      settings.storeNumber,
-      settings.storeNeighborhood,
-      settings.storeCity,
-      settings.storeState,
-      settings.storeCountry,
-    ].filter(Boolean);
-    const storeOrigin = storeOriginParts.join(", ");
+    const storeOriginInfo = buildStoreRouteOrigin(settings);
+    const storeOrigin = storeOriginInfo.origin;
+    if (!storeOriginInfo.hasStoreCep) {
+      req.log.warn({ storeId: actor.storeId }, MISSING_STORE_CEP_ROUTE_ERROR);
+    }
 
     // Add to end of route
     const currentOrders = await db
@@ -1207,10 +1237,15 @@ router.post(
     const [assignment] = await db
       .select({ id: deliveryRouteOrdersTable.id })
       .from(deliveryRouteOrdersTable)
+      .innerJoin(
+        deliveryRoutesTable,
+        eq(deliveryRouteOrdersTable.routeId, deliveryRoutesTable.id),
+      )
       .where(
         and(
           eq(deliveryRouteOrdersTable.routeId, routeId),
           eq(deliveryRouteOrdersTable.orderId, orderId),
+          eq(deliveryRoutesTable.storeId, actor.storeId),
         ),
       );
     if (!assignment) {
@@ -1219,15 +1254,11 @@ router.post(
     }
 
     const settings = await getOrCreateSettings(actor.storeId);
-    const storeOriginParts = [
-      settings.storeAddress,
-      settings.storeNumber,
-      settings.storeNeighborhood,
-      settings.storeCity,
-      settings.storeState,
-      settings.storeCountry,
-    ].filter(Boolean);
-    const storeOrigin = storeOriginParts.join(", ");
+    const storeOriginInfo = buildStoreRouteOrigin(settings);
+    const storeOrigin = storeOriginInfo.origin;
+    if (!storeOriginInfo.hasStoreCep) {
+      req.log.warn({ storeId: actor.storeId }, MISSING_STORE_CEP_ROUTE_ERROR);
+    }
 
     // Remove from source route
     await db
@@ -1256,6 +1287,20 @@ router.post(
 
     // Optionally add to target route
     if (targetRouteId !== null && !isNaN(targetRouteId)) {
+      const [targetRoute] = await db
+        .select({ id: deliveryRoutesTable.id })
+        .from(deliveryRoutesTable)
+        .where(
+          and(
+            eq(deliveryRoutesTable.id, targetRouteId),
+            eq(deliveryRoutesTable.storeId, actor.storeId),
+          ),
+        );
+      if (!targetRoute) {
+        res.status(404).json({ error: "Target route not found" });
+        return;
+      }
+
       const existingInTarget = await db
         .select()
         .from(deliveryRouteOrdersTable)
