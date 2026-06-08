@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/dialog";
 import { Layout } from "@/components/layout";
 import { OrderDetailDialog } from "@/components/order-detail-dialog";
+import { OrderTimeBadge } from "@/components/order-time-badge";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetAlertsQueryKey,
@@ -587,15 +588,17 @@ export default function Routes() {
     ]);
   }, [fetchPendingOrders, fetchRoutes, queryClient]);
 
-  const pendingOrdersRenderable = pendingOrders.filter((order) => {
-    const isEligibleDeliveryStatus = ["pending", "preparing", "ready"].includes(
-      order.deliveryStatus ?? "",
-    );
-    const hasRouteLink = (order as { routeId?: number | null }).routeId != null;
-    return (
-      isEligibleDeliveryStatus && !hasRouteLink && isTodayLocal(order.createdAt)
-    );
-  });
+  const pendingOrdersRenderable = pendingOrders
+    .filter((order) => {
+      const isEligibleDeliveryStatus = ["pending", "preparing", "ready"].includes(
+        order.deliveryStatus ?? "",
+      );
+      const hasRouteLink = (order as { routeId?: number | null }).routeId != null;
+      return (
+        isEligibleDeliveryStatus && !hasRouteLink && isTodayLocal(order.createdAt)
+      );
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [bulkAdding, setBulkAdding] = useState(false);
 
@@ -1723,7 +1726,7 @@ function PendingOrderRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-sm truncate">
-            {order.customerName ?? `Pedido #${order.id}`}
+            Pedido #{order.id} · {order.customerName ?? "Cliente não informado"}
           </span>
           {dsLabel && (
             <span
@@ -1738,7 +1741,9 @@ function PendingOrderRow({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <OrderTimeBadge createdAt={order.createdAt} compact showIcon={false} />
+          <span className="text-slate-300">·</span>
           <MapPin className="w-3 h-3 shrink-0" />
           <span className="truncate">
             {[order.deliveryNeighborhood, order.deliveryCep]
@@ -2125,6 +2130,12 @@ function RouteCard({
                       </span>
                     </p>
                     <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                      <OrderTimeBadge createdAt={order.orderCreatedAt} compact showIcon={false} className="text-[10px]" />
+                      {dsLabel && (
+                        <span className={`px-1.5 py-px rounded-full font-medium text-[10px] ${DELIVERY_STATUS_COLORS[ds!]}`}>
+                          {dsLabel}
+                        </span>
+                      )}
                       {order.paymentTiming === "on_delivery" && (
                         <span className="text-amber-600 font-semibold flex items-center gap-0.5">
                           {PayIcon && <PayIcon className="w-3 h-3 shrink-0" />}
@@ -2145,13 +2156,6 @@ function RouteCard({
 
                   {/* Right: status + move + chevron */}
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {dsLabel && (
-                      <span
-                        className={`px-1.5 py-px rounded-full font-medium text-[10px] ${DELIVERY_STATUS_COLORS[ds!]}`}
-                      >
-                        {dsLabel}
-                      </span>
-                    )}
                     {canMoveOrders && (
                       <Button
                         variant="ghost"

@@ -14,6 +14,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, ChevronRight, SendHorizonal, X, CreditCard, CalendarDays, Truck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { OrderTimeBadge } from "@/components/order-time-badge";
+import { compareNewestFirst } from "@/lib/time";
 
 const STATUS_LABELS: Record<string, string> = {
   open: "Aberto",
@@ -173,8 +175,10 @@ export default function Orders() {
   }, [typeFilteredList]);
 
   const displayed = useMemo(() => {
-    if (statusFilter === "all") return typeFilteredList;
-    return typeFilteredList.filter((o) => o.status === statusFilter);
+    const filtered = statusFilter === "all"
+      ? typeFilteredList
+      : typeFilteredList.filter((o) => o.status === statusFilter);
+    return [...filtered].sort(compareNewestFirst);
   }, [typeFilteredList, statusFilter]);
 
   // Group by date only in "all" period
@@ -327,16 +331,23 @@ export default function Orders() {
                 </p>
               )}
 
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {order.items.length} {order.items.length === 1 ? "item" : "itens"} ·{" "}
-                {new Date(order.createdAt).toLocaleString("pt-BR", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  day: "2-digit",
-                  month: "2-digit",
-                })}
-                {isDelivery && deliveryFee > 0 ? ` · Taxa R$ ${deliveryFee.toFixed(2)}` : ""}
-              </p>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                <span>{order.items.length} {order.items.length === 1 ? "item" : "itens"}</span>
+                <span className="text-slate-300">·</span>
+                <OrderTimeBadge createdAt={order.createdAt} showIcon={false} />
+                {isDelivery && deliveryFee > 0 && (
+                  <>
+                    <span className="text-slate-300">·</span>
+                    <span>Taxa R$ {deliveryFee.toFixed(2)}</span>
+                  </>
+                )}
+                {isDelivery && (
+                  <>
+                    <span className="text-slate-300">·</span>
+                    <span>{order.paymentTiming === "on_delivery" ? "pagar na entrega" : "pago agora"}</span>
+                  </>
+                )}
+              </div>
 
               {order.notes && (
                 <p className="text-xs text-muted-foreground italic mt-0.5 truncate">

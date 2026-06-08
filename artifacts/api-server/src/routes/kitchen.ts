@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, sql, and, gte } from "drizzle-orm";
+import { desc, eq, sql, and, gte } from "drizzle-orm";
 import {
   db,
   kitchenTicketsTable,
@@ -7,6 +7,7 @@ import {
   tablesTable,
   orderItemsTable,
   productsTable,
+  customersTable,
   orderItemAddonsTable,
 } from "@workspace/db";
 import {
@@ -28,11 +29,16 @@ async function getTicketWithItems(ticketId: number, storeId?: number) {
       orderType: ordersTable.type,
       status: kitchenTicketsTable.status,
       notes: ordersTable.notes,
+      customerName: sql<string | null>`coalesce(${ordersTable.customerName}, ${customersTable.name})`,
+      orderCreatedAt: ordersTable.createdAt,
+      kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
+      ticketCreatedAt: kitchenTicketsTable.createdAt,
       createdAt: kitchenTicketsTable.createdAt,
     })
     .from(kitchenTicketsTable)
     .leftJoin(ordersTable, eq(kitchenTicketsTable.orderId, ordersTable.id))
     .leftJoin(tablesTable, eq(ordersTable.tableId, tablesTable.id))
+    .leftJoin(customersTable, eq(ordersTable.customerId, customersTable.id))
     .where(
       storeId
         ? and(
@@ -64,6 +70,9 @@ async function getTicketWithItems(ticketId: number, storeId?: number) {
   return {
     ...ticket,
     createdAt: ticket.createdAt.toISOString(),
+    orderCreatedAt: ticket.orderCreatedAt?.toISOString() ?? null,
+    kitchenAcceptedAt: ticket.kitchenAcceptedAt?.toISOString() ?? null,
+    ticketCreatedAt: ticket.ticketCreatedAt?.toISOString() ?? ticket.createdAt.toISOString(),
     items: await Promise.all(items.map(async (item) => ({
       ...item,
       unitPrice: parseFloat(String(item.unitPrice)),
@@ -89,18 +98,24 @@ router.get("/kitchen/queue", async (req, res): Promise<void> => {
       orderType: ordersTable.type,
       status: kitchenTicketsTable.status,
       notes: ordersTable.notes,
+      customerName: sql<string | null>`coalesce(${ordersTable.customerName}, ${customersTable.name})`,
+      orderCreatedAt: ordersTable.createdAt,
+      kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
+      ticketCreatedAt: kitchenTicketsTable.createdAt,
       createdAt: kitchenTicketsTable.createdAt,
     })
     .from(kitchenTicketsTable)
     .leftJoin(ordersTable, eq(kitchenTicketsTable.orderId, ordersTable.id))
     .leftJoin(tablesTable, eq(ordersTable.tableId, tablesTable.id))
+    .leftJoin(customersTable, eq(ordersTable.customerId, customersTable.id))
     .where(
       and(
         eq(kitchenTicketsTable.status, "pending"),
         eq(ordersTable.storeId, actor.storeId),
         gte(ordersTable.createdAt, operationalStart),
       ),
-    );
+    )
+    .orderBy(desc(kitchenTicketsTable.createdAt));
 
   const ticketsWithItems = await Promise.all(
     tickets.map(async (ticket) => {
@@ -125,6 +140,9 @@ router.get("/kitchen/queue", async (req, res): Promise<void> => {
       return {
         ...ticket,
         createdAt: ticket.createdAt.toISOString(),
+        orderCreatedAt: ticket.orderCreatedAt?.toISOString() ?? null,
+        kitchenAcceptedAt: ticket.kitchenAcceptedAt?.toISOString() ?? null,
+        ticketCreatedAt: ticket.ticketCreatedAt?.toISOString() ?? ticket.createdAt.toISOString(),
         items: await Promise.all(items.map(async (item) => ({
           ...item,
           unitPrice: parseFloat(String(item.unitPrice)),
@@ -187,7 +205,9 @@ router.post("/kitchen/tickets/:id/ready", async (req, res): Promise<void> => {
     .from(ordersTable)
     .where(eq(ordersTable.id, ticket.orderId));
 
-  const orderUpdate: Record<string, string> = {};
+  const orderUpdate: { status?: string; deliveryStatus?: string; readyAt?: Date } = {
+    readyAt: new Date(),
+  };
 
   // Only advance status to 'ready' if the order has NOT been paid yet.
   // If paidAt is set or status is already 'closed', the order was paid before the

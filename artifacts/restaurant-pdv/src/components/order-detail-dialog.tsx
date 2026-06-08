@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatOrderTime, formatRelativeMinutes } from "@/lib/time";
 
 interface OrderDetailDialogProps {
   orderId: number | null;
@@ -66,15 +67,6 @@ function formatDateTime(value: string | null | undefined) {
   });
 }
 
-function formatElapsed(value: string | null | undefined) {
-  if (!value) return null;
-  const diffMinutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60_000));
-  if (diffMinutes < 1) return "agora";
-  if (diffMinutes < 60) return `${diffMinutes} min`;
-  const hours = Math.floor(diffMinutes / 60);
-  const minutes = diffMinutes % 60;
-  return minutes > 0 ? `${hours}h ${minutes}min` : `${hours}h`;
-}
 
 function Field({ label, value, strong = false }: { label: string; value: ReactNode; strong?: boolean }) {
   return (
@@ -107,7 +99,14 @@ function OrderContent({ order }: { order: Order }) {
   const paymentMethod = order.deliveryPaymentMethod
     ? PAYMENT_METHOD_LABELS[order.deliveryPaymentMethod] ?? order.deliveryPaymentMethod
     : null;
-  const elapsed = formatElapsed(order.createdAt);
+  const elapsed = formatRelativeMinutes(order.createdAt);
+  const timeline = [
+    { label: "Pedido feito", value: order.createdAt },
+    { label: "Enviado cozinha", value: order.kitchenAcceptedAt },
+    { label: "Pronto", value: order.readyAt },
+    { label: "Pago", value: order.paidAt },
+    { label: "Fechado", value: order.closedAt },
+  ].filter((item) => item.value);
 
   return (
     <div className="space-y-4">
@@ -131,10 +130,20 @@ function OrderContent({ order }: { order: Order }) {
           </div>
         </div>
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <Field label="Criado em" value={formatDateTime(order.createdAt)} />
+          <Field label="Feito às" value={formatDateTime(order.createdAt)} />
           <Field label="Tempo desde criação" value={elapsed ?? "—"} />
         </div>
       </div>
+
+      {timeline.length > 0 && (
+        <Section title="Timeline" icon={<Clock className="h-4 w-4" />}>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
+            {timeline.map((item) => (
+              <Field key={item.label} label={item.label} value={formatOrderTime(item.value)} />
+            ))}
+          </div>
+        </Section>
+      )}
 
       <Section title="Cliente" icon={<User className="h-4 w-4" />}>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">

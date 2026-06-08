@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle2, ChefHat, Clock, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { OrderDetailDialog } from "@/components/order-detail-dialog";
+import { OrderTimeBadge } from "@/components/order-time-badge";
+import { formatOrderTime } from "@/lib/time";
 
 function useElapsed(createdAt: string) {
   const [elapsed, setElapsed] = useState(() =>
@@ -167,12 +169,23 @@ export default function Kitchen() {
                       </p>
                       <p className="text-white/80 text-sm font-medium mt-0.5">
                         {ORDER_TYPE_LABELS[ticket.orderType ?? "counter"]}
+                        {ticket.customerName ? ` · ${ticket.customerName}` : ""}
                       </p>
-                      <p className="text-white/80 text-xs font-semibold mt-1">
-                        Clique para ver comanda completa
-                      </p>
+                      <div className="mt-1 space-y-0.5 text-xs font-semibold text-white/85">
+                        <p>Feito às {formatOrderTime(ticket.orderCreatedAt ?? ticket.createdAt)}</p>
+                        <p>Enviado cozinha às {formatOrderTime(ticket.kitchenAcceptedAt ?? ticket.ticketCreatedAt ?? ticket.createdAt)}</p>
+                        <p>Clique para ver comanda completa</p>
+                      </div>
                     </div>
-                    <ElapsedBadge createdAt={ticket.createdAt} />
+                    <div className="shrink-0 text-right space-y-1">
+                      <ElapsedBadge createdAt={ticket.ticketCreatedAt ?? ticket.createdAt} />
+                      <OrderTimeBadge
+                        createdAt={ticket.orderCreatedAt ?? ticket.createdAt}
+                        compact
+                        showIcon={false}
+                        className="justify-end rounded-full bg-white/90 px-2 py-1 text-[11px] text-slate-900"
+                      />
+                    </div>
                   </div>
 
                   {/* Items body */}

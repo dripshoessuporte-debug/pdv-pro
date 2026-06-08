@@ -53,6 +53,8 @@ import {
   Truck,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { OrderTimeBadge } from "@/components/order-time-badge";
+import { formatOrderTime } from "@/lib/time";
 
 const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   payment: "Pagamento",
@@ -496,7 +498,7 @@ function OpenRegisterView({
             <p className="text-center text-muted-foreground py-8 text-sm">Nenhuma movimentação registrada</p>
           ) : (
             <div className="space-y-2">
-              {[...register.movements].reverse().map((m) => {
+              {[...(register.movements ?? [])].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((m) => {
                 const Icon = MOVEMENT_TYPE_ICONS[m.type] ?? CreditCard;
                 const isOut = m.type === "withdrawal";
                 return (
@@ -512,10 +514,11 @@ function OpenRegisterView({
                           {m.orderId ? ` · Pedido #${m.orderId}` : ""}
                         </p>
                         <p className="text-xs text-muted-foreground">{m.reason}</p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {fmtDate(m.createdAt)}
-                        </p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                          <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" /> Movimento às {formatOrderTime(m.createdAt)}</span>
+                          {m.orderCreatedAt && <OrderTimeBadge createdAt={m.orderCreatedAt} compact showIcon={false} />}
+                          {m.orderPaidAt && <span>Pago às {formatOrderTime(m.orderPaidAt)}</span>}
+                        </div>
                       </div>
                     </div>
                     <p className={`font-bold ${isOut ? "text-red-600" : "text-green-700 dark:text-green-400"}`}>

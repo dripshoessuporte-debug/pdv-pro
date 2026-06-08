@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   db,
   cashRegistersTable,
@@ -19,15 +19,34 @@ async function buildRegisterDetail(
   register: typeof cashRegistersTable.$inferSelect,
 ) {
   const movements = await db
-    .select()
+    .select({
+      id: cashMovementsTable.id,
+      cashRegisterId: cashMovementsTable.cashRegisterId,
+      type: cashMovementsTable.type,
+      amount: cashMovementsTable.amount,
+      paymentMethod: cashMovementsTable.paymentMethod,
+      reason: cashMovementsTable.reason,
+      orderId: cashMovementsTable.orderId,
+      createdAt: cashMovementsTable.createdAt,
+      orderCreatedAt: ordersTable.createdAt,
+      orderPaidAt: ordersTable.paidAt,
+    })
     .from(cashMovementsTable)
-    .where(eq(cashMovementsTable.cashRegisterId, register.id))
-    .orderBy(cashMovementsTable.createdAt);
+    .leftJoin(ordersTable, eq(cashMovementsTable.orderId, ordersTable.id))
+    .where(
+      and(
+        eq(cashMovementsTable.cashRegisterId, register.id),
+        sql`${ordersTable.id} is null or ${ordersTable.storeId} = ${register.storeId}`,
+      ),
+    )
+    .orderBy(desc(cashMovementsTable.createdAt));
 
   const parsed = movements.map((m) => ({
     ...m,
     amount: parseFloat(String(m.amount)),
     createdAt: m.createdAt.toISOString(),
+    orderCreatedAt: m.orderCreatedAt?.toISOString() ?? null,
+    orderPaidAt: m.orderPaidAt?.toISOString() ?? null,
   }));
 
   const totalCash = parsed
