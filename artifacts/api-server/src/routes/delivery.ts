@@ -715,6 +715,7 @@ router.get("/delivery/orders/pending", async (req, res): Promise<void> => {
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
       deliveryCep: ordersTable.deliveryCep,
       deliveryFee: ordersTable.deliveryFee,
+      estimatedDistanceKm: ordersTable.estimatedDistanceKm,
       totalAmount: ordersTable.totalAmount,
       deliveryStatus: ordersTable.deliveryStatus,
       paymentTiming: ordersTable.paymentTiming,
@@ -743,6 +744,9 @@ router.get("/delivery/orders/pending", async (req, res): Promise<void> => {
     deliveryNeighborhood: o.deliveryNeighborhood,
     deliveryCep: o.deliveryCep,
     deliveryFee: parseFloat(String(o.deliveryFee ?? "0")),
+    estimatedDistanceKm: o.estimatedDistanceKm
+      ? parseFloat(String(o.estimatedDistanceKm))
+      : null,
     totalAmount: parseFloat(String(o.totalAmount ?? "0")),
     deliveryStatus: o.deliveryStatus,
     paymentTiming: o.paymentTiming ?? "now",
