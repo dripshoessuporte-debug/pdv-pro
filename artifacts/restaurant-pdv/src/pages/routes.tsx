@@ -257,10 +257,13 @@ export default function Routes() {
   const [pendingOrders, setPendingOrders] = useState<PendingDeliveryOrder[]>(
     [],
   );
-  const [dispatchMinutes, setDispatchMinutes] = useState(20);
+  const [dispatchMinutes, setDispatchMinutes] = useState<number | null>(null);
+  const [storeDispatchMinutes, setStoreDispatchMinutes] = useState<number | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [savingDispatch, setSavingDispatch] = useState(false);
+  const savingDispatch = false;
   const [, setTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(
     undefined,
@@ -332,6 +335,7 @@ export default function Routes() {
         maxOrdersPerRoute: number;
       }>("/settings");
       setDispatchMinutes(s.deliveryDispatchTimeMinutes);
+      setStoreDispatchMinutes(s.deliveryDispatchTimeMinutes);
       setMaxOrdersPerRoute(s.maxOrdersPerRoute ?? 4);
     } catch {
       // silently ignore
@@ -379,22 +383,17 @@ export default function Routes() {
     }
   };
 
-  const handleUpdateDispatchTime = async (delta: number) => {
-    const newMinutes = Math.max(5, Math.min(120, dispatchMinutes + delta));
+  const handleUpdateDispatchTime = (delta: number) => {
+    if (dispatchMinutes === null) return;
+    const newMinutes = Math.max(1, Math.min(180, dispatchMinutes + delta));
     setDispatchMinutes(newMinutes);
-    setSavingDispatch(true);
-    try {
-      await apiFetch("/settings", {
-        method: "PUT",
-        body: JSON.stringify({ deliveryDispatchTimeMinutes: newMinutes }),
-      });
-      await fetchPendingOrders();
-    } catch {
-      toast({ title: "Erro ao atualizar prazo", variant: "destructive" });
-      setDispatchMinutes(dispatchMinutes);
-    } finally {
-      setSavingDispatch(false);
-    }
+    toast({
+      title: `Prazo temporário da tela ajustado para ${newMinutes} minutos.`,
+      description:
+        storeDispatchMinutes === null
+          ? "Carregando padrão da loja..."
+          : `Padrão da loja: ${storeDispatchMinutes} min`,
+    });
   };
 
   const handleAssign = async (forcePrep = false) => {
@@ -759,22 +758,35 @@ export default function Routes() {
                 size="sm"
                 className="h-5 w-5 p-0"
                 onClick={() => handleUpdateDispatchTime(-5)}
-                disabled={savingDispatch || dispatchMinutes <= 5}
+                disabled={
+                  savingDispatch ||
+                  dispatchMinutes === null ||
+                  dispatchMinutes <= 1
+                }
               >
                 <Minus className="w-3 h-3" />
               </Button>
               <span className="font-semibold w-14 text-center text-xs">
-                {savingDispatch ? "..." : `${dispatchMinutes} min`}
+                {savingDispatch || dispatchMinutes === null
+                  ? "..."
+                  : `${dispatchMinutes} min`}
               </span>
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-5 w-5 p-0"
                 onClick={() => handleUpdateDispatchTime(5)}
-                disabled={savingDispatch || dispatchMinutes >= 120}
+                disabled={
+                  savingDispatch ||
+                  dispatchMinutes === null ||
+                  dispatchMinutes >= 180
+                }
               >
                 <Plus className="w-3 h-3" />
               </Button>
+              <span className="text-[11px] text-muted-foreground pl-1">
+                Padrão da loja: {storeDispatchMinutes ?? "..."} min
+              </span>
             </div>
             <Button
               variant="outline"
@@ -1663,7 +1675,7 @@ function PendingOrderRow({
   onOpenOrder,
 }: {
   order: PendingDeliveryOrder;
-  dispatchMinutes: number;
+  dispatchMinutes: number | null;
   activeRoutes: DeliveryRoute[];
   isLast: boolean;
   selected: boolean;
@@ -1672,9 +1684,10 @@ function PendingOrderRow({
   onEmergency: () => void;
   onOpenOrder: () => void;
 }) {
-  const deadlineMs = order.kitchenAcceptedAt
-    ? new Date(order.kitchenAcceptedAt).getTime() + dispatchMinutes * 60_000
-    : null;
+  const deadlineMs =
+    order.kitchenAcceptedAt && dispatchMinutes !== null
+      ? new Date(order.kitchenAcceptedAt).getTime() + dispatchMinutes * 60_000
+      : null;
   const timeStatus = deadlineMs
     ? getTimeStatus(new Date(deadlineMs).toISOString())
     : null;

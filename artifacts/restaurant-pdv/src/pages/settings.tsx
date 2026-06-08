@@ -34,6 +34,34 @@ import {
   getListOrdersQueryKey,
 } from "@workspace/api-client-react";
 
+const DEFAULT_DISPATCH_TIME_MINUTES = 20;
+const MIN_DISPATCH_TIME_MINUTES = 1;
+const MAX_DISPATCH_TIME_MINUTES = 180;
+
+function parseDispatchTimeMinutes(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return DEFAULT_DISPATCH_TIME_MINUTES;
+  if (!/^\d+$/.test(trimmed)) return null;
+  const minutes = Number(trimmed);
+  if (
+    !Number.isInteger(minutes) ||
+    minutes < MIN_DISPATCH_TIME_MINUTES ||
+    minutes > MAX_DISPATCH_TIME_MINUTES
+  ) {
+    return null;
+  }
+  return minutes;
+}
+
+function formatDispatchPreview(minutes: number | null): string {
+  const previewMinutes = minutes ?? DEFAULT_DISPATCH_TIME_MINUTES;
+  const deadline = new Date(2024, 0, 1, 18, previewMinutes, 0, 0);
+  return deadline.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 interface StoreSettings {
   id: number;
   storeName: string;
@@ -451,7 +479,19 @@ export default function Settings() {
     }
   };
 
+  const validatedDispatchTime = parseDispatchTimeMinutes(dispatchTime);
+  const dispatchPreviewTime = formatDispatchPreview(validatedDispatchTime);
+
   const handleSave = async () => {
+    const dispatchTimeMinutes = parseDispatchTimeMinutes(dispatchTime);
+    if (dispatchTimeMinutes === null) {
+      toast({
+        title: "Informe um tempo de saída entre 1 e 180 minutos.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSaving(true);
     try {
       await apiFetch("/settings", {
@@ -467,7 +507,7 @@ export default function Settings() {
           storeCity: storeCity.trim() || "",
           storeState: storeState.trim() || "",
           storeCountry: storeCountry.trim() || "Brasil",
-          deliveryDispatchTimeMinutes: parseInt(dispatchTime, 10) || 20,
+          deliveryDispatchTimeMinutes: dispatchTimeMinutes,
           maxOrdersPerRoute: parseInt(maxOrders, 10) || 4,
           routeGroupingMode,
           deliveryFeeMode,
@@ -493,9 +533,17 @@ export default function Settings() {
           useDistanceCache,
         }),
       });
-      toast({ title: "Configurações salvas com sucesso!" });
-    } catch {
-      toast({ title: "Erro ao salvar configurações", variant: "destructive" });
+      setDispatchTime(String(dispatchTimeMinutes));
+      invalidateOperationalQueries();
+      queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+      toast({
+        title: `Tempo de saída atualizado para ${dispatchTimeMinutes} minutos.`,
+      });
+    } catch (e) {
+      toast({
+        title: e instanceof Error ? e.message : "Erro ao salvar configurações",
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }
@@ -675,25 +723,45 @@ export default function Settings() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  Tempo padrão para saída (minutos)
-                </Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="120"
-                  placeholder="20"
-                  value={dispatchTime}
-                  onChange={(e) => setDispatchTime(e.target.value)}
-                  data-testid="input-dispatch-time"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Prazo estimado para o motoboy sair com a rota
-                </p>
+            <div className="rounded-xl border border-primary/25 bg-primary/5 p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-primary/10 p-2 text-primary">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div className="flex-1 space-y-2">
+                  <div>
+                    <Label
+                      htmlFor="delivery-dispatch-time"
+                      className="text-sm font-semibold"
+                    >
+                      Tempo para a entrega sair
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                      Define em quantos minutos o pedido deve sair para entrega
+                      após entrar na cozinha. Esse prazo é usado para alertar
+                      atrasos na tela Rotas.
+                    </p>
+                  </div>
+                  <Input
+                    id="delivery-dispatch-time"
+                    type="number"
+                    min="1"
+                    max="180"
+                    step="1"
+                    placeholder="Ex: 30"
+                    value={dispatchTime}
+                    onChange={(e) => setDispatchTime(e.target.value)}
+                    data-testid="input-dispatch-time"
+                  />
+                  <p className="text-xs font-medium text-primary">
+                    Com esta configuração, um pedido enviado às 18:00 deve sair
+                    até {dispatchPreviewTime}.
+                  </p>
+                </div>
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="flex items-center gap-2">
                   <Package className="w-4 h-4" />

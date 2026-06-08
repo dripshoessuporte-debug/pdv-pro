@@ -251,7 +251,21 @@ export const rbacRouteGuard: RequestHandler = async (req, res, next) => {
   const method = req.method.toUpperCase();
 
   const orderDetailReadPattern = /^\/orders\/\d+$/;
-  const canReadOrderDetail = method === "GET" && orderDetailReadPattern.test(path);
+  const canReadOrderDetail =
+    method === "GET" && orderDetailReadPattern.test(path);
+
+  if (path === "/settings") {
+    if (method === "GET") {
+      next();
+      return;
+    }
+    if (actor.role !== "max_control") {
+      res
+        .status(403)
+        .json({ error: "Somente Max Control pode alterar configurações." });
+      return;
+    }
+  }
 
   const allowedByRole: Record<ActorRole, RegExp[]> = {
     max_control: [/.*/],

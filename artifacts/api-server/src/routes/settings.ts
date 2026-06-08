@@ -4,6 +4,25 @@ import { db, storeSettingsTable } from "@workspace/db";
 import { isOrsConfigured } from "../lib/openrouteservice";
 import { getCurrentActor } from "../middleware/rbac";
 
+const MIN_DISPATCH_TIME_MINUTES = 1;
+const MAX_DISPATCH_TIME_MINUTES = 180;
+const DISPATCH_TIME_ERROR = "Tempo de saída deve estar entre 1 e 180 minutos.";
+
+function parseDispatchTimeMinutes(value: unknown): number | null {
+  if (typeof value === "number") {
+    if (!Number.isInteger(value)) return null;
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) return null;
+    return Number(trimmed);
+  }
+
+  return null;
+}
+
 const router: IRouter = Router();
 
 async function getOrCreateSettings(storeId = 1) {
@@ -52,8 +71,15 @@ router.put("/settings", async (req, res): Promise<void> => {
     useDistanceCache,
   } = req.body ?? {};
 
-  const { storeId } = await getCurrentActor(req);
-  const settings = await getOrCreateSettings(storeId);
+  const actor = await getCurrentActor(req);
+  if (actor.role !== "max_control") {
+    res
+      .status(403)
+      .json({ error: "Somente Max Control pode alterar configurações." });
+    return;
+  }
+
+  const settings = await getOrCreateSettings(actor.storeId);
 
   const updates: Record<string, unknown> = {};
   if (storeName !== undefined) updates.storeName = String(storeName);
@@ -78,8 +104,16 @@ router.put("/settings", async (req, res): Promise<void> => {
   if (storeCountry !== undefined)
     updates.storeCountry = storeCountry ? String(storeCountry) : "Brasil";
   if (deliveryDispatchTimeMinutes !== undefined) {
-    const v = parseInt(String(deliveryDispatchTimeMinutes), 10);
-    if (!isNaN(v) && v >= 1) updates.deliveryDispatchTimeMinutes = v;
+    const v = parseDispatchTimeMinutes(deliveryDispatchTimeMinutes);
+    if (
+      v === null ||
+      v < MIN_DISPATCH_TIME_MINUTES ||
+      v > MAX_DISPATCH_TIME_MINUTES
+    ) {
+      res.status(400).json({ error: DISPATCH_TIME_ERROR });
+      return;
+    }
+    updates.deliveryDispatchTimeMinutes = v;
   }
   if (maxOrdersPerRoute !== undefined) {
     const v = parseInt(String(maxOrdersPerRoute), 10);
