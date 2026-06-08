@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Layout } from "@/components/layout";
 import {
   useGetKitchenQueue,
@@ -67,6 +67,8 @@ type KitchenTicketItemAddon = {
   addonGroupName: string;
   addonName: string;
   quantity: number;
+  addonPrice?: number;
+  totalPrice?: number;
 };
 
 type KitchenTicketItem = {
@@ -82,9 +84,12 @@ type KitchenTicketItem = {
 function formatAddonDetails(item: KitchenTicketItem) {
   if (!Array.isArray(item.addons)) return [];
 
-  return item.addons.map((addon) =>
-    `${addon.addonGroupName}: ${addon.addonName}${addon.quantity > 1 ? ` x${addon.quantity}` : ""}`,
-  );
+  return item.addons.map((addon) => {
+    const group = addon.addonGroupName?.trim();
+    const prefix = group ? `${group}: ` : "";
+    const quantity = addon.quantity > 1 ? ` x${addon.quantity}` : "";
+    return `${prefix}${addon.addonName}${quantity}`;
+  });
 }
 
 const ORDER_TYPE_LABELS: Record<string, string> = {
@@ -101,11 +106,19 @@ const ORDER_TYPE_COLORS: Record<string, string> = {
   delivery: "bg-[#FF2A1F]",
 };
 
+type KitchenSortOrder = "latest" | "oldest";
+const KITCHEN_SORT_STORAGE_KEY = "pdv.kitchen.sortOrder";
+
 export default function Kitchen() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [isOrderDetailOpen, setIsOrderDetailOpen] = useState(false);
+  const [sortOrder, setSortOrder] = useState<KitchenSortOrder>(() => {
+    if (typeof window === "undefined") return "latest";
+    const stored = window.localStorage.getItem(KITCHEN_SORT_STORAGE_KEY);
+    return stored === "oldest" ? "oldest" : "latest";
+  });
 
   const openOrderDetail = (orderId: number) => {
     setSelectedOrderId(orderId);
@@ -129,6 +142,18 @@ export default function Kitchen() {
     },
   });
 
+  useEffect(() => {
+    window.localStorage.setItem(KITCHEN_SORT_STORAGE_KEY, sortOrder);
+  }, [sortOrder]);
+
+  const sortedTickets = useMemo(() => {
+    return [...(tickets ?? [])].sort((a, b) => {
+      const aTime = new Date(a.orderCreatedAt ?? a.createdAt).getTime();
+      const bTime = new Date(b.orderCreatedAt ?? b.createdAt).getTime();
+      return sortOrder === "latest" ? bTime - aTime : aTime - bTime;
+    });
+  }, [tickets, sortOrder]);
+
   const lastUpdate = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString("pt-BR", {
         hour: "2-digit",
@@ -141,7 +166,7 @@ export default function Kitchen() {
     <Layout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <ChefHat className="w-8 h-8 text-primary" />
             <div>
@@ -152,9 +177,34 @@ export default function Kitchen() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <RefreshCw className="w-3 h-3" />
-            <span>Atualizado às {lastUpdate} · auto-refresh 15s</span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 text-sm shadow-sm">
+              <span className="px-2 text-xs font-semibold text-slate-500">Ordenar:</span>
+              <Button
+                type="button"
+                size="sm"
+                variant={sortOrder === "latest" ? "default" : "ghost"}
+                className="h-8 rounded-lg px-3 text-xs font-bold"
+                onClick={() => setSortOrder("latest")}
+                data-testid="button-sort-latest"
+              >
+                Último
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={sortOrder === "oldest" ? "default" : "ghost"}
+                className="h-8 rounded-lg px-3 text-xs font-bold"
+                onClick={() => setSortOrder("oldest")}
+                data-testid="button-sort-oldest"
+              >
+                Primeiro
+              </Button>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <RefreshCw className="w-3 h-3" />
+              <span>Atualizado às {lastUpdate} · auto-refresh 15s</span>
+            </div>
           </div>
         </div>
 
@@ -165,7 +215,7 @@ export default function Kitchen() {
               <Skeleton key={i} className="h-64 rounded-2xl" />
             ))}
           </div>
-        ) : tickets?.length === 0 ? (
+        ) : sortedTickets.length === 0 ? (
           <div className="text-center py-24 text-muted-foreground">
             <ChefHat className="w-20 h-20 mx-auto mb-4 opacity-20" />
             <p className="text-2xl font-bold text-foreground">Cozinha livre!</p>
@@ -176,7 +226,7 @@ export default function Kitchen() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {tickets?.map((ticket) => {
+            {sortedTickets.map((ticket) => {
               const typeColor = ORDER_TYPE_COLORS[ticket.orderType ?? "counter"] ?? "bg-slate-600";
               return (
                 <div

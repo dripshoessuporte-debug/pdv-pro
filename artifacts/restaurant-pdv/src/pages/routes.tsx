@@ -123,6 +123,7 @@ interface PendingDeliveryOrder {
   deliveryNeighborhood: string | null;
   deliveryCep: string | null;
   deliveryFee: number;
+  estimatedDistanceKm: number | null;
   totalAmount: number;
   deliveryStatus: string | null;
   paymentTiming: string;
@@ -665,66 +666,75 @@ export default function Routes() {
     ? [...completedTodayRoutes, ...oldCompletedRoutes]
     : completedTodayRoutes;
 
+  const routeNavigationItems = [
+    {
+      key: "pending" as const,
+      label: "Aguardando rota",
+      count: pendingOrdersRenderable.length,
+      active: "bg-amber-500 text-white border-amber-500 shadow-sm",
+      inactive: "bg-amber-50 text-slate-800 border-amber-200 hover:bg-amber-100",
+      dot: "bg-amber-500",
+      pillActive: "bg-white text-amber-700",
+      pillInactive: "bg-amber-100 text-amber-800",
+      testId: "tab-pending-routes",
+    },
+    {
+      key: "available" as const,
+      label: "Rotas disponíveis",
+      count: availableRoutes.length,
+      active: "bg-sky-500 text-white border-sky-500 shadow-sm",
+      inactive: "bg-sky-50 text-slate-800 border-sky-200 hover:bg-sky-100",
+      dot: "bg-sky-500",
+      pillActive: "bg-white text-sky-700",
+      pillInactive: "bg-sky-100 text-sky-800",
+      testId: "tab-available",
+    },
+    {
+      key: "in_progress" as const,
+      label: "Em andamento",
+      count: inProgressRoutes.length,
+      active: "bg-blue-800 text-white border-blue-800 shadow-sm",
+      inactive: "bg-blue-50 text-slate-800 border-blue-200 hover:bg-blue-100",
+      dot: "bg-blue-800",
+      pillActive: "bg-white text-blue-800",
+      pillInactive: "bg-blue-100 text-blue-800",
+      testId: "tab-in-progress",
+    },
+    {
+      key: "completed" as const,
+      label: "Concluídas hoje",
+      count: completedTodayRoutes.length,
+      active: "bg-emerald-600 text-white border-emerald-600 shadow-sm",
+      inactive: "bg-emerald-50 text-slate-800 border-emerald-200 hover:bg-emerald-100",
+      dot: "bg-emerald-600",
+      pillActive: "bg-white text-emerald-700",
+      pillInactive: "bg-emerald-100 text-emerald-800",
+      testId: "tab-completed-today",
+    },
+  ];
+
   const routeNavigation = (
-    <div className="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900 p-2 shadow-sm">
-      <button
-        type="button"
-        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "pending" ? "bg-[#D91F16] text-white shadow-sm" : "bg-white/10 text-slate-200 hover:bg-white/15"}`}
-        onClick={() => setRouteView("pending")}
-        data-testid="tab-pending-routes"
-      >
-        <span>Aguardando rota</span>
-        <span
-          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "pending" ? "bg-white text-[#D91F16]" : "bg-slate-700 text-white"}`}
-        >
-          {pendingOrdersRenderable.length}
-        </span>
-      </button>
-      <button
-        type="button"
-        onClick={() => setRouteView("available")}
-        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "available" ? "bg-[#D91F16] text-white shadow-sm" : "bg-white/10 text-slate-200 hover:bg-white/15"}`}
-        data-testid="tab-available"
-      >
-        <span
-          className={`h-2 w-2 shrink-0 rounded-full ${routeView === "available" ? "bg-white" : "bg-[#D91F16]"}`}
-        />
-        <span>Rotas disponíveis</span>
-        <span
-          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "available" ? "bg-white text-[#D91F16]" : "bg-slate-700 text-white"}`}
-        >
-          {availableRoutes.length}
-        </span>
-      </button>
-      <button
-        type="button"
-        onClick={() => setRouteView("in_progress")}
-        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "in_progress" ? "bg-[#D91F16] text-white shadow-sm" : "bg-white/10 text-slate-200 hover:bg-white/15"}`}
-        data-testid="tab-in-progress"
-      >
-        <span
-          className={`h-2 w-2 shrink-0 rounded-full ${routeView === "in_progress" ? "bg-white" : "bg-[#0F172A]"}`}
-        />
-        <span>Em andamento</span>
-        <span
-          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "in_progress" ? "bg-white text-[#D91F16]" : "bg-slate-700 text-white"}`}
-        >
-          {inProgressRoutes.length}
-        </span>
-      </button>
-      <button
-        type="button"
-        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${routeView === "completed" ? "bg-[#D91F16] text-white shadow-sm" : "bg-white/10 text-slate-200 hover:bg-white/15"}`}
-        onClick={() => setRouteView("completed")}
-        data-testid="tab-completed-today"
-      >
-        <span>Concluídas hoje</span>
-        <span
-          className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${routeView === "completed" ? "bg-white text-[#D91F16]" : "bg-slate-700 text-white"}`}
-        >
-          {completedTodayRoutes.length}
-        </span>
-      </button>
+    <div className="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+      {routeNavigationItems.map((item) => {
+        const active = routeView === item.key;
+        return (
+          <button
+            key={item.key}
+            type="button"
+            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition-all ${active ? item.active : item.inactive}`}
+            onClick={() => setRouteView(item.key)}
+            data-testid={item.testId}
+          >
+            <span className={`h-2 w-2 shrink-0 rounded-full ${active ? "bg-white" : item.dot}`} />
+            <span>{item.label}</span>
+            <span
+              className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${active ? item.pillActive : item.pillInactive}`}
+            >
+              {item.count}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 
@@ -743,15 +753,20 @@ export default function Routes() {
               pronto
             </p>
             {/* ── Legenda de cores por distância ── */}
-            <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-2">
-              {ROUTE_DISTANCE_LEGEND.map((entry) => (
-                <div key={entry.label} className="flex items-center gap-1.5">
-                  <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${entry.tone}`}
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {entry.label}
+            <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5">
+              {ROUTE_DISTANCE_LEGEND.map((group) => (
+                <div key={group.title} className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    {group.title}
                   </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {group.entries.map((entry) => (
+                      <div key={`${group.title}-${entry.label}`} className="flex items-center gap-1">
+                        <span className={`h-2 w-2 rounded-full ${entry.tone}`} />
+                        <span className="text-xs text-muted-foreground">{entry.label}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1706,16 +1721,18 @@ function PendingOrderRow({
   const UrgencyIcon = URGENCY_ICON[urgency];
   const receiveOnDelivery = order.paymentTiming === "on_delivery";
   const paymentLabel = receiveOnDelivery ? "Na entrega" : "Pago agora";
+  const distanceTone = getIndividualDistanceTone(order.estimatedDistanceKm);
   const addressLine = [order.deliveryNeighborhood, order.deliveryCep]
     .filter(Boolean)
     .join(" · ");
 
   return (
     <div
-      className={`grid cursor-pointer gap-4 rounded-2xl border bg-white p-4 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50/60 hover:shadow-md md:grid-cols-[minmax(0,1.2fr)_minmax(220px,1fr)_auto] md:items-center dark:bg-card ${selected ? "border-primary bg-blue-50/70 ring-1 ring-primary/20 dark:bg-blue-900/20" : "border-slate-200"}`}
+      className={`relative grid cursor-pointer gap-4 overflow-hidden rounded-2xl border bg-white p-4 pl-5 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50/60 hover:shadow-md md:grid-cols-[minmax(0,1.2fr)_minmax(220px,1fr)_auto] md:items-center dark:bg-card ${selected ? "border-primary bg-blue-50/70 ring-1 ring-primary/20 dark:bg-blue-900/20" : "border-slate-200"}`}
       onClick={onOpenOrder}
       data-testid={`pending-delivery-${order.id}`}
     >
+      <div className={`absolute inset-y-0 left-0 w-1.5 ${distanceTone.classes.accent}`} />
       {/* Left: identity */}
       <div className="flex min-w-0 items-start gap-3">
         <button
@@ -1788,6 +1805,14 @@ function PendingOrderRow({
               Receber R$ {order.totalAmount.toFixed(2)}
             </span>
           )}
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+            Taxa R$ {order.deliveryFee.toFixed(2)}
+          </span>
+          <span className={`rounded-full border px-2 py-0.5 text-xs font-bold ${distanceTone.classes.badge}`}>
+            {order.estimatedDistanceKm != null
+              ? `${order.estimatedDistanceKm.toFixed(1)} km · ${distanceTone.label}`
+              : `distância · ${distanceTone.label}`}
+          </span>
         </div>
       </div>
 
@@ -1847,9 +1872,9 @@ function PendingOrderRow({
   );
 }
 
-// ─── Route value color based on total delivery fee ────────────────────────────
+// ─── Distance color scales ───────────────────────────────────────────────────
 
-const ROUTE_DISTANCE_TONES = {
+const DISTANCE_TONES = {
   short: {
     accent: "bg-emerald-500",
     border: "border-emerald-200",
@@ -1858,18 +1883,18 @@ const ROUTE_DISTANCE_TONES = {
     hex: "#059669",
   },
   medium: {
-    accent: "bg-blue-500",
-    border: "border-blue-200",
-    badge: "bg-blue-50 text-blue-700 border-blue-200",
-    text: "text-blue-700",
-    hex: "#2563EB",
+    accent: "bg-sky-500",
+    border: "border-sky-200",
+    badge: "bg-sky-50 text-sky-700 border-sky-200",
+    text: "text-sky-700",
+    hex: "#0EA5E9",
   },
   long: {
-    accent: "bg-violet-500",
-    border: "border-violet-200",
-    badge: "bg-violet-50 text-violet-700 border-violet-200",
-    text: "text-violet-700",
-    hex: "#7C3AED",
+    accent: "bg-blue-800",
+    border: "border-blue-200",
+    badge: "bg-blue-50 text-blue-800 border-blue-200",
+    text: "text-blue-800",
+    hex: "#1E40AF",
   },
   extended: {
     accent: "bg-amber-500",
@@ -1879,54 +1904,77 @@ const ROUTE_DISTANCE_TONES = {
     hex: "#D97706",
   },
   far: {
-    accent: "bg-red-500",
-    border: "border-red-200",
-    badge: "bg-red-50 text-red-700 border-red-200",
-    text: "text-red-700",
-    hex: "#DC2626",
+    accent: "bg-orange-500",
+    border: "border-orange-200",
+    badge: "bg-orange-50 text-orange-700 border-orange-200",
+    text: "text-orange-700",
+    hex: "#EA580C",
   },
 } as const;
 
-type RouteDistanceTone = keyof typeof ROUTE_DISTANCE_TONES;
+type DistanceTone = keyof typeof DISTANCE_TONES;
 
-function getRouteDistanceTone(distKm: number): {
-  key: RouteDistanceTone;
+function buildDistanceTone(
+  distKm: number | null | undefined,
+  scale: "individual" | "route",
+): {
+  key: DistanceTone;
   label: string;
-  classes: (typeof ROUTE_DISTANCE_TONES)[RouteDistanceTone];
+  classes: (typeof DISTANCE_TONES)[DistanceTone];
 } {
-  if (distKm > 8)
+  const distance = distKm ?? 0;
+  const ranges =
+    scale === "route"
+      ? [
+          { limit: 5, key: "short" as const, label: "até 5 km" },
+          { limit: 10, key: "medium" as const, label: "5–10 km" },
+          { limit: 15, key: "long" as const, label: "10–15 km" },
+          { limit: 25, key: "extended" as const, label: "15–25 km" },
+        ]
+      : [
+          { limit: 2, key: "short" as const, label: "até 2 km" },
+          { limit: 4, key: "medium" as const, label: "2–4 km" },
+          { limit: 6, key: "long" as const, label: "4–6 km" },
+          { limit: 8, key: "extended" as const, label: "6–8 km" },
+        ];
+
+  const matched = ranges.find((range) => distance <= range.limit);
+  if (matched) {
     return {
-      key: "far",
-      label: "acima de 8 km",
-      classes: ROUTE_DISTANCE_TONES.far,
+      key: matched.key,
+      label: matched.label,
+      classes: DISTANCE_TONES[matched.key],
     };
-  if (distKm > 6)
-    return {
-      key: "extended",
-      label: "6–8 km",
-      classes: ROUTE_DISTANCE_TONES.extended,
-    };
-  if (distKm > 4)
-    return { key: "long", label: "4–6 km", classes: ROUTE_DISTANCE_TONES.long };
-  if (distKm > 2)
-    return {
-      key: "medium",
-      label: "2–4 km",
-      classes: ROUTE_DISTANCE_TONES.medium,
-    };
+  }
+
   return {
-    key: "short",
-    label: "até 2 km",
-    classes: ROUTE_DISTANCE_TONES.short,
+    key: "far",
+    label: scale === "route" ? "acima de 25 km" : "acima de 8 km",
+    classes: DISTANCE_TONES.far,
   };
 }
 
+const getIndividualDistanceTone = (distKm: number | null | undefined) =>
+  buildDistanceTone(distKm, "individual");
+
+const getReadyRouteDistanceTone = (distKm: number | null | undefined) =>
+  buildDistanceTone(distKm, "route");
+
 const ROUTE_DISTANCE_LEGEND = [
-  { tone: ROUTE_DISTANCE_TONES.short.accent, label: "até 2 km" },
-  { tone: ROUTE_DISTANCE_TONES.medium.accent, label: "2–4 km" },
-  { tone: ROUTE_DISTANCE_TONES.long.accent, label: "4–6 km" },
-  { tone: ROUTE_DISTANCE_TONES.extended.accent, label: "6–8 km" },
-  { tone: ROUTE_DISTANCE_TONES.far.accent, label: "acima de 8 km" },
+  { title: "Pedidos", entries: [
+    { tone: DISTANCE_TONES.short.accent, label: "até 2 km" },
+    { tone: DISTANCE_TONES.medium.accent, label: "2–4 km" },
+    { tone: DISTANCE_TONES.long.accent, label: "4–6 km" },
+    { tone: DISTANCE_TONES.extended.accent, label: "6–8 km" },
+    { tone: DISTANCE_TONES.far.accent, label: "> 8 km" },
+  ] },
+  { title: "Rotas", entries: [
+    { tone: DISTANCE_TONES.short.accent, label: "até 5 km" },
+    { tone: DISTANCE_TONES.medium.accent, label: "5–10 km" },
+    { tone: DISTANCE_TONES.long.accent, label: "10–15 km" },
+    { tone: DISTANCE_TONES.extended.accent, label: "15–25 km" },
+    { tone: DISTANCE_TONES.far.accent, label: "> 25 km" },
+  ] },
 ] as const;
 
 // ─── RouteCard ────────────────────────────────────────────────────────────────
@@ -1993,11 +2041,11 @@ function RouteCard({
   const totalCount = route.orders.length;
   const allOrdersReady = totalCount > 0 && readyCount === totalCount;
 
-  const maxDistKm =
-    route.orders.length > 0
-      ? Math.max(...route.orders.map((o) => o.estimatedDistanceKm ?? 5))
-      : 5;
-  const distanceTone = getRouteDistanceTone(maxDistKm);
+  const totalRouteDistanceKm = route.orders.reduce(
+    (sum, order) => sum + (order.estimatedDistanceKm ?? 5),
+    0,
+  );
+  const distanceTone = getReadyRouteDistanceTone(totalRouteDistanceKm);
   const readinessPct =
     totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
   const otherNeighborhoods = route.includedNeighborhoods.filter(
@@ -2060,9 +2108,9 @@ function RouteCard({
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-sm leading-snug text-[#0F172A]">
               <span className={`font-black ${distanceTone.classes.text}`}>
-                {index + 1}
+                Rota {index + 1}
               </span>{" "}
-              {route.mainNeighborhood}
+              · {route.mainNeighborhood}
             </h3>
             <div
               className="flex items-center gap-1 mt-0.5 text-xs"
@@ -2089,7 +2137,7 @@ function RouteCard({
               <span
                 className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${distanceTone.classes.badge}`}
               >
-                ~{maxDistKm.toFixed(1)} km · {distanceTone.label}
+                {totalRouteDistanceKm.toFixed(1)} km rota · {distanceTone.label}
               </span>
             </div>
           </div>
