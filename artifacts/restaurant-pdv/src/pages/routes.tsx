@@ -220,12 +220,6 @@ function getTimeStatus(dispatchDeadline: string | null): {
   return { label: `+${Math.abs(diffMin)} min atraso`, urgency: "danger" };
 }
 
-const URGENCY_DOT: Record<TimeUrgency, string> = {
-  ok: "bg-green-500",
-  warning: "bg-amber-400",
-  danger: "bg-red-500 animate-pulse",
-};
-
 const URGENCY_TEXT: Record<TimeUrgency, string> = {
   ok: "text-green-700 dark:text-green-400",
   warning: "text-amber-600 dark:text-amber-400",
@@ -671,44 +665,24 @@ export default function Routes() {
       key: "pending" as const,
       label: "Aguardando rota",
       count: pendingOrdersRenderable.length,
-      active: "bg-amber-500 text-white border-amber-500 shadow-sm",
-      inactive: "bg-amber-50 text-slate-800 border-amber-200 hover:bg-amber-100",
-      dot: "bg-amber-500",
-      pillActive: "bg-white text-amber-700",
-      pillInactive: "bg-amber-100 text-amber-800",
       testId: "tab-pending-routes",
     },
     {
       key: "available" as const,
       label: "Rotas disponíveis",
       count: availableRoutes.length,
-      active: "bg-sky-500 text-white border-sky-500 shadow-sm",
-      inactive: "bg-sky-50 text-slate-800 border-sky-200 hover:bg-sky-100",
-      dot: "bg-sky-500",
-      pillActive: "bg-white text-sky-700",
-      pillInactive: "bg-sky-100 text-sky-800",
       testId: "tab-available",
     },
     {
       key: "in_progress" as const,
       label: "Em andamento",
       count: inProgressRoutes.length,
-      active: "bg-blue-800 text-white border-blue-800 shadow-sm",
-      inactive: "bg-blue-50 text-slate-800 border-blue-200 hover:bg-blue-100",
-      dot: "bg-blue-800",
-      pillActive: "bg-white text-blue-800",
-      pillInactive: "bg-blue-100 text-blue-800",
       testId: "tab-in-progress",
     },
     {
       key: "completed" as const,
       label: "Concluídas hoje",
       count: completedTodayRoutes.length,
-      active: "bg-emerald-600 text-white border-emerald-600 shadow-sm",
-      inactive: "bg-emerald-50 text-slate-800 border-emerald-200 hover:bg-emerald-100",
-      dot: "bg-emerald-600",
-      pillActive: "bg-white text-emerald-700",
-      pillInactive: "bg-emerald-100 text-emerald-800",
       testId: "tab-completed-today",
     },
   ];
@@ -721,14 +695,19 @@ export default function Routes() {
           <button
             key={item.key}
             type="button"
-            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition-all ${active ? item.active : item.inactive}`}
+            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition-all ${
+              active
+                ? "border-[#D91F16] bg-[#D91F16] text-white shadow-sm"
+                : "border-slate-200 bg-white text-[#0F172A] hover:bg-slate-50"
+            }`}
             onClick={() => setRouteView(item.key)}
             data-testid={item.testId}
           >
-            <span className={`h-2 w-2 shrink-0 rounded-full ${active ? "bg-white" : item.dot}`} />
             <span>{item.label}</span>
             <span
-              className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${active ? item.pillActive : item.pillInactive}`}
+              className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${
+                active ? "bg-white text-[#D91F16]" : "bg-slate-100 text-[#0F172A]"
+              }`}
             >
               {item.count}
             </span>
@@ -1468,7 +1447,7 @@ export default function Routes() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex shrink-0 items-center justify-end gap-1.5">
                         <span className={`text-xs ${URGENCY_TEXT[ts.urgency]}`}>
                           {ts.label}
                         </span>
@@ -1721,14 +1700,20 @@ function PendingOrderRow({
   const UrgencyIcon = URGENCY_ICON[urgency];
   const receiveOnDelivery = order.paymentTiming === "on_delivery";
   const paymentLabel = receiveOnDelivery ? "Na entrega" : "Pago agora";
-  const distanceTone = getIndividualDistanceTone(order.estimatedDistanceKm);
+  const reliableDistance =
+    order.estimatedDistanceKm != null &&
+    Number.isFinite(order.estimatedDistanceKm) &&
+    order.estimatedDistanceKm > 0
+      ? order.estimatedDistanceKm
+      : null;
+  const distanceTone = getIndividualDistanceTone(reliableDistance);
   const addressLine = [order.deliveryNeighborhood, order.deliveryCep]
     .filter(Boolean)
     .join(" · ");
 
   return (
     <div
-      className={`relative grid cursor-pointer gap-4 overflow-hidden rounded-2xl border bg-white p-4 pl-5 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50/60 hover:shadow-md md:grid-cols-[minmax(0,1.2fr)_minmax(220px,1fr)_auto] md:items-center dark:bg-card ${selected ? "border-primary bg-blue-50/70 ring-1 ring-primary/20 dark:bg-blue-900/20" : "border-slate-200"}`}
+      className={`relative grid cursor-pointer gap-4 overflow-hidden rounded-2xl border bg-white p-4 pl-5 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50/60 hover:shadow-md md:grid-cols-[minmax(0,32%)_minmax(0,40%)_minmax(180px,1fr)] md:items-center dark:bg-card ${selected ? "border-primary bg-blue-50/70 ring-1 ring-primary/20 dark:bg-blue-900/20" : "border-slate-200"}`}
       onClick={onOpenOrder}
       data-testid={`pending-delivery-${order.id}`}
     >
@@ -1760,9 +1745,6 @@ function PendingOrderRow({
             </svg>
           )}
         </button>
-        <span
-          className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${timeStatus ? URGENCY_DOT[urgency] : "bg-gray-300"}`}
-        />
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-sm font-bold text-slate-900">
@@ -1808,11 +1790,17 @@ function PendingOrderRow({
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
             Taxa R$ {order.deliveryFee.toFixed(2)}
           </span>
-          <span className={`rounded-full border px-2 py-0.5 text-xs font-bold ${distanceTone.classes.badge}`}>
-            {order.estimatedDistanceKm != null
-              ? `${order.estimatedDistanceKm.toFixed(1)} km · ${distanceTone.label}`
-              : `distância · ${distanceTone.label}`}
-          </span>
+          {reliableDistance != null ? (
+            <span
+              className={`rounded-full border px-2 py-0.5 text-xs font-bold ${distanceTone.classes.badge}`}
+            >
+              {reliableDistance.toFixed(1)} km
+            </span>
+          ) : (
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500">
+              distância pendente
+            </span>
+          )}
         </div>
       </div>
 
@@ -1837,7 +1825,7 @@ function PendingOrderRow({
             Taxa R$ {order.deliveryFee.toFixed(2)}
           </div>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex shrink-0 items-center justify-end gap-1.5">
           {activeRoutes.length > 0 && (
             <Button
               size="sm"
@@ -1904,11 +1892,18 @@ const DISTANCE_TONES = {
     hex: "#D97706",
   },
   far: {
-    accent: "bg-orange-500",
-    border: "border-orange-200",
-    badge: "bg-orange-50 text-orange-700 border-orange-200",
-    text: "text-orange-700",
-    hex: "#EA580C",
+    accent: "bg-red-500",
+    border: "border-red-200",
+    badge: "bg-red-50 text-red-700 border-red-200",
+    text: "text-red-700",
+    hex: "#DC2626",
+  },
+  neutral: {
+    accent: "bg-slate-300",
+    border: "border-slate-200",
+    badge: "bg-slate-50 text-slate-600 border-slate-200",
+    text: "text-slate-600",
+    hex: "#CBD5E1",
   },
 } as const;
 
@@ -1922,7 +1917,15 @@ function buildDistanceTone(
   label: string;
   classes: (typeof DISTANCE_TONES)[DistanceTone];
 } {
-  const distance = distKm ?? 0;
+  if (distKm == null || !Number.isFinite(distKm) || distKm <= 0) {
+    return {
+      key: "neutral",
+      label: "distância pendente",
+      classes: DISTANCE_TONES.neutral,
+    };
+  }
+
+  const distance = distKm;
   const ranges =
     scale === "route"
       ? [
@@ -1957,7 +1960,7 @@ function buildDistanceTone(
 const getIndividualDistanceTone = (distKm: number | null | undefined) =>
   buildDistanceTone(distKm, "individual");
 
-const getReadyRouteDistanceTone = (distKm: number | null | undefined) =>
+const getRouteDistanceTone = (distKm: number | null | undefined) =>
   buildDistanceTone(distKm, "route");
 
 const ROUTE_DISTANCE_LEGEND = [
@@ -2041,11 +2044,16 @@ function RouteCard({
   const totalCount = route.orders.length;
   const allOrdersReady = totalCount > 0 && readyCount === totalCount;
 
-  const totalRouteDistanceKm = route.orders.reduce(
-    (sum, order) => sum + (order.estimatedDistanceKm ?? 5),
-    0,
-  );
-  const distanceTone = getReadyRouteDistanceTone(totalRouteDistanceKm);
+  const validRouteDistances = route.orders
+    .map((order) => order.estimatedDistanceKm)
+    .filter(
+      (distance): distance is number =>
+        distance != null && Number.isFinite(distance) && distance > 0,
+    );
+  const totalRouteDistanceKm = validRouteDistances.length
+    ? validRouteDistances.reduce((sum, distance) => sum + distance, 0)
+    : null;
+  const distanceTone = getRouteDistanceTone(totalRouteDistanceKm);
   const readinessPct =
     totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
   const otherNeighborhoods = route.includedNeighborhoods.filter(
@@ -2137,7 +2145,9 @@ function RouteCard({
               <span
                 className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${distanceTone.classes.badge}`}
               >
-                {totalRouteDistanceKm.toFixed(1)} km rota · {distanceTone.label}
+                {totalRouteDistanceKm != null
+                  ? `${totalRouteDistanceKm.toFixed(1)} km rota · ${distanceTone.label}`
+                  : "distância pendente"}
               </span>
             </div>
           </div>
@@ -2170,19 +2180,6 @@ function RouteCard({
         <div className="rounded-xl overflow-hidden border border-[#E2E8F0] divide-y divide-[#E2E8F0]">
           {visibleOrders.map((order) => {
             const ds = order.deliveryStatus as DeliveryOrderStatus | null;
-            const isReady = ds === "ready";
-            const isPrep = ds === "preparing";
-            const isOut = ds === "out_for_delivery";
-            const isDelivered = ds === "delivered";
-            const dotColor = isReady
-              ? "bg-emerald-400"
-              : isPrep
-                ? "bg-amber-400"
-                : isOut
-                  ? "bg-blue-400"
-                  : isDelivered
-                    ? "bg-zinc-500"
-                    : "bg-zinc-600";
             const dsLabel = ds ? DELIVERY_STATUS_LABELS[ds] : null;
             const PayIcon =
               order.paymentTiming === "on_delivery" &&
@@ -2240,11 +2237,6 @@ function RouteCard({
                   >
                     {order.stopOrder}
                   </div>
-
-                  {/* Status dot */}
-                  <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`}
-                  />
 
                   {/* Info */}
                   <div className="flex-1 min-w-0 space-y-1">

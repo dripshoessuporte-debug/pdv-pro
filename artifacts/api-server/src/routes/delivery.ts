@@ -69,6 +69,12 @@ function deliveryOrderCanEnterRouteWhereClause(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function parseEstimatedDistanceKm(value: unknown): number | null {
+  if (value == null) return null;
+  const distance = Number.parseFloat(String(value));
+  return Number.isFinite(distance) && distance > 0 ? distance : null;
+}
+
 function buildStoreRouteOrigin(
   settings: Awaited<ReturnType<typeof getOrCreateSettings>>,
 ): {
@@ -235,9 +241,7 @@ async function getRouteWithOrders(
     orders: routeOrders.map((o) => ({
       ...o,
       deliveryFee: parseFloat(String(o.deliveryFee ?? "0")),
-      estimatedDistanceKm: o.estimatedDistanceKm
-        ? parseFloat(String(o.estimatedDistanceKm))
-        : null,
+      estimatedDistanceKm: parseEstimatedDistanceKm(o.estimatedDistanceKm),
       totalAmount: parseFloat(String(o.totalAmount ?? "0")),
       changeFor: o.changeFor ? parseFloat(String(o.changeFor)) : null,
       orderCreatedAt: o.orderCreatedAt?.toISOString() ?? null,
@@ -744,9 +748,7 @@ router.get("/delivery/orders/pending", async (req, res): Promise<void> => {
     deliveryNeighborhood: o.deliveryNeighborhood,
     deliveryCep: o.deliveryCep,
     deliveryFee: parseFloat(String(o.deliveryFee ?? "0")),
-    estimatedDistanceKm: o.estimatedDistanceKm
-      ? parseFloat(String(o.estimatedDistanceKm))
-      : null,
+    estimatedDistanceKm: parseEstimatedDistanceKm(o.estimatedDistanceKm),
     totalAmount: parseFloat(String(o.totalAmount ?? "0")),
     deliveryStatus: o.deliveryStatus,
     paymentTiming: o.paymentTiming ?? "now",
