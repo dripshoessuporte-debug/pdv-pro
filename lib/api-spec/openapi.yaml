@@ -1459,6 +1459,8 @@ components:
           enum: [available, occupied, reserved]
         currentOrderId:
           type: ["integer", "null"]
+        currentOrderCreatedAt:
+          type: ["string", "null"]
         openOrdersCount:
           type: integer
         hasMultipleOpenOrders:
@@ -1818,6 +1820,10 @@ components:
         changeFor:
           type: ["number", "null"]
         deliveryPaymentNotes:
+          type: ["string", "null"]
+        kitchenAcceptedAt:
+          type: ["string", "null"]
+        readyAt:
           type: ["string", "null"]
         paidAt:
           type: ["string", "null"]
@@ -2184,6 +2190,14 @@ components:
           enum: [pending, preparing, ready]
         notes:
           type: ["string", "null"]
+        customerName:
+          type: ["string", "null"]
+        orderCreatedAt:
+          type: ["string", "null"]
+        kitchenAcceptedAt:
+          type: ["string", "null"]
+        ticketCreatedAt:
+          type: ["string", "null"]
         createdAt:
           type: string
         items:
@@ -2312,6 +2326,10 @@ components:
           type: string
         orderId:
           type: ["integer", "null"]
+        orderCreatedAt:
+          type: ["string", "null"]
+        orderPaidAt:
+          type: ["string", "null"]
         createdAt:
           type: string
 
@@ -2391,8 +2409,30 @@ components:
           type: ["string", "null"]
         deliveryNeighborhood:
           type: ["string", "null"]
+        deliveryCep:
+          type: ["string", "null"]
         deliveryFee:
           type: number
+        estimatedDistanceKm:
+          type: ["number", "null"]
+        totalAmount:
+          type: number
+        paymentTiming:
+          type: ["string", "null"]
+        deliveryPaymentMethod:
+          type: ["string", "null"]
+        needsChange:
+          type: ["string", "null"]
+        changeFor:
+          type: ["number", "null"]
+        deliveryPaymentNotes:
+          type: ["string", "null"]
+        orderCreatedAt:
+          type: ["string", "null"]
+        orderKitchenAcceptedAt:
+          type: ["string", "null"]
+        routeTimeAt:
+          type: ["string", "null"]
         deliveryStatus:
           type: ["string", "null"]
 

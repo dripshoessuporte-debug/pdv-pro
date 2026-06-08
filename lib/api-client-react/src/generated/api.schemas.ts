@@ -46,6 +46,8 @@ export interface Table {
   currentOrderId?: number | null;
   openOrdersCount?: number;
   hasMultipleOpenOrders?: boolean;
+  /** @nullable */
+  currentOrderCreatedAt?: string | null;
   createdAt: string;
 }
 
@@ -88,6 +90,14 @@ export interface Customer {
   email?: string | null;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  orderCreatedAt?: string | null;
+  /** @nullable */
+  kitchenAcceptedAt?: string | null;
+  /** @nullable */
+  ticketCreatedAt?: string | null;
   createdAt: string;
 }
 
@@ -372,6 +382,10 @@ export interface Order {
   /** @nullable */
   deliveryPaymentNotes?: string | null;
   /** @nullable */
+  kitchenAcceptedAt?: string | null;
+  /** @nullable */
+  readyAt?: string | null;
+  /** @nullable */
   paidAt?: string | null;
   /** @nullable */
   closedAt?: string | null;
@@ -629,6 +643,14 @@ export interface KitchenTicket {
   status: KitchenTicketStatus;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  orderCreatedAt?: string | null;
+  /** @nullable */
+  kitchenAcceptedAt?: string | null;
+  /** @nullable */
+  ticketCreatedAt?: string | null;
   createdAt: string;
   items: OrderItem[];
 }
@@ -719,6 +741,10 @@ export interface CashMovement {
   reason: string;
   /** @nullable */
   orderId?: number | null;
+  /** @nullable */
+  orderCreatedAt?: string | null;
+  /** @nullable */
+  orderPaidAt?: string | null;
   createdAt: string;
 }
 
@@ -773,7 +799,28 @@ export interface DeliveryRouteOrder {
   deliveryAddress?: string | null;
   /** @nullable */
   deliveryNeighborhood?: string | null;
+  /** @nullable */
+  deliveryCep?: string | null;
   deliveryFee?: number;
+  /** @nullable */
+  estimatedDistanceKm?: number | null;
+  totalAmount?: number;
+  /** @nullable */
+  paymentTiming?: string | null;
+  /** @nullable */
+  deliveryPaymentMethod?: string | null;
+  /** @nullable */
+  needsChange?: string | null;
+  /** @nullable */
+  changeFor?: number | null;
+  /** @nullable */
+  deliveryPaymentNotes?: string | null;
+  /** @nullable */
+  orderCreatedAt?: string | null;
+  /** @nullable */
+  orderKitchenAcceptedAt?: string | null;
+  /** @nullable */
+  routeTimeAt?: string | null;
   /** @nullable */
   deliveryStatus?: string | null;
 }

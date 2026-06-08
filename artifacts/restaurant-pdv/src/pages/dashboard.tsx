@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { OrderTimeBadge } from "@/components/order-time-badge";
+import { compareNewestFirst } from "@/lib/time";
 import {
   BarChart,
   Bar,
@@ -297,7 +299,7 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {recentOrders?.map((order) => (
+                  {[...(recentOrders ?? [])].sort(compareNewestFirst).map((order) => (
                     <Link key={order.id} href={`/orders/${order.id}`}>
                       <div className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/60 transition-colors cursor-pointer">
                         <div>
@@ -308,15 +310,14 @@ export default function Dashboard() {
                             </span>
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {order.type === "table" ? `Mesa ${order.tableNumber ?? "?"}` : order.type === "counter" ? "Balcão" : "Viagem"}
+                            {order.type === "table" ? `Mesa ${order.tableNumber ?? "?"}` : order.type === "counter" ? "Balcão" : order.type === "delivery" ? "Delivery" : "Viagem"}
                             {order.customerName ? ` · ${order.customerName}` : ""}
                           </p>
+                          <OrderTimeBadge createdAt={order.createdAt} compact showIcon={false} className="mt-0.5" />
                         </div>
                         <div className="text-right">
                           <p className="font-bold text-sm">R$ {order.totalAmount.toFixed(2)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(order.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                          </p>
+                          <p className="text-xs text-muted-foreground">{STATUS_LABELS[order.status] ?? order.status}</p>
                         </div>
                       </div>
                     </Link>

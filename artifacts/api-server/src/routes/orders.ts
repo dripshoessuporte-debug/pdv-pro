@@ -71,6 +71,8 @@ async function getOrderWithItems(orderId: number, storeId?: number) {
       needsChange: ordersTable.needsChange,
       changeFor: ordersTable.changeFor,
       deliveryPaymentNotes: ordersTable.deliveryPaymentNotes,
+      kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
+      readyAt: ordersTable.readyAt,
       paidAt: ordersTable.paidAt,
       closedAt: ordersTable.closedAt,
       source: ordersTable.source,
@@ -122,6 +124,8 @@ async function getOrderWithItems(orderId: number, storeId?: number) {
     needsChange:
       order.needsChange == null ? null : order.needsChange === "true",
     changeFor: order.changeFor ? parseFloat(String(order.changeFor)) : null,
+    kitchenAcceptedAt: order.kitchenAcceptedAt ? order.kitchenAcceptedAt.toISOString() : null,
+    readyAt: order.readyAt ? order.readyAt.toISOString() : null,
     paidAt: order.paidAt ? order.paidAt.toISOString() : null,
     closedAt: order.closedAt ? order.closedAt.toISOString() : null,
     estimatedDistanceKm: order.estimatedDistanceKm
@@ -207,6 +211,8 @@ router.get("/orders", async (req, res): Promise<void> => {
       needsChange: ordersTable.needsChange,
       changeFor: ordersTable.changeFor,
       deliveryPaymentNotes: ordersTable.deliveryPaymentNotes,
+      kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
+      readyAt: ordersTable.readyAt,
       paidAt: ordersTable.paidAt,
       closedAt: ordersTable.closedAt,
       source: ordersTable.source,
@@ -258,6 +264,8 @@ router.get("/orders", async (req, res): Promise<void> => {
         needsChange:
           order.needsChange == null ? null : order.needsChange === "true",
         changeFor: order.changeFor ? parseFloat(String(order.changeFor)) : null,
+        kitchenAcceptedAt: order.kitchenAcceptedAt ? order.kitchenAcceptedAt.toISOString() : null,
+        readyAt: order.readyAt ? order.readyAt.toISOString() : null,
         paidAt: order.paidAt ? order.paidAt.toISOString() : null,
         closedAt: order.closedAt ? order.closedAt.toISOString() : null,
         estimatedDistanceKm: order.estimatedDistanceKm

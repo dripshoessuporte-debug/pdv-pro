@@ -41,6 +41,7 @@ export const ListTablesResponseItem = zod.object({
   "currentOrderId": zod.number().nullish(),
   "openOrdersCount": zod.number().optional(),
   "hasMultipleOpenOrders": zod.boolean().optional(),
+  "currentOrderCreatedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListTablesResponse = zod.array(ListTablesResponseItem)
@@ -71,6 +72,7 @@ export const GetTableResponse = zod.object({
   "currentOrderId": zod.number().nullish(),
   "openOrdersCount": zod.number().optional(),
   "hasMultipleOpenOrders": zod.boolean().optional(),
+  "currentOrderCreatedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -96,6 +98,7 @@ export const UpdateTableResponse = zod.object({
   "currentOrderId": zod.number().nullish(),
   "openOrdersCount": zod.number().optional(),
   "hasMultipleOpenOrders": zod.boolean().optional(),
+  "currentOrderCreatedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -860,6 +863,8 @@ export const ListOrdersResponseItem = zod.object({
   "needsChange": zod.boolean().nullish(),
   "changeFor": zod.number().nullish(),
   "deliveryPaymentNotes": zod.string().nullish(),
+  "kitchenAcceptedAt": zod.string().nullish(),
+  "readyAt": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
@@ -951,6 +956,8 @@ export const GetOrderResponse = zod.object({
   "needsChange": zod.boolean().nullish(),
   "changeFor": zod.number().nullish(),
   "deliveryPaymentNotes": zod.string().nullish(),
+  "kitchenAcceptedAt": zod.string().nullish(),
+  "readyAt": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
@@ -1024,6 +1031,8 @@ export const UpdateOrderResponse = zod.object({
   "needsChange": zod.boolean().nullish(),
   "changeFor": zod.number().nullish(),
   "deliveryPaymentNotes": zod.string().nullish(),
+  "kitchenAcceptedAt": zod.string().nullish(),
+  "readyAt": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
@@ -1122,6 +1131,8 @@ export const SendOrderToKitchenResponse = zod.object({
   "needsChange": zod.boolean().nullish(),
   "changeFor": zod.number().nullish(),
   "deliveryPaymentNotes": zod.string().nullish(),
+  "kitchenAcceptedAt": zod.string().nullish(),
+  "readyAt": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
@@ -1188,6 +1199,8 @@ export const CancelOrderResponse = zod.object({
   "needsChange": zod.boolean().nullish(),
   "changeFor": zod.number().nullish(),
   "deliveryPaymentNotes": zod.string().nullish(),
+  "kitchenAcceptedAt": zod.string().nullish(),
+  "readyAt": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
@@ -1258,6 +1271,8 @@ export const UpdateDeliveryStatusResponse = zod.object({
   "needsChange": zod.boolean().nullish(),
   "changeFor": zod.number().nullish(),
   "deliveryPaymentNotes": zod.string().nullish(),
+  "kitchenAcceptedAt": zod.string().nullish(),
+  "readyAt": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
@@ -1340,6 +1355,8 @@ export const GetReceiptResponse = zod.object({
   "needsChange": zod.boolean().nullish(),
   "changeFor": zod.number().nullish(),
   "deliveryPaymentNotes": zod.string().nullish(),
+  "kitchenAcceptedAt": zod.string().nullish(),
+  "readyAt": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
@@ -1419,6 +1436,10 @@ export const GetKitchenQueueResponseItem = zod.object({
   "orderType": zod.enum(['table', 'counter', 'takeaway', 'delivery']).optional(),
   "status": zod.enum(['pending', 'preparing', 'ready']),
   "notes": zod.string().nullish(),
+  "customerName": zod.string().nullish(),
+  "orderCreatedAt": zod.string().nullish(),
+  "kitchenAcceptedAt": zod.string().nullish(),
+  "ticketCreatedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "items": zod.array(zod.object({
   "id": zod.number(),
@@ -1461,6 +1482,10 @@ export const MarkTicketReadyResponse = zod.object({
   "orderType": zod.enum(['table', 'counter', 'takeaway', 'delivery']).optional(),
   "status": zod.enum(['pending', 'preparing', 'ready']),
   "notes": zod.string().nullish(),
+  "customerName": zod.string().nullish(),
+  "orderCreatedAt": zod.string().nullish(),
+  "kitchenAcceptedAt": zod.string().nullish(),
+  "ticketCreatedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "items": zod.array(zod.object({
   "id": zod.number(),
@@ -1543,6 +1568,8 @@ export const GetRecentOrdersResponseItem = zod.object({
   "needsChange": zod.boolean().nullish(),
   "changeFor": zod.number().nullish(),
   "deliveryPaymentNotes": zod.string().nullish(),
+  "kitchenAcceptedAt": zod.string().nullish(),
+  "readyAt": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
   "closedAt": zod.string().nullish(),
   "createdAt": zod.string(),
@@ -1614,6 +1641,8 @@ export const GetCurrentCashRegisterResponse = zod.object({
   "paymentMethod": zod.string().nullish(),
   "reason": zod.string(),
   "orderId": zod.number().nullish(),
+  "orderCreatedAt": zod.string().nullish(),
+  "orderPaidAt": zod.string().nullish(),
   "createdAt": zod.string()
 })).optional(),
   "summary": zod.object({
@@ -1668,6 +1697,8 @@ export const ListCashRegistersResponseItem = zod.object({
   "paymentMethod": zod.string().nullish(),
   "reason": zod.string(),
   "orderId": zod.number().nullish(),
+  "orderCreatedAt": zod.string().nullish(),
+  "orderPaidAt": zod.string().nullish(),
   "createdAt": zod.string()
 })).optional(),
   "summary": zod.object({
@@ -1712,6 +1743,8 @@ export const GetCashRegisterResponse = zod.object({
   "paymentMethod": zod.string().nullish(),
   "reason": zod.string(),
   "orderId": zod.number().nullish(),
+  "orderCreatedAt": zod.string().nullish(),
+  "orderPaidAt": zod.string().nullish(),
   "createdAt": zod.string()
 })).optional(),
   "summary": zod.object({
@@ -1764,6 +1797,8 @@ export const CloseCashRegisterResponse = zod.object({
   "paymentMethod": zod.string().nullish(),
   "reason": zod.string(),
   "orderId": zod.number().nullish(),
+  "orderCreatedAt": zod.string().nullish(),
+  "orderPaidAt": zod.string().nullish(),
   "createdAt": zod.string()
 })).optional(),
   "summary": zod.object({

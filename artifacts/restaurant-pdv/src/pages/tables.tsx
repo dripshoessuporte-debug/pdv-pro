@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { AlertTriangle, Plus, Users, Eye, Trash2, Utensils } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { OrderTimeBadge } from "@/components/order-time-badge";
 
 const STATUS_CONFIG = {
   available: {
@@ -253,6 +254,12 @@ export default function Tables() {
 
                     {isOccupied && table.currentOrderId && (
                       <div className="mt-auto space-y-2">
+                        {table.currentOrderCreatedAt && (
+                          <div className="rounded-lg border border-red-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700">
+                            <p>Pedido #{table.currentOrderId}</p>
+                            <OrderTimeBadge createdAt={table.currentOrderCreatedAt} compact showIcon={false} className="mt-0.5" />
+                          </div>
+                        )}
                         {table.hasMultipleOpenOrders && (
                           <div className="flex items-start gap-1.5 rounded-lg border border-red-200 bg-white px-2 py-1.5 text-[11px] font-medium text-red-700">
                             <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />

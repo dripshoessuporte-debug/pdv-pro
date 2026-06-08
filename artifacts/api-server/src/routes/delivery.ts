@@ -705,7 +705,7 @@ router.get("/delivery/orders/pending", async (req, res): Promise<void> => {
         actor.role === "atendente" ? scope.openedAt : null,
       ),
     )
-    .orderBy(sql`${ordersTable.createdAt} ASC`);
+    .orderBy(sql`${ordersTable.createdAt} DESC`);
 
   const dp = settings.deliveryDispatchTimeMinutes;
   const result = orders.map((o) => ({
@@ -816,7 +816,12 @@ router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
   const existingToday = await db
     .select({ id: deliveryRoutesTable.id })
     .from(deliveryRoutesTable)
-    .where(sql`DATE(${deliveryRoutesTable.createdAt}) = CURRENT_DATE`);
+    .where(
+      and(
+        eq(deliveryRoutesTable.storeId, actor.storeId),
+        sql`DATE(${deliveryRoutesTable.createdAt}) = CURRENT_DATE`,
+      ),
+    );
 
   const color = ROUTE_COLORS[existingToday.length % ROUTE_COLORS.length];
   const routeNumber = existingToday.length + 1;
@@ -1313,7 +1318,7 @@ router.get(
           isNull(ordersTable.paidAt),
         ),
       )
-      .orderBy(sql`${ordersTable.createdAt} ASC`);
+      .orderBy(sql`${ordersTable.createdAt} DESC`);
 
     // Fetch route/courier info for each order
     const orderIds = orders.map((o) => o.id);

@@ -32,18 +32,21 @@ router.get("/tables", async (req, res): Promise<void> => {
         .where(
           and(
             eq(ordersTable.tableId, table.id),
+            eq(ordersTable.storeId, storeId),
             inArray(ordersTable.status, OPEN_TABLE_ORDER_STATUSES),
           ),
         )
         .orderBy(sql`${ordersTable.createdAt} DESC`);
 
-      const currentOrderId = openOrders[0]?.id ?? null;
+      const currentOrder = openOrders[0] ?? null;
+      const currentOrderId = currentOrder?.id ?? null;
       const status = openOrders.length > 0 ? "occupied" : "available";
 
       return {
         ...table,
         status,
         currentOrderId,
+        currentOrderCreatedAt: currentOrder?.createdAt.toISOString() ?? null,
         openOrdersCount: openOrders.length,
         hasMultipleOpenOrders: openOrders.length > 1,
         createdAt: table.createdAt.toISOString(),
