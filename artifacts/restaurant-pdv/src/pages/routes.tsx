@@ -1713,19 +1713,19 @@ function PendingOrderRow({
 
   return (
     <div
-      className={`relative grid cursor-pointer gap-4 overflow-hidden rounded-2xl border bg-white p-4 pl-5 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50/60 hover:shadow-md md:grid-cols-[minmax(0,32%)_minmax(0,40%)_minmax(180px,1fr)] md:items-center dark:bg-card ${selected ? "border-primary bg-blue-50/70 ring-1 ring-primary/20 dark:bg-blue-900/20" : "border-slate-200"}`}
+      className={`relative flex cursor-pointer flex-col gap-3 overflow-hidden rounded-xl border bg-white py-3 pl-5 pr-3 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50/60 hover:shadow-md lg:flex-row lg:items-center ${selected ? "border-[#D91F16] bg-red-50/40 ring-1 ring-[#D91F16]/20" : "border-slate-200"}`}
       onClick={onOpenOrder}
       data-testid={`pending-delivery-${order.id}`}
     >
       <div className={`absolute inset-y-0 left-0 w-1.5 ${distanceTone.classes.accent}`} />
-      {/* Left: identity */}
-      <div className="flex min-w-0 items-start gap-3">
+
+      <div className="flex min-w-0 items-center gap-3 lg:w-[28%]">
         <button
           onClick={(event) => {
             event.stopPropagation();
             onToggle();
           }}
-          className={`mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition-colors ${selected ? "border-primary bg-primary" : "border-[#CBD5E1] hover:border-primary"}`}
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition-colors ${selected ? "border-[#D91F16] bg-[#D91F16]" : "border-[#CBD5E1] hover:border-[#D91F16]"}`}
           title={selected ? "Desmarcar" : "Selecionar"}
         >
           {selected && (
@@ -1745,17 +1745,20 @@ function PendingOrderRow({
             </svg>
           )}
         </button>
-        <div className="min-w-0 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="truncate text-sm font-bold text-slate-900">
-              Pedido #{order.id} · {order.customerName ?? "Cliente não informado"}
-            </p>
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="shrink-0 text-sm font-black text-slate-950">
+              Pedido #{order.id}
+            </span>
             {dsLabel && (
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${dsColor}`}>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${dsColor}`}>
                 {dsLabel}
               </span>
             )}
           </div>
+          <p className="truncate text-sm font-semibold text-slate-700">
+            {order.customerName ?? "Cliente não informado"}
+          </p>
           <OrderTimeBadge
             createdAt={order.createdAt}
             compact
@@ -1765,72 +1768,53 @@ function PendingOrderRow({
         </div>
       </div>
 
-      {/* Center: delivery */}
-      <div className="min-w-0 space-y-1.5 text-sm text-slate-600">
-        <div className="flex min-w-0 items-center gap-2">
-          <MapPin className="h-4 w-4 shrink-0 text-slate-400" />
-          <span className="truncate font-medium">
-            {addressLine || order.deliveryAddress || "Endereço não informado"}
-          </span>
-        </div>
-        {order.customerPhone && (
-          <div className="flex items-center gap-2">
-            <Phone className="h-4 w-4 shrink-0 text-slate-400" />
-            <span>{order.customerPhone}</span>
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-2">
-          <Banknote className="h-4 w-4 shrink-0 text-slate-400" />
-          <span className="font-medium">{paymentLabel}</span>
-          {receiveOnDelivery && (
-            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">
-              Receber R$ {order.totalAmount.toFixed(2)}
-            </span>
-          )}
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-            Taxa R$ {order.deliveryFee.toFixed(2)}
-          </span>
-          {reliableDistance != null ? (
-            <span
-              className={`rounded-full border px-2 py-0.5 text-xs font-bold ${distanceTone.classes.badge}`}
-            >
+      <div className="min-w-0 border-slate-200 lg:w-[29%] lg:border-l lg:pl-4">
+        <p className="truncate text-sm font-semibold text-slate-800">
+          {addressLine || order.deliveryAddress || "Endereço não informado"}
+        </p>
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+          {order.customerPhone && <span className="truncate">{order.customerPhone}</span>}
+          {reliableDistance != null && (
+            <span className={`font-bold ${distanceTone.classes.text}`}>
               {reliableDistance.toFixed(1)} km
-            </span>
-          ) : (
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500">
-              distância pendente
             </span>
           )}
         </div>
       </div>
 
-      {/* Right: deadline and actions */}
-      <div className="flex items-center justify-between gap-3 md:min-w-[170px] md:flex-col md:items-end">
-        <div className="text-left md:text-right">
-          {timeStatus ? (
-            <div className={`flex items-center gap-1 text-sm font-bold md:justify-end ${URGENCY_TEXT[urgency]}`}>
-              <UrgencyIcon className="h-4 w-4" />
-              {timeStatus.label}
-            </div>
-          ) : (
-            <div className="flex items-center gap-1 text-sm font-medium text-muted-foreground md:justify-end">
-              <Clock className="h-4 w-4" />
-              Prazo cozinha
-            </div>
+      <div className="min-w-0 border-slate-200 lg:w-[25%] lg:border-l lg:pl-4">
+        <p className="text-sm font-semibold text-slate-800">{paymentLabel}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+          {receiveOnDelivery && (
+            <span className="font-bold text-amber-700">
+              Receber R$ {order.totalAmount.toFixed(2)}
+            </span>
           )}
-          <div className="mt-1 text-sm font-semibold text-slate-900">
+          <span>Taxa R$ {order.deliveryFee.toFixed(2)}</span>
+          <span className="font-bold text-slate-900">
             Total R$ {order.totalAmount.toFixed(2)}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            Taxa R$ {order.deliveryFee.toFixed(2)}
-          </div>
+          </span>
         </div>
+      </div>
+
+      <div className="flex min-w-0 items-center justify-between gap-3 border-slate-200 lg:ml-auto lg:w-[18%] lg:border-l lg:pl-4">
+        {timeStatus ? (
+          <div className={`flex min-w-0 items-center gap-1 text-sm font-bold ${URGENCY_TEXT[urgency]}`}>
+            <UrgencyIcon className="h-4 w-4 shrink-0" />
+            <span className="truncate">{timeStatus.label}</span>
+          </div>
+        ) : (
+          <div className="flex min-w-0 items-center gap-1 text-sm font-medium text-muted-foreground">
+            <Clock className="h-4 w-4 shrink-0" />
+            <span className="truncate">Prazo cozinha</span>
+          </div>
+        )}
         <div className="flex shrink-0 items-center justify-end gap-1.5">
           {activeRoutes.length > 0 && (
             <Button
               size="sm"
               variant="outline"
-              className="h-8 px-2 text-xs gap-1 border-primary/40 text-primary hover:bg-primary/5"
+              className="h-8 px-2 text-xs gap-1 border-slate-300 text-slate-800 hover:bg-slate-50"
               onClick={(event) => {
                 event.stopPropagation();
                 onAddToRoute();
@@ -1838,7 +1822,7 @@ function PendingOrderRow({
               title="Adicionar a uma rota existente"
             >
               <PlusCircle className="h-3.5 w-3.5" />
-              <span className="hidden lg:inline">Adicionar</span>
+              <span className="hidden xl:inline">Adicionar</span>
             </Button>
           )}
           <Button

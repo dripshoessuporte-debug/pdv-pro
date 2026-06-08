@@ -257,6 +257,7 @@ export default function NewOrder() {
   const [distanceCalcStatus, setDistanceCalcStatus] = useState<
     "idle" | "loading" | "done" | "error"
   >("idle");
+  const [distanceCalcError, setDistanceCalcError] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -311,7 +312,7 @@ export default function NewOrder() {
           v != null && v !== "" ? parseFloat(String(v)) : null;
         const rawMode = String(s.deliveryFeeMode || "manual");
         setStoreSettings({
-          deliveryFeeMode: rawMode === "per_km" ? "distance_tier" : rawMode,
+          deliveryFeeMode: rawMode,
           storeCep: s.storeCep ? String(s.storeCep) : null,
           storeAddress: s.storeAddress ? String(s.storeAddress) : null,
           storeCity: s.storeCity ? String(s.storeCity) : null,
@@ -368,31 +369,29 @@ export default function NewOrder() {
     };
   }, [deliveryCep]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-calculate delivery fee — calls the server-side distance endpoint
-  // (uses ORS when configured, falls back to CEP estimation automatically)
+  // Calculate delivery distance from the logged-in store origin and, when the
+  // store is configured for automatic fees, apply the fee returned by the API.
   useEffect(() => {
     if (orderType !== "delivery") return;
-    const mode = storeSettings?.deliveryFeeMode;
-    if (!storeSettings || (mode !== "per_km" && mode !== "distance_tier"))
-      return;
+    if (!storeSettings) return;
 
-    if (!storeSettings.storeCep) {
-      if (feeAutoCalculated) {
-        setDeliveryFee("");
-        setFeeAutoCalculated(false);
-        setFeeCalcInfo(null);
-      }
+    const mode = storeSettings.deliveryFeeMode;
+    const digits = onlyDigits(deliveryCep);
+    setDistanceCalcError(null);
+
+    if (digits.length === 0) {
+      setDistanceCalcStatus("idle");
       return;
     }
 
-    const digits = deliveryCep.replace(/\D/g, "");
     if (digits.length !== 8) {
       if (feeAutoCalculated) {
         setDeliveryFee("");
         setFeeAutoCalculated(false);
         setFeeCalcInfo(null);
       }
-      setDistanceCalcStatus("idle");
+      setDistanceCalcStatus("error");
+      setDistanceCalcError("CEP do cliente inválido.");
       return;
     }
 
@@ -407,74 +406,75 @@ export default function NewOrder() {
           body: JSON.stringify({
             customerCep: digits,
             customerAddress: deliveryAddress || undefined,
-            customerCity: undefined,
           }),
         });
+        const payload = (await res.json().catch(() => ({}))) as {
+          distanceKm?: number;
+          estimatedDistanceKm?: number;
+          deliveryFee?: number | null;
+          deliveryFeeCalculated?: boolean;
+          source?: string;
+          error?: string;
+        };
         if (cancelled) return;
         if (!res.ok) {
+          const message =
+            payload.error ===
+            "Configure um CEP válido da loja em Configurações para calcular entregas."
+              ? "Configure o CEP da loja em Configurações para calcular entrega."
+              : payload.error ||
+                "Não foi possível calcular a distância. Verifique o CEP ou preencha a taxa manualmente.";
           setDistanceCalcStatus("error");
+          setDistanceCalcError(message);
+          if (feeAutoCalculated) {
+            setDeliveryFee("");
+            setFeeAutoCalculated(false);
+            setFeeCalcInfo(null);
+          }
           return;
         }
 
-        const { distanceKm, source } = (await res.json()) as {
-          distanceKm: number;
-          source: string;
-        };
-
-        let fee: number;
-        if (mode === "distance_tier") {
-          const baseDist = storeSettings.baseDeliveryDistanceKm ?? 4;
-          const baseFee = storeSettings.baseDeliveryFee ?? 0;
-          const addlPerKm = storeSettings.additionalPricePerKm ?? 0;
-          fee =
-            distanceKm <= baseDist
-              ? baseFee
-              : baseFee + (distanceKm - baseDist) * addlPerKm;
-          if (
-            storeSettings.minimumDeliveryFee &&
-            fee < storeSettings.minimumDeliveryFee
-          )
-            fee = storeSettings.minimumDeliveryFee;
-          const effMax = storeSettings.maximumDeliveryFee ?? 30;
-          if (fee > effMax) fee = effMax;
-          fee = Math.round(fee * 100) / 100;
-          setDeliveryFee(String(fee));
-          setFeeAutoCalculated(true);
-          setFeeCalcInfo({
-            storeCep: storeSettings.storeCep!,
-            distanceKm,
-            distanceSource: source,
-            mode: "distance_tier",
-            baseDistanceKm: baseDist,
-            baseFee,
-            additionalPricePerKm: addlPerKm,
-            fee,
-          });
-        } else {
-          if (!storeSettings.deliveryPricePerKm) return;
-          fee = distanceKm * storeSettings.deliveryPricePerKm;
-          if (
-            storeSettings.minimumDeliveryFee &&
-            fee < storeSettings.minimumDeliveryFee
-          )
-            fee = storeSettings.minimumDeliveryFee;
-          const effMax = storeSettings.maximumDeliveryFee ?? 30;
-          if (fee > effMax) fee = effMax;
-          fee = Math.round(fee * 100) / 100;
-          setDeliveryFee(String(fee));
-          setFeeAutoCalculated(true);
-          setFeeCalcInfo({
-            storeCep: storeSettings.storeCep!,
-            distanceKm,
-            distanceSource: source,
-            mode: "per_km",
-            pricePerKm: storeSettings.deliveryPricePerKm,
-            fee,
-          });
+        const distanceKm = payload.estimatedDistanceKm ?? payload.distanceKm;
+        if (typeof distanceKm !== "number" || !Number.isFinite(distanceKm)) {
+          setDistanceCalcStatus("error");
+          setDistanceCalcError("Não foi possível calcular a distância.");
+          return;
         }
+
+        const isAutomaticMode = mode === "per_km" || mode === "distance_tier";
+        const apiFee =
+          typeof payload.deliveryFee === "number" && Number.isFinite(payload.deliveryFee)
+            ? payload.deliveryFee
+            : null;
+        const fee = apiFee ?? 0;
+
+        if (isAutomaticMode && apiFee !== null) {
+          setDeliveryFee(String(fee));
+          setFeeAutoCalculated(true);
+        } else {
+          setFeeAutoCalculated(false);
+        }
+
+        setFeeCalcInfo({
+          storeCep: storeSettings.storeCep ?? "",
+          distanceKm,
+          distanceSource: payload.source ?? "approximate_cep",
+          mode,
+          pricePerKm: storeSettings.deliveryPricePerKm ?? undefined,
+          baseDistanceKm: storeSettings.baseDeliveryDistanceKm ?? undefined,
+          baseFee: storeSettings.baseDeliveryFee ?? undefined,
+          additionalPricePerKm:
+            storeSettings.additionalPricePerKm ?? undefined,
+          fee,
+        });
         setDistanceCalcStatus("done");
       } catch {
-        if (!cancelled) setDistanceCalcStatus("error");
+        if (!cancelled) {
+          setDistanceCalcStatus("error");
+          setDistanceCalcError(
+            "Não foi possível calcular a distância. Verifique o CEP ou preencha a taxa manualmente.",
+          );
+        }
       }
     };
 
@@ -482,7 +482,7 @@ export default function NewOrder() {
     return () => {
       cancelled = true;
     };
-  }, [deliveryCep, orderType, storeSettings]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [deliveryCep, deliveryAddress, orderType, storeSettings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const buildAddonKey = (addons: SelectedAddon[]) =>
     addons
@@ -1061,21 +1061,13 @@ export default function NewOrder() {
                     </div>
 
                     {/* Aviso / detalhes do cálculo automático */}
-                    {(storeSettings?.deliveryFeeMode === "per_km" ||
-                      storeSettings?.deliveryFeeMode === "distance_tier") && (
+                    {storeSettings && orderType === "delivery" && (
                       <>
-                        {!storeSettings.storeCep && (
-                          <p className="text-xs text-[#D91F16] dark:text-red-300 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 rounded px-3 py-2">
-                            ⚠️ Configure o CEP da loja em Configurações para
-                            calcular a taxa automaticamente.
-                          </p>
-                        )}
-                        {storeSettings.storeCep &&
-                          deliveryCep.replace(/\D/g, "").length > 0 &&
+                        {deliveryCep.replace(/\D/g, "").length > 0 &&
                           deliveryCep.replace(/\D/g, "").length < 8 && (
                             <p className="text-xs text-muted-foreground">
                               Digite os 8 dígitos do CEP para calcular
-                              automaticamente.
+                              a distância.
                             </p>
                           )}
                         {cepLookupStatus === "loading" &&
@@ -1097,21 +1089,23 @@ export default function NewOrder() {
                         )}
                         {distanceCalcStatus === "error" && (
                           <p className="text-xs text-[#D91F16] dark:text-red-300">
-                            Não foi possível calcular a distância. Verifique o
-                            CEP ou preencha a taxa manualmente.
+                            {distanceCalcError ||
+                              "Não foi possível calcular a distância. Verifique o CEP ou preencha a taxa manualmente."}
                           </p>
                         )}
-                        {feeCalcInfo && (
+                        {feeCalcInfo && distanceCalcStatus === "done" && (
                           <div className="text-xs bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded px-3 py-2 space-y-1 text-green-800 dark:text-green-300">
                             <div className="flex justify-between">
                               <span className="text-green-600 dark:text-green-400">
                                 CEP da loja
                               </span>
                               <span className="font-mono font-semibold">
-                                {feeCalcInfo.storeCep.replace(
-                                  /^(\d{5})(\d{3})$/,
-                                  "$1-$2",
-                                )}
+                                {feeCalcInfo.storeCep
+                                  ? feeCalcInfo.storeCep.replace(
+                                      /^(\d{5})(\d{3})$/,
+                                      "$1-$2",
+                                    )
+                                  : "Configurado na loja"}
                               </span>
                             </div>
                             <div className="flex justify-between">
@@ -1134,10 +1128,14 @@ export default function NewOrder() {
                             </div>
                             <div className="flex justify-between border-t border-green-200 dark:border-green-700 pt-1 mt-0.5">
                               <span className="font-semibold text-green-700 dark:text-green-200">
-                                Taxa calculada
+                                {storeSettings.deliveryFeeMode === "manual"
+                                  ? "Distância calculada"
+                                  : "Taxa calculada"}
                               </span>
                               <span className="font-black text-green-700 dark:text-green-200">
-                                R$ {feeCalcInfo.fee.toFixed(2)}
+                                {storeSettings.deliveryFeeMode === "manual"
+                                  ? "Taxa manual"
+                                  : `R$ ${feeCalcInfo.fee.toFixed(2)}`}
                               </span>
                             </div>
                           </div>
