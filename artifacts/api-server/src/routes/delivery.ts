@@ -105,7 +105,7 @@ function buildStoreRouteOrigin(
 }
 
 const MISSING_STORE_CEP_ROUTE_ERROR =
-  "Configure o CEP da loja em Configurações para calcular rotas com precisão.";
+  "Configure um CEP válido da loja em Configurações para calcular entregas.";
 
 function buildMapsUrl(
   storeAddress: string,
@@ -276,7 +276,8 @@ interface EligibleOrder {
 
 /** Remove non-digits from CEP */
 function normalizeCep(cep: string): string {
-  return (cep ?? "").replace(/\D/g, "");
+  const digits = (cep ?? "").replace(/\D/g, "");
+  return digits.length === 8 ? digits : "";
 }
 
 /**
@@ -713,8 +714,8 @@ router.get("/delivery/orders/pending", async (req, res): Promise<void> => {
   const orders = await db
     .select({
       id: ordersTable.id,
-      customerName: customersTable.name,
-      customerPhone: customersTable.phone,
+      customerName: sql<string | null>`coalesce(${ordersTable.customerName}, ${customersTable.name})`,
+      customerPhone: sql<string | null>`coalesce(${ordersTable.customerPhone}, ${customersTable.phone})`,
       deliveryAddress: ordersTable.deliveryAddress,
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
       deliveryCep: ordersTable.deliveryCep,

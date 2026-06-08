@@ -42,6 +42,10 @@ import {
   getCurrentOperationalScope,
 } from "../middleware/rbac";
 import { releaseTableIfOrderClosed } from "../lib/table-release";
+import {
+  calculateDeliveryDistanceForStore,
+  deliveryCalculationErrorStatus,
+} from "../lib/delivery-distance-calculator";
 
 const router: IRouter = Router();
 
@@ -302,11 +306,34 @@ router.post("/orders", async (req, res): Promise<void> => {
   }
 
   const { deliveryFee, needsChange, changeFor, ...restData } = parsed.data;
-  const fee = deliveryFee ?? 0;
+  let fee = deliveryFee ?? 0;
+  let estimatedDistanceKm: number | null = null;
+  let deliveryFeeCalculated = false;
+  let deliveryFeeSource: string | null = null;
 
   const scope = await requireOpenShift(req, res);
   if (!scope) return;
   const storeId = scope.actor.storeId;
+
+  if (parsed.data.type === "delivery" && parsed.data.deliveryCep) {
+    try {
+      const distanceResult = await calculateDeliveryDistanceForStore({
+        storeId,
+        customerCep: parsed.data.deliveryCep,
+        customerAddress: parsed.data.deliveryAddress ?? null,
+      });
+      estimatedDistanceKm = distanceResult.estimatedDistanceKm;
+      deliveryFeeCalculated = distanceResult.deliveryFeeCalculated;
+      deliveryFeeSource = distanceResult.source;
+      if (distanceResult.deliveryFeeCalculated && distanceResult.deliveryFee != null) {
+        fee = distanceResult.deliveryFee;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(deliveryCalculationErrorStatus(error)).json({ error: message });
+      return;
+    }
+  }
 
   if (parsed.data.tableId) {
     const [table] = await db
@@ -358,7 +385,15 @@ router.post("/orders", async (req, res): Promise<void> => {
       cashRegisterId: scope.cashRegisterId,
       deliveryFee: String(fee),
       totalAmount: String(fee), // items added after via addOrderItem; recalcOrderTotal updates this
-      ...(parsed.data.type === "delivery" ? { deliveryStatus: "pending" } : {}),
+      ...(parsed.data.type === "delivery"
+        ? {
+            deliveryStatus: "pending",
+            estimatedDistanceKm:
+              estimatedDistanceKm !== null ? String(estimatedDistanceKm) : null,
+            deliveryFeeCalculated: String(deliveryFeeCalculated),
+            deliveryFeeSource,
+          }
+        : {}),
       ...(needsChange !== undefined
         ? { needsChange: String(needsChange) }
         : {}),
