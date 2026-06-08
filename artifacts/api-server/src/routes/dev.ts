@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import {
   db,
+  cashRegistersTable,
   cashMovementsTable,
   deliveryRouteOrdersTable,
   deliveryRoutesTable,
@@ -353,14 +354,89 @@ const seedMinuteGaps = [
 ];
 const SEED_ORDER_COUNT = curitibaDeliveryAddresses.length;
 const ROUTE_TIME_WINDOW_MINUTES = 30;
+const SEED_NEWEST_AGE_MINUTES = 5;
+const SEED_OPERATIONAL_START_MARGIN_MINUTES = 2;
 
-function getSeedMinutesAgo(index: number): number {
-  // The first seed orders are the oldest. Each next order is 5–10 minutes
-  // newer than the previous one, and the last order remains recent.
-  const laterGaps = seedMinuteGaps
-    .slice(index)
-    .reduce((sum, gap) => sum + gap, 0);
-  return laterGaps + 5;
+function getStartOfToday(): Date {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  return startOfToday;
+}
+
+function buildCompressedSeedMinuteGaps(availableMinutes: number): number[] {
+  const gapCount = Math.max(SEED_ORDER_COUNT - 1, 0);
+  if (gapCount === 0) return [];
+
+  const targetSpreadMinutes = Math.min(
+    Math.max(Math.floor(availableMinutes), gapCount),
+    gapCount * 3,
+  );
+  const gaps = Array.from({ length: gapCount }, () => 1);
+  let remainingExtraMinutes = targetSpreadMinutes - gapCount;
+
+  for (let i = 0; i < gaps.length && remainingExtraMinutes > 0; i += 1) {
+    const extra = Math.min(2, remainingExtraMinutes);
+    gaps[i] += extra;
+    remainingExtraMinutes -= extra;
+  }
+
+  return gaps;
+}
+
+type SeedTimeline = {
+  minOperationalStart: Date;
+  oldestKitchenAcceptedAt: Date;
+  newestKitchenAcceptedAt: Date;
+  compressedTimeline: boolean;
+  minuteGaps: number[];
+  kitchenAcceptedTimes: Date[];
+};
+
+function buildSeedTimeline(now: Date, minOperationalStart: Date): SeedTimeline {
+  const desiredSpreadMinutes = seedMinuteGaps.reduce(
+    (sum, gap) => sum + gap,
+    0,
+  );
+  const idealOldestKitchenAcceptedAt = new Date(
+    now.getTime() -
+      (desiredSpreadMinutes + SEED_NEWEST_AGE_MINUTES) * 60_000,
+  );
+  const minimumOldestKitchenAcceptedAt = new Date(
+    minOperationalStart.getTime() +
+      SEED_OPERATIONAL_START_MARGIN_MINUTES * 60_000,
+  );
+
+  const compressedTimeline =
+    idealOldestKitchenAcceptedAt < minimumOldestKitchenAcceptedAt;
+  const oldestKitchenAcceptedAt = compressedTimeline
+    ? minimumOldestKitchenAcceptedAt
+    : idealOldestKitchenAcceptedAt;
+
+  const availableMinutesBeforeNow = Math.floor(
+    (now.getTime() - 60_000 - oldestKitchenAcceptedAt.getTime()) / 60_000,
+  );
+  const minuteGaps = compressedTimeline
+    ? buildCompressedSeedMinuteGaps(availableMinutesBeforeNow)
+    : seedMinuteGaps;
+
+  const kitchenAcceptedTimes = [oldestKitchenAcceptedAt];
+  for (const gap of minuteGaps) {
+    const previous = kitchenAcceptedTimes[kitchenAcceptedTimes.length - 1];
+    kitchenAcceptedTimes.push(
+      new Date(previous.getTime() + gap * 60_000),
+    );
+  }
+
+  return {
+    minOperationalStart,
+    oldestKitchenAcceptedAt,
+    newestKitchenAcceptedAt:
+      kitchenAcceptedTimes[kitchenAcceptedTimes.length - 1] ??
+      oldestKitchenAcceptedAt,
+    compressedTimeline,
+    minuteGaps,
+    kitchenAcceptedTimes,
+  };
 }
 
 router.post(
@@ -376,6 +452,24 @@ router.post(
 
     const { storeId } = await getCurrentActor(req);
     const count = SEED_ORDER_COUNT;
+    const now = new Date();
+
+    const [openRegister] = await db
+      .select({ openedAt: cashRegistersTable.openedAt })
+      .from(cashRegistersTable)
+      .where(
+        and(
+          eq(cashRegistersTable.storeId, storeId),
+          eq(cashRegistersTable.status, "open"),
+        ),
+      )
+      .orderBy(sql`${cashRegistersTable.openedAt} DESC`)
+      .limit(1);
+
+    const minOperationalStart = openRegister?.openedAt
+      ? new Date(openRegister.openedAt)
+      : getStartOfToday();
+    const seedTimeline = buildSeedTimeline(now, minOperationalStart);
 
     const products = (await db
       .select({
@@ -482,10 +576,7 @@ router.post(
           0,
         );
         const finalTotalAmount = totalWithBeverage + deliveryFee;
-        const now = new Date();
-        const kitchenAcceptedAt = new Date(
-          now.getTime() - getSeedMinutesAgo(i) * 60_000,
-        );
+        const kitchenAcceptedAt = seedTimeline.kitchenAcceptedTimes[i];
         const createdAt = new Date(
           kitchenAcceptedAt.getTime() - (1 + (i % 2)) * 60_000,
         );
@@ -576,14 +667,31 @@ router.post(
     });
 
     req.log.info(
-      { storeId, count: created.length },
+      {
+        storeId,
+        count: created.length,
+        compressedTimeline: seedTimeline.compressedTimeline,
+        openRegisterOpenedAt: openRegister?.openedAt?.toISOString() ?? null,
+        oldestKitchenAcceptedAt:
+          seedTimeline.oldestKitchenAcceptedAt.toISOString(),
+        newestKitchenAcceptedAt:
+          seedTimeline.newestKitchenAcceptedAt.toISOString(),
+      },
       "dev seed-curitiba-delivery-orders: created",
     );
     res.json({
       created: created.length,
-      timeGapMinutes: { min: 5, max: 10 },
+      openRegisterOpenedAt: openRegister?.openedAt?.toISOString() ?? null,
+      oldestKitchenAcceptedAt:
+        seedTimeline.oldestKitchenAcceptedAt.toISOString(),
+      newestKitchenAcceptedAt:
+        seedTimeline.newestKitchenAcceptedAt.toISOString(),
+      compressedTimeline: seedTimeline.compressedTimeline,
+      timeGapMinutes: seedTimeline.compressedTimeline
+        ? { min: 1, max: 3 }
+        : { min: 5, max: 10 },
       routeTimeWindowMinutes: ROUTE_TIME_WINDOW_MINUTES,
-      seedMinuteGaps,
+      seedMinuteGaps: seedTimeline.minuteGaps,
       results: created,
     });
   },
