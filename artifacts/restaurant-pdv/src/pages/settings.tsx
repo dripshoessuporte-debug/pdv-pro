@@ -655,6 +655,7 @@ export default function Settings() {
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
+                  Usado como origem para cálculo de entrega e geração de rotas.
                   Ao sair do campo, preenchemos o endereço automaticamente via
                   ViaCEP.
                 </p>

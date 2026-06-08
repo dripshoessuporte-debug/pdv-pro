@@ -2,7 +2,12 @@ import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, deliveryDistanceCacheTable } from "@workspace/db";
 import { estimateDistanceKmFromCep, normalizeCep } from "../lib/delivery-fee";
-import { calculateRouteDistanceKm, isOrsConfigured, getOrsApiKey } from "../lib/openrouteservice";
+import {
+  calculateRouteDistanceKm,
+  isOrsConfigured,
+  getOrsApiKey,
+} from "../lib/openrouteservice";
+import { getCurrentActor } from "../middleware/rbac";
 import { getOrCreateSettings } from "./settings";
 
 const router: IRouter = Router();
@@ -15,9 +20,8 @@ const router: IRouter = Router();
  * to CEP-prefix estimation. Results are cached by CEP pair + provider.
  *
  * Body:
- *   storeCep        string  – store CEP (8 digits, dashes OK)
  *   customerCep     string  – customer CEP
- *   storeAddress?   string  – full store address (used by ORS)
+ *   storeAddress?   string  – ignored for origin; store settings are used instead
  *   customerAddress? string – full customer address (used by ORS)
  *   customerCity?   string  – customer city (used by ORS)
  *
@@ -28,22 +32,32 @@ const router: IRouter = Router();
  *   fallback?   true         (present when ORS was requested but fell back to CEP)
  */
 router.post("/delivery/distance", async (req, res): Promise<void> => {
-  const { storeCep, customerCep, storeAddress, customerAddress, customerCity } = req.body ?? {};
+  const { customerCep, customerAddress, customerCity } = req.body ?? {};
+  const actor = await getCurrentActor(req);
+  const settings = await getOrCreateSettings(actor.storeId);
 
-  if (!storeCep || !customerCep) {
-    res.status(400).json({ error: "storeCep e customerCep são obrigatórios." });
+  if (!customerCep) {
+    res.status(400).json({ error: "customerCep é obrigatório." });
     return;
   }
 
-  const normStore = normalizeCep(String(storeCep));
+  const normStore = normalizeCep(String(settings.storeCep ?? ""));
   const normCustomer = normalizeCep(String(customerCep));
 
-  if (!normStore || !normCustomer) {
-    res.status(400).json({ error: "CEP inválido. Use 8 dígitos numéricos." });
+  if (!normStore) {
+    res.status(400).json({
+      error:
+        "Configure o CEP da loja em Configurações para calcular rotas com precisão.",
+    });
     return;
   }
 
-  const settings = await getOrCreateSettings();
+  if (!normCustomer) {
+    res
+      .status(400)
+      .json({ error: "CEP do cliente inválido. Use 8 dígitos numéricos." });
+    return;
+  }
   const providerPref = settings.distanceProvider ?? "approximate_cep";
   const useCache = settings.useDistanceCache !== "false";
 
@@ -59,15 +73,15 @@ router.post("/delivery/distance", async (req, res): Promise<void> => {
         and(
           eq(deliveryDistanceCacheTable.originCep, normStore),
           eq(deliveryDistanceCacheTable.destinationCep, normCustomer),
-          eq(deliveryDistanceCacheTable.provider, activeProvider)
-        )
+          eq(deliveryDistanceCacheTable.provider, activeProvider),
+        ),
       )
       .limit(1);
 
     if (cached) {
       req.log.info(
         { normStore, normCustomer, provider: activeProvider },
-        "delivery distance served from cache"
+        "delivery distance served from cache",
       );
       res.json({
         distanceKm: parseFloat(String(cached.distanceKm)),
@@ -85,16 +99,34 @@ router.post("/delivery/distance", async (req, res): Promise<void> => {
 
   if (orsReady) {
     const apiKey = getOrsApiKey()!;
-    const storeCity = settings.storeCity ?? settings.storeNeighborhood ?? "Brasil";
-    const storeFullAddr = [storeAddress, storeCity].filter(Boolean).join(", ");
-    const customerFullAddr = [customerAddress, customerCity ?? ""].filter(Boolean).join(", ");
+    const storeFullAddr = [
+      settings.storeCep,
+      settings.storeAddress,
+      settings.storeNumber,
+      settings.storeNeighborhood,
+      settings.storeCity,
+      settings.storeState,
+      settings.storeCountry,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    const customerFullAddr = [customerAddress, customerCity ?? ""]
+      .filter(Boolean)
+      .join(", ");
 
     if (storeFullAddr && customerFullAddr) {
-      distanceKm = await calculateRouteDistanceKm(storeFullAddr, customerFullAddr, apiKey);
+      distanceKm = await calculateRouteDistanceKm(
+        storeFullAddr,
+        customerFullAddr,
+        apiKey,
+      );
     }
 
     if (distanceKm === null) {
-      req.log.warn({ normStore, normCustomer }, "ORS failed — falling back to CEP estimation");
+      req.log.warn(
+        { normStore, normCustomer },
+        "ORS failed — falling back to CEP estimation",
+      );
       source = "approximate_cep";
       fallback = true;
     }
@@ -124,9 +156,24 @@ router.post("/delivery/distance", async (req, res): Promise<void> => {
       .onConflictDoNothing();
   }
 
-  req.log.info({ normStore, normCustomer, distanceKm, source, fallback }, "delivery distance calculated");
+  req.log.info(
+    {
+      storeId: actor.storeId,
+      normStore,
+      normCustomer,
+      distanceKm,
+      source,
+      fallback,
+    },
+    "delivery distance calculated",
+  );
 
-  res.json({ distanceKm, source, cached: false, ...(fallback ? { fallback: true } : {}) });
+  res.json({
+    distanceKm,
+    source,
+    cached: false,
+    ...(fallback ? { fallback: true } : {}),
+  });
 });
 
 export default router;
