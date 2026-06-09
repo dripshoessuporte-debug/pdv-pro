@@ -85,6 +85,7 @@ async function getOrderWithItems(orderId: number, storeId?: number) {
       estimatedDistanceKm: ordersTable.estimatedDistanceKm,
       deliveryFeeCalculated: ordersTable.deliveryFeeCalculated,
       deliveryFeeSource: ordersTable.deliveryFeeSource,
+      deliveryDistanceSource: ordersTable.deliveryDistanceSource,
       createdAt: ordersTable.createdAt,
       updatedAt: ordersTable.updatedAt,
     })
@@ -128,29 +129,39 @@ async function getOrderWithItems(orderId: number, storeId?: number) {
     needsChange:
       order.needsChange == null ? null : order.needsChange === "true",
     changeFor: order.changeFor ? parseFloat(String(order.changeFor)) : null,
-    kitchenAcceptedAt: order.kitchenAcceptedAt ? order.kitchenAcceptedAt.toISOString() : null,
+    kitchenAcceptedAt: order.kitchenAcceptedAt
+      ? order.kitchenAcceptedAt.toISOString()
+      : null,
     readyAt: order.readyAt ? order.readyAt.toISOString() : null,
     paidAt: order.paidAt ? order.paidAt.toISOString() : null,
     closedAt: order.closedAt ? order.closedAt.toISOString() : null,
-    estimatedDistanceKm: order.estimatedDistanceKm
-      ? parseFloat(String(order.estimatedDistanceKm))
-      : null,
+    estimatedDistanceKm:
+      order.estimatedDistanceKm != null
+        ? parseFloat(String(order.estimatedDistanceKm))
+        : null,
     deliveryFeeCalculated: order.deliveryFeeCalculated === "true",
     createdAt: order.createdAt.toISOString(),
     updatedAt: order.updatedAt.toISOString(),
-    items: await Promise.all(items.map(async (item) => ({
-      ...item,
-      variantPrice: item.variantPrice
-        ? parseFloat(String(item.variantPrice))
-        : null,
-      unitPrice: parseFloat(String(item.unitPrice)),
-      totalPrice: parseFloat(String(item.totalPrice)),
-      addons: (await db.select().from(orderItemAddonsTable).where(eq(orderItemAddonsTable.orderItemId, item.id))).map((addon) => ({
-        ...addon,
-        addonPrice: parseFloat(String(addon.addonPrice)),
-        totalPrice: parseFloat(String(addon.totalPrice)),
+    items: await Promise.all(
+      items.map(async (item) => ({
+        ...item,
+        variantPrice: item.variantPrice
+          ? parseFloat(String(item.variantPrice))
+          : null,
+        unitPrice: parseFloat(String(item.unitPrice)),
+        totalPrice: parseFloat(String(item.totalPrice)),
+        addons: (
+          await db
+            .select()
+            .from(orderItemAddonsTable)
+            .where(eq(orderItemAddonsTable.orderItemId, item.id))
+        ).map((addon) => ({
+          ...addon,
+          addonPrice: parseFloat(String(addon.addonPrice)),
+          totalPrice: parseFloat(String(addon.totalPrice)),
+        })),
       })),
-    }))),
+    ),
   };
 }
 
@@ -160,7 +171,8 @@ async function recalcOrderTotal(orderId: number, client: any = db) {
     .from(orderItemsTable)
     .where(eq(orderItemsTable.orderId, orderId));
   const itemsTotal = items.reduce(
-    (sum: number, item: { totalPrice: unknown }) => sum + parseFloat(String(item.totalPrice)),
+    (sum: number, item: { totalPrice: unknown }) =>
+      sum + parseFloat(String(item.totalPrice)),
     0,
   );
   const [order] = await client
@@ -268,7 +280,9 @@ router.get("/orders", async (req, res): Promise<void> => {
         needsChange:
           order.needsChange == null ? null : order.needsChange === "true",
         changeFor: order.changeFor ? parseFloat(String(order.changeFor)) : null,
-        kitchenAcceptedAt: order.kitchenAcceptedAt ? order.kitchenAcceptedAt.toISOString() : null,
+        kitchenAcceptedAt: order.kitchenAcceptedAt
+          ? order.kitchenAcceptedAt.toISOString()
+          : null,
         readyAt: order.readyAt ? order.readyAt.toISOString() : null,
         paidAt: order.paidAt ? order.paidAt.toISOString() : null,
         closedAt: order.closedAt ? order.closedAt.toISOString() : null,
@@ -278,19 +292,26 @@ router.get("/orders", async (req, res): Promise<void> => {
         deliveryFeeCalculated: order.deliveryFeeCalculated === "true",
         createdAt: order.createdAt.toISOString(),
         updatedAt: order.updatedAt.toISOString(),
-        items: await Promise.all(items.map(async (item) => ({
-          ...item,
-          variantPrice: item.variantPrice
-            ? parseFloat(String(item.variantPrice))
-            : null,
-          unitPrice: parseFloat(String(item.unitPrice)),
-          totalPrice: parseFloat(String(item.totalPrice)),
-          addons: (await db.select().from(orderItemAddonsTable).where(eq(orderItemAddonsTable.orderItemId, item.id))).map((addon) => ({
-            ...addon,
-            addonPrice: parseFloat(String(addon.addonPrice)),
-            totalPrice: parseFloat(String(addon.totalPrice)),
+        items: await Promise.all(
+          items.map(async (item) => ({
+            ...item,
+            variantPrice: item.variantPrice
+              ? parseFloat(String(item.variantPrice))
+              : null,
+            unitPrice: parseFloat(String(item.unitPrice)),
+            totalPrice: parseFloat(String(item.totalPrice)),
+            addons: (
+              await db
+                .select()
+                .from(orderItemAddonsTable)
+                .where(eq(orderItemAddonsTable.orderItemId, item.id))
+            ).map((addon) => ({
+              ...addon,
+              addonPrice: parseFloat(String(addon.addonPrice)),
+              totalPrice: parseFloat(String(addon.totalPrice)),
+            })),
           })),
-        }))),
+        ),
       };
     }),
   );
@@ -316,6 +337,7 @@ router.post("/orders", async (req, res): Promise<void> => {
   const storeId = scope.actor.storeId;
 
   if (parsed.data.type === "delivery" && parsed.data.deliveryCep) {
+    parsed.data.deliveryCep = parsed.data.deliveryCep.replace(/\D/g, "");
     try {
       const distanceResult = await calculateDeliveryDistanceForStore({
         storeId,
@@ -325,12 +347,17 @@ router.post("/orders", async (req, res): Promise<void> => {
       estimatedDistanceKm = distanceResult.estimatedDistanceKm;
       deliveryFeeCalculated = distanceResult.deliveryFeeCalculated;
       deliveryFeeSource = distanceResult.source;
-      if (distanceResult.deliveryFeeCalculated && distanceResult.deliveryFee != null) {
+      if (
+        distanceResult.deliveryFeeCalculated &&
+        distanceResult.deliveryFee != null
+      ) {
         fee = distanceResult.deliveryFee;
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      res.status(deliveryCalculationErrorStatus(error)).json({ error: message });
+      res
+        .status(deliveryCalculationErrorStatus(error))
+        .json({ error: message });
       return;
     }
   }
@@ -392,6 +419,7 @@ router.post("/orders", async (req, res): Promise<void> => {
               estimatedDistanceKm !== null ? String(estimatedDistanceKm) : null,
             deliveryFeeCalculated: String(deliveryFeeCalculated),
             deliveryFeeSource,
+            deliveryDistanceSource: deliveryFeeSource,
           }
         : {}),
       ...(needsChange !== undefined
@@ -445,9 +473,90 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
   }
 
   const actor = await getCurrentActor(req);
+
+  const [currentOrder] = await db
+    .select({
+      id: ordersTable.id,
+      type: ordersTable.type,
+      deliveryCep: ordersTable.deliveryCep,
+      deliveryAddress: ordersTable.deliveryAddress,
+      deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+      estimatedDistanceKm: ordersTable.estimatedDistanceKm,
+      deliveryFee: ordersTable.deliveryFee,
+    })
+    .from(ordersTable)
+    .where(
+      and(
+        eq(ordersTable.id, params.data.id),
+        eq(ordersTable.storeId, actor.storeId),
+      ),
+    )
+    .limit(1);
+
+  if (!currentOrder) {
+    res.status(404).json({ error: "Order not found" });
+    return;
+  }
+
+  const updateData: Record<string, unknown> = { ...parsed.data };
+  const nextType = String(updateData.type ?? currentOrder.type);
+  const nextCep =
+    typeof updateData.deliveryCep === "string"
+      ? updateData.deliveryCep.replace(/\D/g, "")
+      : currentOrder.deliveryCep;
+  const shouldRecalculateDeliveryDistance =
+    nextType === "delivery" &&
+    Boolean(nextCep) &&
+    (updateData.deliveryCep !== undefined ||
+      updateData.deliveryAddress !== undefined ||
+      updateData.deliveryNeighborhood !== undefined ||
+      currentOrder.estimatedDistanceKm == null);
+
+  if (typeof updateData.deliveryCep === "string") {
+    updateData.deliveryCep = updateData.deliveryCep.replace(/\D/g, "");
+  }
+
+  if (shouldRecalculateDeliveryDistance && nextCep) {
+    try {
+      const distanceResult = await calculateDeliveryDistanceForStore({
+        storeId: actor.storeId,
+        customerCep: nextCep,
+        customerAddress:
+          [
+            updateData.deliveryAddress ?? currentOrder.deliveryAddress,
+            updateData.deliveryNeighborhood ??
+              currentOrder.deliveryNeighborhood,
+          ]
+            .map((part) => (part ? String(part).trim() : ""))
+            .filter(Boolean)
+            .join(", ") || null,
+      });
+      updateData.estimatedDistanceKm = String(
+        distanceResult.estimatedDistanceKm,
+      );
+      updateData.deliveryDistanceSource = distanceResult.source;
+      updateData.deliveryFeeCalculated = String(
+        distanceResult.deliveryFeeCalculated,
+      );
+      updateData.deliveryFeeSource = distanceResult.source;
+      if (
+        distanceResult.deliveryFeeCalculated &&
+        distanceResult.deliveryFee != null
+      ) {
+        updateData.deliveryFee = String(distanceResult.deliveryFee);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res
+        .status(deliveryCalculationErrorStatus(error))
+        .json({ error: message });
+      return;
+    }
+  }
+
   await db
     .update(ordersTable)
-    .set(parsed.data)
+    .set(updateData)
     .where(
       and(
         eq(ordersTable.id, params.data.id),
@@ -599,7 +708,10 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
     ? await db
         .select({ option: addonOptionsTable, group: addonGroupsTable })
         .from(addonOptionsTable)
-        .innerJoin(addonGroupsTable, eq(addonOptionsTable.groupId, addonGroupsTable.id))
+        .innerJoin(
+          addonGroupsTable,
+          eq(addonOptionsTable.groupId, addonGroupsTable.id),
+        )
         .where(
           and(
             eq(addonOptionsTable.storeId, scope.actor.storeId),
@@ -629,7 +741,9 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
   for (const requested of requestedAddons) {
     const row = addonById.get(requested.addonOptionId);
     if (!row || !allowedGroupIds.has(row.group.id)) {
-      res.status(400).json({ error: "Adicional não pertence a este produto/loja." });
+      res
+        .status(400)
+        .json({ error: "Adicional não pertence a este produto/loja." });
       return;
     }
     selectedByGroup.set(
@@ -651,13 +765,19 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
 
   for (const { group } of linkedGroups) {
     const selectedCount = selectedByGroup.get(group.id) ?? 0;
-    const minimum = group.required ? Math.max(1, group.minSelected) : group.minSelected;
+    const minimum = group.required
+      ? Math.max(1, group.minSelected)
+      : group.minSelected;
     if (selectedCount < minimum) {
-      res.status(400).json({ error: `Selecione pelo menos ${minimum} opção(ões) em ${group.name}.` });
+      res.status(400).json({
+        error: `Selecione pelo menos ${minimum} opção(ões) em ${group.name}.`,
+      });
       return;
     }
     if (group.maxSelected != null && selectedCount > group.maxSelected) {
-      res.status(400).json({ error: `Selecione no máximo ${group.maxSelected} opção(ões) em ${group.name}.` });
+      res.status(400).json({
+        error: `Selecione no máximo ${group.maxSelected} opção(ões) em ${group.name}.`,
+      });
       return;
     }
   }
@@ -709,7 +829,12 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
 
     res.status(201).json(itemWithName);
   } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : "Erro ao adicionar adicionais." });
+    res.status(400).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Erro ao adicionar adicionais.",
+    });
   }
 });
 

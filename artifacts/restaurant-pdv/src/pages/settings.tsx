@@ -89,13 +89,23 @@ interface StoreSettings {
   orsConfigured: boolean;
 }
 
+function normalizeCepDigits(cep: string): string {
+  return cep.replace(/\D/g, "").slice(0, 8);
+}
+
+function normalizeUf(value: string): string {
+  const uf = value.replace(/[^A-Za-z]/g, "").toUpperCase();
+  return /^[A-Z]{2}$/.test(uf) ? uf : "";
+}
+
 async function lookupCep(cep: string): Promise<{
+  cep: string;
   logradouro: string;
   bairro: string;
   localidade: string;
   uf: string;
 } | null> {
-  const digits = cep.replace(/\D/g, "");
+  const digits = normalizeCepDigits(cep);
   if (digits.length !== 8) return null;
   try {
     const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
@@ -108,11 +118,14 @@ async function lookupCep(cep: string): Promise<{
       uf?: string;
     };
     if (data.erro) return null;
+    const uf = normalizeUf(data.uf ?? "");
+    if (!uf) return null;
     return {
+      cep: digits,
       logradouro: data.logradouro ?? "",
       bairro: data.bairro ?? "",
       localidade: data.localidade ?? "",
-      uf: data.uf ?? "",
+      uf,
     };
   } catch {
     return null;
@@ -499,12 +512,12 @@ export default function Settings() {
           storeName: storeName.trim() || "Minha Loja",
           storePhone: storePhone.trim() || null,
           storeEmail: storeEmail.trim() || null,
-          storeCep: storeCep.trim() || null,
+          storeCep: normalizeCepDigits(storeCep) || null,
           storeAddress: storeAddress.trim() || null,
           storeNumber: storeNumber.trim() || null,
           storeNeighborhood: storeNeighborhood.trim() || null,
-          storeCity: storeCity.trim() || "",
-          storeState: storeState.trim() || "",
+          storeCity: storeCity.replace(/,\s*[A-Za-z]{2}$/, "").trim() || "",
+          storeState: normalizeUf(storeState),
           storeCountry: storeCountry.trim() || "Brasil",
           deliveryDispatchTimeMinutes: dispatchTimeMinutes,
           maxOrdersPerRoute: parseInt(maxOrders, 10) || 4,
@@ -619,16 +632,17 @@ export default function Settings() {
                     value={storeCep}
                     onChange={(e) => setStoreCep(e.target.value)}
                     onBlur={async () => {
-                      const digits = storeCep.replace(/\D/g, "");
+                      const digits = normalizeCepDigits(storeCep);
                       if (digits.length !== 8) return;
+                      setStoreCep(digits);
                       setCepLookupStatus("loading");
-                      const result = await lookupCep(storeCep);
+                      const result = await lookupCep(digits);
                       if (result) {
-                        if (!storeAddress) setStoreAddress(result.logradouro);
-                        if (!storeNeighborhood)
-                          setStoreNeighborhood(result.bairro);
-                        if (!storeCity)
-                          setStoreCity(`${result.localidade}, ${result.uf}`);
+                        setStoreCep(result.cep);
+                        setStoreAddress(result.logradouro);
+                        setStoreNeighborhood(result.bairro);
+                        setStoreCity(result.localidade);
+                        setStoreState(result.uf);
                         setCepLookupStatus("found");
                       } else {
                         setCepLookupStatus("not_found");
@@ -889,7 +903,9 @@ export default function Settings() {
                           min="0"
                           placeholder="2,50"
                           value={deliveryPricePerKm}
-                          onChange={(e) => setDeliveryPricePerKm(e.target.value)}
+                          onChange={(e) =>
+                            setDeliveryPricePerKm(e.target.value)
+                          }
                           data-testid="input-delivery-price-per-km"
                         />
                         <p className="text-xs text-muted-foreground mt-1">
@@ -904,7 +920,9 @@ export default function Settings() {
                           min="0"
                           placeholder="7,00"
                           value={minimumDeliveryFee}
-                          onChange={(e) => setMinimumDeliveryFee(e.target.value)}
+                          onChange={(e) =>
+                            setMinimumDeliveryFee(e.target.value)
+                          }
                           data-testid="input-minimum-delivery-fee"
                         />
                         <p className="text-xs text-muted-foreground mt-1">
@@ -919,7 +937,9 @@ export default function Settings() {
                           min="0"
                           placeholder="25,00"
                           value={maximumDeliveryFee}
-                          onChange={(e) => setMaximumDeliveryFee(e.target.value)}
+                          onChange={(e) =>
+                            setMaximumDeliveryFee(e.target.value)
+                          }
                           data-testid="input-maximum-delivery-fee"
                         />
                         <p className="text-xs text-muted-foreground mt-1">
@@ -930,87 +950,91 @@ export default function Settings() {
                   )}
 
                   {deliveryFeeMode === "distance_tier" && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label>Taxa fixa inicial (R$)</Label>
-                      <Input
-                        type="number"
-                        step="0.50"
-                        min="0"
-                        placeholder="7,00"
-                        value={baseDeliveryFee}
-                        onChange={(e) => setBaseDeliveryFee(e.target.value)}
-                        data-testid="input-base-delivery-fee"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Cobrada até a distância incluída
-                      </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>Taxa fixa inicial (R$)</Label>
+                        <Input
+                          type="number"
+                          step="0.50"
+                          min="0"
+                          placeholder="7,00"
+                          value={baseDeliveryFee}
+                          onChange={(e) => setBaseDeliveryFee(e.target.value)}
+                          data-testid="input-base-delivery-fee"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Cobrada até a distância incluída
+                        </p>
+                      </div>
+                      <div>
+                        <Label>Distância incluída (km)</Label>
+                        <Input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          placeholder="2"
+                          value={baseDeliveryDistanceKm}
+                          onChange={(e) =>
+                            setBaseDeliveryDistanceKm(e.target.value)
+                          }
+                          data-testid="input-base-delivery-distance-km"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Raio coberto pela taxa fixa
+                        </p>
+                      </div>
+                      <div>
+                        <Label>Valor por km excedente (R$)</Label>
+                        <Input
+                          type="number"
+                          step="0.50"
+                          min="0"
+                          placeholder="2,00"
+                          value={additionalPricePerKm}
+                          onChange={(e) =>
+                            setAdditionalPricePerKm(e.target.value)
+                          }
+                          data-testid="input-additional-price-per-km"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Cobrado por km além da distância incluída
+                        </p>
+                      </div>
+                      <div>
+                        <Label>Taxa máxima (R$)</Label>
+                        <Input
+                          type="number"
+                          step="0.50"
+                          min="0"
+                          placeholder="25,00"
+                          value={maximumDeliveryFee}
+                          onChange={(e) =>
+                            setMaximumDeliveryFee(e.target.value)
+                          }
+                          data-testid="input-maximum-delivery-fee"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Teto opcional configurado
+                        </p>
+                      </div>
+                      <div>
+                        <Label>Taxa mínima (R$)</Label>
+                        <Input
+                          type="number"
+                          step="0.50"
+                          min="0"
+                          placeholder="5,00"
+                          value={minimumDeliveryFee}
+                          onChange={(e) =>
+                            setMinimumDeliveryFee(e.target.value)
+                          }
+                          data-testid="input-minimum-delivery-fee"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Piso opcional aplicado ao final
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <Label>Distância incluída (km)</Label>
-                      <Input
-                        type="number"
-                        step="0.5"
-                        min="0"
-                        placeholder="2"
-                        value={baseDeliveryDistanceKm}
-                        onChange={(e) =>
-                          setBaseDeliveryDistanceKm(e.target.value)
-                        }
-                        data-testid="input-base-delivery-distance-km"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Raio coberto pela taxa fixa
-                      </p>
-                    </div>
-                    <div>
-                      <Label>Valor por km excedente (R$)</Label>
-                      <Input
-                        type="number"
-                        step="0.50"
-                        min="0"
-                        placeholder="2,00"
-                        value={additionalPricePerKm}
-                        onChange={(e) =>
-                          setAdditionalPricePerKm(e.target.value)
-                        }
-                        data-testid="input-additional-price-per-km"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Cobrado por km além da distância incluída
-                      </p>
-                    </div>
-                    <div>
-                      <Label>Taxa máxima (R$)</Label>
-                      <Input
-                        type="number"
-                        step="0.50"
-                        min="0"
-                        placeholder="25,00"
-                        value={maximumDeliveryFee}
-                        onChange={(e) => setMaximumDeliveryFee(e.target.value)}
-                        data-testid="input-maximum-delivery-fee"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Teto opcional configurado
-                      </p>
-                    </div>
-                    <div>
-                      <Label>Taxa mínima (R$)</Label>
-                      <Input
-                        type="number"
-                        step="0.50"
-                        min="0"
-                        placeholder="5,00"
-                        value={minimumDeliveryFee}
-                        onChange={(e) => setMinimumDeliveryFee(e.target.value)}
-                        data-testid="input-minimum-delivery-fee"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Piso opcional aplicado ao final
-                      </p>
-                    </div>
-                  </div>
                   )}
 
                   {/* Exemplo dinâmico */}

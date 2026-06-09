@@ -83,6 +83,8 @@ interface RouteOrder {
   deliveryCep: string | null;
   deliveryFee: number;
   estimatedDistanceKm: number | null;
+  distanceSource?: string | null;
+  deliveryDistanceSource?: string | null;
   totalAmount: number;
   deliveryStatus: string | null;
   paymentTiming: string | null;
@@ -126,6 +128,8 @@ interface PendingDeliveryOrder {
   deliveryCep: string | null;
   deliveryFee: number;
   estimatedDistanceKm: number | null;
+  distanceSource?: string | null;
+  deliveryDistanceSource?: string | null;
   totalAmount: number;
   deliveryStatus: string | null;
   paymentTiming: string;
@@ -308,6 +312,20 @@ export default function Routes() {
   const fetchRoutes = useCallback(async () => {
     try {
       const data = await apiFetch<DeliveryRoute[]>("/delivery/routes");
+      if (import.meta.env.DEV) {
+        console.table(
+          data.flatMap((route) =>
+            route.orders.map((order) => ({
+              routeId: route.id,
+              totalEstimatedDistanceKm: route.totalEstimatedDistanceKm,
+              orderId: order.orderId,
+              deliveryCep: order.deliveryCep,
+              estimatedDistanceKm: order.estimatedDistanceKm,
+              distanceSource: order.deliveryDistanceSource,
+            })),
+          ),
+        );
+      }
       setRoutes(data);
     } catch {
       toast({ title: "Erro ao carregar rotas", variant: "destructive" });
@@ -319,6 +337,16 @@ export default function Routes() {
       const data = await apiFetch<PendingDeliveryOrder[]>(
         "/delivery/orders/pending",
       );
+      if (import.meta.env.DEV) {
+        console.table(
+          data.map((order) => ({
+            orderId: order.id,
+            deliveryCep: order.deliveryCep,
+            estimatedDistanceKm: order.estimatedDistanceKm,
+            distanceSource: order.distanceSource,
+          })),
+        );
+      }
       setPendingOrders(data);
     } catch {
       // silently ignore
@@ -1722,6 +1750,9 @@ function PendingOrderRow({
       className={`relative grid cursor-pointer grid-cols-1 gap-3 overflow-hidden rounded-xl border bg-white py-3 pl-5 pr-3 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50/60 hover:shadow-md lg:grid-cols-[minmax(220px,1.2fr)_minmax(200px,1.1fr)_minmax(180px,0.95fr)_minmax(210px,auto)] lg:items-center ${selected ? "border-[#D91F16] bg-red-50/40 ring-1 ring-[#D91F16]/20" : "border-slate-200"}`}
       onClick={onOpenOrder}
       data-testid={`pending-delivery-${order.id}`}
+      data-distance-km={
+        reliableDistance == null ? "null" : reliableDistance.toFixed(1)
+      }
     >
       <div
         className={`absolute inset-y-0 left-0 w-1.5 ${distanceTone.classes.accent}`}
@@ -2092,6 +2123,9 @@ function RouteCard({
     <div
       className={`relative rounded-2xl overflow-hidden flex flex-col border bg-white shadow-sm transition-shadow hover:shadow-md ${distanceTone.classes.border}`}
       data-testid={`card-route-${route.id}`}
+      data-route-distance-km={
+        totalRouteDistanceKm == null ? "null" : totalRouteDistanceKm.toFixed(1)
+      }
     >
       <div
         className={`absolute inset-y-0 left-0 w-1.5 ${distanceTone.classes.accent}`}

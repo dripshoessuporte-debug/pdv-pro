@@ -20,7 +20,9 @@ export type StoreDeliveryOrigin = {
   };
 };
 
-async function getOrCreateStoreSettings(storeId: number): Promise<StoreSettings> {
+async function getOrCreateStoreSettings(
+  storeId: number,
+): Promise<StoreSettings> {
   const [existing] = await db
     .select()
     .from(storeSettingsTable)
@@ -41,6 +43,20 @@ function stringOrNull(value: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
+function cleanCity(value: unknown): string | null {
+  const city = String(value ?? "")
+    .replace(/,\s*[A-Za-z]{2}$/, "")
+    .trim();
+  return city || null;
+}
+
+function cleanState(value: unknown): string | null {
+  const state = String(value ?? "")
+    .replace(/[^A-Za-z]/g, "")
+    .toUpperCase();
+  return /^[A-Z]{2}$/.test(state) && state !== "UF" ? state : null;
+}
+
 export async function getStoreDeliveryOrigin(
   storeId: number,
 ): Promise<StoreDeliveryOrigin> {
@@ -54,16 +70,16 @@ export async function getStoreDeliveryOrigin(
   const street = stringOrNull(settings.storeAddress);
   const number = stringOrNull(settings.storeNumber);
   const neighborhood = stringOrNull(settings.storeNeighborhood);
-  const city = stringOrNull(settings.storeCity);
-  const state = stringOrNull(settings.storeState);
+  const city = cleanCity(settings.storeCity);
+  const state = cleanState(settings.storeState);
   const country = stringOrNull(settings.storeCountry) ?? "Brasil";
   const fullAddress = [
-    storeCep,
     street,
     number,
     neighborhood,
     city,
     state,
+    storeCep,
     country,
   ]
     .filter(Boolean)
