@@ -208,6 +208,12 @@ async function getRouteWithOrders(
     (sum, o) => sum + parseFloat(String(o.deliveryFee ?? "0")),
     0,
   );
+  const knownDistances = routeOrders
+    .map((o) => parseEstimatedDistanceKm(o.estimatedDistanceKm))
+    .filter((distance): distance is number => distance !== null);
+  const totalEstimatedDistanceKm = knownDistances.length
+    ? Math.round(knownDistances.reduce((sum, distance) => sum + distance, 0) * 10) / 10
+    : null;
 
   // Total to receive on delivery (payment_timing = on_delivery)
   const totalToReceive = routeOrders
@@ -232,6 +238,8 @@ async function getRouteWithOrders(
     ...route,
     includedNeighborhoods: JSON.parse(route.includedNeighborhoods) as string[],
     totalDeliveryFee,
+    totalEstimatedDistanceKm,
+    totalDistanceKm: totalEstimatedDistanceKm,
     totalToReceive,
     totalChangeNeeded,
     dispatchDeadline: route.dispatchDeadline?.toISOString() ?? null,

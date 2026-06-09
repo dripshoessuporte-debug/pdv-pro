@@ -106,6 +106,8 @@ interface DeliveryRoute {
   includedNeighborhoods: string[];
   mapsUrl: string | null;
   totalDeliveryFee: number;
+  totalEstimatedDistanceKm: number | null;
+  totalDistanceKm: number | null;
   totalToReceive: number;
   totalChangeNeeded: number;
   dispatchDeadline: string | null;
@@ -2028,18 +2030,21 @@ function RouteCard({
   const totalCount = route.orders.length;
   const allOrdersReady = totalCount > 0 && readyCount === totalCount;
 
+  const apiRouteDistance =
+    route.totalEstimatedDistanceKm ?? route.totalDistanceKm ?? null;
   const validRouteDistances = route.orders
     .map((order) => order.estimatedDistanceKm)
     .filter(
       (distance): distance is number =>
         distance != null && Number.isFinite(distance) && distance > 0,
     );
-  const totalRouteDistanceKm = validRouteDistances.length
-    ? validRouteDistances.reduce((sum, distance) => sum + distance, 0)
-    : null;
+  const totalRouteDistanceKm =
+    apiRouteDistance != null && Number.isFinite(apiRouteDistance) && apiRouteDistance > 0
+      ? apiRouteDistance
+      : validRouteDistances.length
+        ? validRouteDistances.reduce((sum, distance) => sum + distance, 0)
+        : null;
   const distanceTone = getRouteDistanceTone(totalRouteDistanceKm);
-  const readinessPct =
-    totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
   const otherNeighborhoods = route.includedNeighborhoods.filter(
     (n) => n !== route.mainNeighborhood,
   );
@@ -2067,36 +2072,7 @@ function RouteCard({
       />
       <div className="p-4 pl-5 flex flex-col gap-3 flex-1">
         {/* ── Header ── */}
-        <div className="flex items-start gap-3">
-          {/* Readiness pill */}
-          <div
-            className={`flex flex-col items-center justify-center shrink-0 rounded-xl border px-2.5 py-2 min-w-[58px] ${distanceTone.classes.badge}`}
-          >
-            <span className="text-xl font-black leading-none">
-              {totalCount}
-            </span>
-            <span className="text-[10px] font-semibold text-[#0F172A] leading-tight mt-0.5">
-              entrega{totalCount !== 1 ? "s" : ""}
-            </span>
-            <div className="w-full mt-1.5">
-              <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden w-full">
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{
-                    width: `${readinessPct}%`,
-                    backgroundColor:
-                      readinessPct === 100
-                        ? "#22C55E"
-                        : distanceTone.classes.hex,
-                  }}
-                />
-              </div>
-              <span className="text-[10px] text-[#64748B] block text-center mt-0.5">
-                {readyCount}/{totalCount} prontos
-              </span>
-            </div>
-          </div>
-
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-sm leading-snug text-[#0F172A]">
               <span className={`font-black ${distanceTone.classes.text}`}>
@@ -2104,51 +2080,38 @@ function RouteCard({
               </span>{" "}
               · {route.mainNeighborhood}
             </h3>
-            <div
-              className="flex items-center gap-1 mt-0.5 text-xs"
-              style={{ color: "#64748B" }}
-            >
-              <MapPin className="w-3 h-3 shrink-0" />
-              <span className="font-medium">{route.mainNeighborhood}</span>
-              {otherNeighborhoods.length > 0 && (
-                <span className="opacity-70 truncate">
-                  · {otherNeighborhoods.join(", ")}
-                </span>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <Badge variant="outline" className="bg-slate-50 text-slate-700">
+                {totalCount} entrega{totalCount !== 1 ? "s" : ""}
+              </Badge>
+              <Badge variant="outline" className={distanceTone.classes.badge}>
+                {totalRouteDistanceKm != null
+                  ? `${totalRouteDistanceKm.toFixed(1)} km`
+                  : "distância pendente"}
+              </Badge>
+              {timeStatus && !isCompleted && (
+                <Badge
+                  variant="outline"
+                  className={`${urgency === "ok" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : ""}${urgency === "warning" ? "bg-amber-50 text-amber-700 border-amber-200" : ""}${urgency === "danger" ? "bg-red-50 text-red-700 border-red-200" : ""}`}
+                >
+                  <TimeIcon className="mr-1 h-3 w-3" />
+                  {timeStatus.label}
+                </Badge>
               )}
             </div>
+            {otherNeighborhoods.length > 0 && (
+              <p className="mt-1 truncate text-xs text-slate-500">
+                Também: {otherNeighborhoods.join(", ")}
+              </p>
+            )}
             {isInProgress && route.courierName && (
               <div className="flex items-center gap-1 mt-0.5 text-xs text-[#475569]">
                 <User className="w-3 h-3 shrink-0" />
                 <span className="font-medium">{route.courierName}</span>
               </div>
             )}
-            <div
-              className={`flex items-center gap-1 mt-1 text-xs ${distanceTone.classes.text}`}
-            >
-              <MapPin className="w-3 h-3 shrink-0" />
-              <span
-                className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${distanceTone.classes.badge}`}
-              >
-                {totalRouteDistanceKm != null
-                  ? `${totalRouteDistanceKm.toFixed(1)} km rota · ${distanceTone.label}`
-                  : "distância pendente"}
-              </span>
-            </div>
           </div>
 
-          {/* Time pill */}
-          {timeStatus && !isCompleted && (
-            <div
-              className={`shrink-0 flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full
-              ${urgency === "ok" ? "bg-emerald-100 text-emerald-700" : ""}
-              ${urgency === "warning" ? "bg-amber-100 text-amber-700" : ""}
-              ${urgency === "danger" ? "bg-red-100 text-red-700" : ""}
-            `}
-            >
-              <TimeIcon className="w-3 h-3 shrink-0" />
-              <span>{timeStatus.label}</span>
-            </div>
-          )}
           {isCompleted && route.completedAt && (
             <div className="shrink-0 flex items-center gap-1 text-xs text-emerald-600">
               <CheckCircle2 className="w-3.5 h-3.5" />
@@ -2563,63 +2526,82 @@ function RouteCard({
 
         {/* ── Footer ── */}
         <div
-          className="flex items-center gap-2 pt-1 mt-auto"
+          className="flex flex-col gap-2 pt-1 mt-auto sm:flex-row sm:items-center sm:justify-between"
           style={{ borderTop: "1px solid #E2E8F0" }}
         >
-          <div className="flex-1" />
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+            <span>
+              <strong>Rota:</strong> R$ {route.totalDeliveryFee.toFixed(2)}
+            </span>
+            {route.totalToReceive > 0 && (
+              <span>
+                <strong>Receber:</strong> R$ {route.totalToReceive.toFixed(2)}
+              </span>
+            )}
+            {route.totalChangeNeeded > 0 && (
+              <span>
+                <strong>Troco:</strong> R$ {route.totalChangeNeeded.toFixed(2)}
+              </span>
+            )}
+            <span>
+              <strong>Pedidos:</strong> {totalCount}
+            </span>
+          </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 w-8 p-0 rounded-lg"
-            onClick={(event) => {
-              event.stopPropagation();
-              onQrCode();
-            }}
-            data-testid={`button-qr-${route.id}`}
-          >
-            <QrCode className="w-3.5 h-3.5" />
-          </Button>
-
-          {isAvailable && (
+          <div className="flex w-full shrink-0 flex-row items-center justify-between gap-2 sm:w-auto sm:justify-end">
             <Button
+              variant="outline"
               size="sm"
-              className="h-8 gap-1.5 rounded-lg font-semibold text-white border-0"
-              style={{ backgroundColor: "#D91F16", color: "#FFFFFF" }}
+              className="h-8 w-8 p-0 rounded-lg"
               onClick={(event) => {
                 event.stopPropagation();
-                onAssign();
+                onQrCode();
               }}
-              title="Assumir esta rota"
-              data-testid={`button-assign-${route.id}`}
+              data-testid={`button-qr-${route.id}`}
             >
-              <Play className="w-3.5 h-3.5" />
-              Assumir Rota
+              <QrCode className="w-3.5 h-3.5" />
             </Button>
-          )}
 
-          {isInProgress && (
-            <Button
-              size="sm"
-              className="flex-1 h-8 gap-1.5 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white"
-              onClick={(event) => {
-                event.stopPropagation();
-                onComplete();
-              }}
-              disabled={completing}
-              data-testid={`button-complete-${route.id}`}
-            >
-              <Truck className="w-3.5 h-3.5" />
-              {completing ? "Concluindo..." : "Entrega em Andamento"}
-            </Button>
-          )}
+            {isAvailable && (
+              <Button
+                size="sm"
+                className="h-8 gap-1.5 rounded-lg font-semibold text-white border-0"
+                style={{ backgroundColor: "#D91F16", color: "#FFFFFF" }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onAssign();
+                }}
+                title="Assumir esta rota"
+                data-testid={`button-assign-${route.id}`}
+              >
+                <Play className="w-3.5 h-3.5" />
+                Assumir Rota
+              </Button>
+            )}
 
-          {isCompleted && (
-            <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              Rota concluída
-            </div>
-          )}
+            {isInProgress && (
+              <Button
+                size="sm"
+                className="flex-1 h-8 gap-1.5 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onComplete();
+                }}
+                disabled={completing}
+                data-testid={`button-complete-${route.id}`}
+              >
+                <Truck className="w-3.5 h-3.5" />
+                {completing ? "Concluindo..." : "Entrega em Andamento"}
+              </Button>
+            )}
+
+            {isCompleted && (
+              <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Rota concluída
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

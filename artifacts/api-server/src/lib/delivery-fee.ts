@@ -8,7 +8,6 @@
  */
 
 const MVP_MAX_DISTANCE_KM = 8;
-const MVP_SAFETY_MAX_FEE = 30;
 
 /**
  * Strips formatting characters from a Brazilian CEP, returning only 8 digits.
@@ -89,20 +88,18 @@ interface FeeSettings {
  * - distance_tier: fee = baseDeliveryFee (if dist <= base); baseDeliveryFee + (dist - base) × additionalPricePerKm (if dist > base)
  * - manual:        returns 0 (caller should not invoke this in manual mode)
  *
- * When no maximumDeliveryFee is configured, a safety ceiling of MVP_SAFETY_MAX_FEE
- * is applied to prevent accidentally absurd fees.
  */
 export function calculateDeliveryFee(
   distanceKm: number,
   settings: FeeSettings
 ): number {
-  const mode = settings.deliveryFeeMode ?? "per_km";
+  const mode = settings.deliveryFeeMode ?? "manual";
 
   let fee: number;
 
   if (mode === "distance_tier") {
     const baseDist = settings.baseDeliveryDistanceKm ?? 4;
-    const baseFee  = settings.baseDeliveryFee ?? 0;
+    const baseFee = settings.baseDeliveryFee ?? 0;
     const addlPerKm = settings.additionalPricePerKm ?? 0;
 
     if (distanceKm <= baseDist) {
@@ -111,22 +108,18 @@ export function calculateDeliveryFee(
       const excess = distanceKm - baseDist;
       fee = baseFee + excess * addlPerKm;
     }
-  } else {
-    // per_km (default fallback)
+  } else if (mode === "per_km") {
     fee = distanceKm * (settings.deliveryPricePerKm ?? 0);
+  } else {
+    fee = 0;
   }
 
   if (settings.minimumDeliveryFee != null && fee < settings.minimumDeliveryFee) {
     fee = settings.minimumDeliveryFee;
   }
 
-  const effectiveMax =
-    settings.maximumDeliveryFee != null
-      ? settings.maximumDeliveryFee
-      : MVP_SAFETY_MAX_FEE;
-
-  if (fee > effectiveMax) {
-    fee = effectiveMax;
+  if (settings.maximumDeliveryFee != null && fee > settings.maximumDeliveryFee) {
+    fee = settings.maximumDeliveryFee;
   }
 
   return Math.round(fee * 100) / 100;
