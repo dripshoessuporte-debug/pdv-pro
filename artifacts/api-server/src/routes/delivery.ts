@@ -211,8 +211,12 @@ async function getRouteWithOrders(
   const knownDistances = routeOrders
     .map((o) => parseEstimatedDistanceKm(o.estimatedDistanceKm))
     .filter((distance): distance is number => distance !== null);
-  const totalEstimatedDistanceKm = knownDistances.length
-    ? Math.round(knownDistances.reduce((sum, distance) => sum + distance, 0) * 10) / 10
+  const hasCompleteRouteDistance =
+    routeOrders.length > 0 && knownDistances.length === routeOrders.length;
+  const totalEstimatedDistanceKm = hasCompleteRouteDistance
+    ? Math.round(
+        knownDistances.reduce((sum, distance) => sum + distance, 0) * 10,
+      ) / 10
     : null;
 
   // Total to receive on delivery (payment_timing = on_delivery)
@@ -722,8 +726,12 @@ router.get("/delivery/orders/pending", async (req, res): Promise<void> => {
   const orders = await db
     .select({
       id: ordersTable.id,
-      customerName: sql<string | null>`coalesce(${ordersTable.customerName}, ${customersTable.name})`,
-      customerPhone: sql<string | null>`coalesce(${ordersTable.customerPhone}, ${customersTable.phone})`,
+      customerName: sql<
+        string | null
+      >`coalesce(${ordersTable.customerName}, ${customersTable.name})`,
+      customerPhone: sql<
+        string | null
+      >`coalesce(${ordersTable.customerPhone}, ${customersTable.phone})`,
       deliveryAddress: ordersTable.deliveryAddress,
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
       deliveryCep: ordersTable.deliveryCep,
