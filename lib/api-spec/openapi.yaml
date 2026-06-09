@@ -2134,7 +2134,7 @@ components:
           type: number
         method:
           type: string
-          enum: [cash, credit_card, debit_card, pix, voucher]
+          enum: [cash, credit_card, debit_card, pix, voucher, ifood_online, platform]
         status:
           type: string
           enum: [pending, approved, refused]
@@ -2154,7 +2154,7 @@ components:
           minimum: 0
         method:
           type: string
-          enum: [cash, credit_card, debit_card, pix, voucher]
+          enum: [cash, credit_card, debit_card, pix, voucher, ifood_online, platform]
         amountTendered:
           type: number
 

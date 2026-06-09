@@ -10,3 +10,4 @@ export * from "./delivery";
 export * from "./settings";
 export * from "./delivery-cache";
 export * from "./tenancy";
+export * from "./integrations";

@@ -6,6 +6,7 @@ import {
   numeric,
   timestamp,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -75,6 +76,11 @@ export const ordersTable = pgTable(
   (table) => [
     index("orders_store_id_idx").on(table.storeId),
     index("orders_cash_register_id_idx").on(table.cashRegisterId),
+    uniqueIndex("orders_store_source_external_unique").on(
+      table.storeId,
+      table.source,
+      table.externalOrderId,
+    ),
   ],
 );
 

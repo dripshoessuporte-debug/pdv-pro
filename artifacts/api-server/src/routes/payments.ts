@@ -21,6 +21,10 @@ import { requireOpenShift } from "../middleware/rbac";
 
 const router: IRouter = Router();
 
+function isPlatformPaymentMethod(method: string): boolean {
+  return method === "ifood_online" || method === "platform";
+}
+
 function assertOrderInCurrentShift(
   order: { cashRegisterId: number | null; createdAt: Date },
   scope: {
@@ -168,43 +172,47 @@ router.post("/payments", async (req, res): Promise<void> => {
         tx as unknown as typeof db,
       );
 
-      // Step 4: register in open cash register with idempotency guard
-      const [openRegister] = await tx
-        .select({ id: cashRegistersTable.id })
-        .from(cashRegistersTable)
-        .where(
-          and(
-            eq(cashRegistersTable.storeId, scope.actor.storeId),
-            eq(cashRegistersTable.status, "open"),
-            ...(scope.actor.role === "atendente" && scope.cashRegisterId
-              ? [eq(cashRegistersTable.id, scope.cashRegisterId)]
-              : []),
-          ),
-        )
-        .orderBy(sql`${cashRegistersTable.openedAt} DESC`)
-        .limit(1);
-
-      if (openRegister) {
-        const [existingMovement] = await tx
-          .select({ id: cashMovementsTable.id })
-          .from(cashMovementsTable)
+      // Step 4: register restaurant-received payments in the open cash register.
+      // Platform/iFood online payments stay only in payments/reporting and never
+      // inflate physical cash drawer totals.
+      if (!isPlatformPaymentMethod(parsed.data.method)) {
+        const [openRegister] = await tx
+          .select({ id: cashRegistersTable.id })
+          .from(cashRegistersTable)
           .where(
             and(
-              eq(cashMovementsTable.orderId, parsed.data.orderId),
-              eq(cashMovementsTable.type, "payment"),
+              eq(cashRegistersTable.storeId, scope.actor.storeId),
+              eq(cashRegistersTable.status, "open"),
+              ...(scope.actor.role === "atendente" && scope.cashRegisterId
+                ? [eq(cashRegistersTable.id, scope.cashRegisterId)]
+                : []),
             ),
           )
+          .orderBy(sql`${cashRegistersTable.openedAt} DESC`)
           .limit(1);
 
-        if (!existingMovement) {
-          await tx.insert(cashMovementsTable).values({
-            cashRegisterId: openRegister.id,
-            type: "payment",
-            amount: String(parsed.data.amount),
-            paymentMethod: parsed.data.method,
-            reason: `Pagamento Pedido #${parsed.data.orderId}`,
-            orderId: parsed.data.orderId,
-          });
+        if (openRegister) {
+          const [existingMovement] = await tx
+            .select({ id: cashMovementsTable.id })
+            .from(cashMovementsTable)
+            .where(
+              and(
+                eq(cashMovementsTable.orderId, parsed.data.orderId),
+                eq(cashMovementsTable.type, "payment"),
+              ),
+            )
+            .limit(1);
+
+          if (!existingMovement) {
+            await tx.insert(cashMovementsTable).values({
+              cashRegisterId: openRegister.id,
+              type: "payment",
+              amount: String(parsed.data.amount),
+              paymentMethod: parsed.data.method,
+              reason: `Pagamento Pedido #${parsed.data.orderId}`,
+              orderId: parsed.data.orderId,
+            });
+          }
         }
       }
 

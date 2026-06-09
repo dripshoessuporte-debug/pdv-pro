@@ -15,4 +15,6 @@ export const PaymentMethod = {
   debit_card: 'debit_card',
   pix: 'pix',
   voucher: 'voucher',
+  ifood_online: 'ifood_online',
+  platform: 'platform',
 } as const;

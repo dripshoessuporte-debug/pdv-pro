@@ -64,6 +64,13 @@
       "when": 1780359000000,
       "tag": "0009_addons_v1",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1781045400000,
+      "tag": "0010_external_integrations_ifood_ready",
+      "breakpoints": true
     }
   ]
 }
