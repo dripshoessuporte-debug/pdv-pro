@@ -34,12 +34,13 @@ function normalizeUf(value: unknown): string {
   const uf = String(value ?? "")
     .replace(/[^A-Za-z]/g, "")
     .toUpperCase();
-  return /^[A-Z]{2}$/.test(uf) ? uf : "";
+  return /^[A-Z]{2}$/.test(uf) && uf !== "UF" ? uf : "";
 }
 
 function normalizeCity(value: unknown): string {
   return String(value ?? "")
-    .replace(/,\s*[A-Za-z]{2}$/, "")
+    .replace(/,\s*[A-Za-z]{2}$/i, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 

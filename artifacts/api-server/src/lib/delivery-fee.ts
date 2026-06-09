@@ -38,13 +38,12 @@ export function normalizeCep(cep: string): string | undefined {
  */
 export function estimateDistanceKmFromCep(
   storeCep: string,
-  customerCep: string
+  customerCep: string,
 ): number | null {
   const s = normalizeCep(storeCep);
   const c = normalizeCep(customerCep);
 
   if (!s || !c) return null;
-
 
   let distKm: number;
 
@@ -80,45 +79,56 @@ interface FeeSettings {
   maximumDeliveryFee?: number | null;
 }
 
+function nonNegativeOrZero(value: number | null | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : 0;
+}
+
 /**
  * Applies delivery fee rules (price per km, distance tier, min, max) to a distance value.
  *
- * Supports three modes:
- * - per_km:        fee = distanceKm × deliveryPricePerKm
- * - distance_tier: fee = baseDeliveryFee (if dist <= base); baseDeliveryFee + (dist - base) × additionalPricePerKm (if dist > base)
- * - manual:        returns 0 (caller should not invoke this in manual mode)
+ * distance_tier is the Gestor Max automatic formula:
+ *   fee = minimum/base fee while distance <= included distance; otherwise
+ *   fee = minimum/base fee + (distance - included distance) × extra km price.
  *
+ * `baseDeliveryFee` is the canonical "taxa mínima" column. For compatibility
+ * with older screens that wrote the value into `minimumDeliveryFee`, that column
+ * is used as a fallback base fee only when `baseDeliveryFee` is empty.
  */
 export function calculateDeliveryFee(
   distanceKm: number,
-  settings: FeeSettings
+  settings: FeeSettings,
 ): number {
   const mode = settings.deliveryFeeMode ?? "manual";
 
   let fee: number;
 
   if (mode === "distance_tier") {
-    const baseDist = settings.baseDeliveryDistanceKm ?? 4;
-    const baseFee = settings.baseDeliveryFee ?? 0;
-    const addlPerKm = settings.additionalPricePerKm ?? 0;
-
-    if (distanceKm <= baseDist) {
-      fee = baseFee;
-    } else {
-      const excess = distanceKm - baseDist;
-      fee = baseFee + excess * addlPerKm;
-    }
+    const baseDist = nonNegativeOrZero(settings.baseDeliveryDistanceKm);
+    const baseFee = nonNegativeOrZero(
+      settings.baseDeliveryFee ?? settings.minimumDeliveryFee,
+    );
+    const addlPerKm = nonNegativeOrZero(settings.additionalPricePerKm);
+    const excess = Math.max(0, distanceKm - baseDist);
+    fee = baseFee + excess * addlPerKm;
   } else if (mode === "per_km") {
-    fee = distanceKm * (settings.deliveryPricePerKm ?? 0);
+    fee = distanceKm * nonNegativeOrZero(settings.deliveryPricePerKm);
   } else {
     fee = 0;
   }
 
-  if (settings.minimumDeliveryFee != null && fee < settings.minimumDeliveryFee) {
+  if (
+    settings.minimumDeliveryFee != null &&
+    fee < settings.minimumDeliveryFee
+  ) {
     fee = settings.minimumDeliveryFee;
   }
 
-  if (settings.maximumDeliveryFee != null && fee > settings.maximumDeliveryFee) {
+  if (
+    settings.maximumDeliveryFee != null &&
+    fee > settings.maximumDeliveryFee
+  ) {
     fee = settings.maximumDeliveryFee;
   }
 

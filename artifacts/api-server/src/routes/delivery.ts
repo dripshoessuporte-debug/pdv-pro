@@ -79,6 +79,20 @@ function parseEstimatedDistanceKm(value: unknown): number | null {
   return Number.isFinite(distance) && distance > 0 ? distance : null;
 }
 
+function parseDeliveryFee(value: unknown): number {
+  const fee = Number.parseFloat(String(value ?? "0"));
+  return Number.isFinite(fee) ? fee : 0;
+}
+
+function effectiveDeliveryFee(order: {
+  deliveryFee?: unknown;
+  calculatedDeliveryFee?: number;
+}): number {
+  return typeof order.calculatedDeliveryFee === "number"
+    ? order.calculatedDeliveryFee
+    : parseDeliveryFee(order.deliveryFee);
+}
+
 type DistanceBackfillOrder = {
   id: number;
   deliveryCep: string | null;
@@ -86,15 +100,19 @@ type DistanceBackfillOrder = {
   deliveryNeighborhood?: string | null;
   estimatedDistanceKm?: unknown;
   deliveryDistanceSource?: string | null;
+  deliveryFee?: unknown;
+};
+
+type DistanceBackfillResult = {
+  estimatedDistanceKm: number | null;
+  deliveryDistanceSource: string | null;
+  calculatedDeliveryFee?: number;
 };
 
 async function ensureEstimatedDistanceForOrder(
   order: DistanceBackfillOrder,
   storeId: number,
-): Promise<{
-  estimatedDistanceKm: number | null;
-  deliveryDistanceSource: string | null;
-}> {
+): Promise<DistanceBackfillResult> {
   const existing = parseEstimatedDistanceKm(order.estimatedDistanceKm);
   if (existing !== null) {
     return {
@@ -117,24 +135,32 @@ async function ensureEstimatedDistanceForOrder(
         .join(", ") || null,
   });
 
+  const calculatedFee =
+    result.deliveryFeeCalculated && result.deliveryFee != null
+      ? result.deliveryFee
+      : null;
+
   await db
     .update(ordersTable)
     .set({
       estimatedDistanceKm: String(result.estimatedDistanceKm),
       deliveryDistanceSource: result.source,
-      ...(result.deliveryFeeCalculated && result.deliveryFee != null
+      ...(calculatedFee != null
         ? {
-            deliveryFee: String(result.deliveryFee),
+            deliveryFee: String(calculatedFee),
             deliveryFeeCalculated: "true",
             deliveryFeeSource: result.source,
           }
-        : {}),
+        : {
+            deliveryFeeCalculated: String(result.deliveryFeeCalculated),
+          }),
     })
     .where(and(eq(ordersTable.id, order.id), eq(ordersTable.storeId, storeId)));
 
   return {
     estimatedDistanceKm: result.estimatedDistanceKm,
     deliveryDistanceSource: result.source,
+    ...(calculatedFee != null ? { calculatedDeliveryFee: calculatedFee } : {}),
   };
 }
 
@@ -144,14 +170,7 @@ async function ensureEstimatedDistancesForOrders<
   orders: T[],
   storeId: number,
   log?: { warn: (obj: unknown, msg?: string) => void },
-): Promise<
-  Array<
-    T & {
-      estimatedDistanceKm: number | null;
-      deliveryDistanceSource: string | null;
-    }
-  >
-> {
+): Promise<Array<T & DistanceBackfillResult>> {
   const resolved = [];
   for (const order of orders) {
     try {
@@ -325,7 +344,7 @@ async function getRouteWithOrders(
       : [];
 
   const totalDeliveryFee = routeOrdersWithDistance.reduce(
-    (sum, o) => sum + parseFloat(String(o.deliveryFee ?? "0")),
+    (sum, o) => sum + effectiveDeliveryFee(o),
     0,
   );
   const knownDistances = routeOrdersWithDistance
@@ -373,7 +392,7 @@ async function getRouteWithOrders(
     createdAt: route.createdAt.toISOString(),
     orders: routeOrdersWithDistance.map((o) => ({
       ...o,
-      deliveryFee: parseFloat(String(o.deliveryFee ?? "0")),
+      deliveryFee: effectiveDeliveryFee(o),
       estimatedDistanceKm: parseEstimatedDistanceKm(o.estimatedDistanceKm),
       distanceSource: o.deliveryDistanceSource ?? null,
       deliveryDistanceSource: o.deliveryDistanceSource ?? null,
@@ -902,7 +921,7 @@ router.get("/delivery/orders/pending", async (req, res): Promise<void> => {
     deliveryAddress: o.deliveryAddress,
     deliveryNeighborhood: o.deliveryNeighborhood,
     deliveryCep: o.deliveryCep,
-    deliveryFee: parseFloat(String(o.deliveryFee ?? "0")),
+    deliveryFee: effectiveDeliveryFee(o),
     estimatedDistanceKm: parseEstimatedDistanceKm(o.estimatedDistanceKm),
     distanceSource: o.deliveryDistanceSource ?? null,
     totalAmount: parseFloat(String(o.totalAmount ?? "0")),
