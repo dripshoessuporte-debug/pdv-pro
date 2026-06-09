@@ -708,7 +708,9 @@ export default function Routes() {
             <span>{item.label}</span>
             <span
               className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${
-                active ? "bg-white text-[#D91F16]" : "bg-slate-100 text-[#0F172A]"
+                active
+                  ? "bg-white text-[#D91F16]"
+                  : "bg-slate-100 text-[#0F172A]"
               }`}
             >
               {item.count}
@@ -742,9 +744,16 @@ export default function Routes() {
                   </span>
                   <div className="flex flex-wrap items-center gap-2">
                     {group.entries.map((entry) => (
-                      <div key={`${group.title}-${entry.label}`} className="flex items-center gap-1">
-                        <span className={`h-2 w-2 rounded-full ${entry.tone}`} />
-                        <span className="text-xs text-muted-foreground">{entry.label}</span>
+                      <div
+                        key={`${group.title}-${entry.label}`}
+                        className="flex items-center gap-1"
+                      >
+                        <span
+                          className={`h-2 w-2 rounded-full ${entry.tone}`}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {entry.label}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -1449,7 +1458,7 @@ export default function Routes() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex shrink-0 items-center justify-end gap-1.5">
+                      <div className="flex shrink-0 flex-wrap items-center justify-start gap-1.5 sm:justify-end">
                         <span className={`text-xs ${URGENCY_TEXT[ts.urgency]}`}>
                           {ts.label}
                         </span>
@@ -1702,12 +1711,7 @@ function PendingOrderRow({
   const UrgencyIcon = URGENCY_ICON[urgency];
   const receiveOnDelivery = order.paymentTiming === "on_delivery";
   const paymentLabel = receiveOnDelivery ? "Na entrega" : "Pago agora";
-  const reliableDistance =
-    order.estimatedDistanceKm != null &&
-    Number.isFinite(order.estimatedDistanceKm) &&
-    order.estimatedDistanceKm > 0
-      ? order.estimatedDistanceKm
-      : null;
+  const reliableDistance = normalizeDistanceKm(order.estimatedDistanceKm);
   const distanceTone = getIndividualDistanceTone(reliableDistance);
   const addressLine = [order.deliveryNeighborhood, order.deliveryCep]
     .filter(Boolean)
@@ -1715,13 +1719,15 @@ function PendingOrderRow({
 
   return (
     <div
-      className={`relative flex cursor-pointer flex-col gap-3 overflow-hidden rounded-xl border bg-white py-3 pl-5 pr-3 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50/60 hover:shadow-md lg:flex-row lg:items-center ${selected ? "border-[#D91F16] bg-red-50/40 ring-1 ring-[#D91F16]/20" : "border-slate-200"}`}
+      className={`relative grid cursor-pointer grid-cols-1 gap-3 overflow-hidden rounded-xl border bg-white py-3 pl-5 pr-3 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50/60 hover:shadow-md lg:grid-cols-[minmax(220px,1.2fr)_minmax(200px,1.1fr)_minmax(180px,0.95fr)_minmax(210px,auto)] lg:items-center ${selected ? "border-[#D91F16] bg-red-50/40 ring-1 ring-[#D91F16]/20" : "border-slate-200"}`}
       onClick={onOpenOrder}
       data-testid={`pending-delivery-${order.id}`}
     >
-      <div className={`absolute inset-y-0 left-0 w-1.5 ${distanceTone.classes.accent}`} />
+      <div
+        className={`absolute inset-y-0 left-0 w-1.5 ${distanceTone.classes.accent}`}
+      />
 
-      <div className="flex min-w-0 items-center gap-3 lg:w-[28%]">
+      <div className="flex min-w-0 items-center gap-3">
         <button
           onClick={(event) => {
             event.stopPropagation();
@@ -1753,7 +1759,9 @@ function PendingOrderRow({
               Pedido #{order.id}
             </span>
             {dsLabel && (
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${dsColor}`}>
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${dsColor}`}
+              >
                 {dsLabel}
               </span>
             )}
@@ -1770,12 +1778,14 @@ function PendingOrderRow({
         </div>
       </div>
 
-      <div className="min-w-0 border-slate-200 lg:w-[29%] lg:border-l lg:pl-4">
+      <div className="min-w-0 border-slate-200 lg:border-l lg:pl-4">
         <p className="truncate text-sm font-semibold text-slate-800">
           {addressLine || order.deliveryAddress || "Endereço não informado"}
         </p>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-          {order.customerPhone && <span className="truncate">{order.customerPhone}</span>}
+          {order.customerPhone && (
+            <span className="truncate">{order.customerPhone}</span>
+          )}
           {reliableDistance != null && (
             <span className={`font-bold ${distanceTone.classes.text}`}>
               {reliableDistance.toFixed(1)} km
@@ -1784,7 +1794,7 @@ function PendingOrderRow({
         </div>
       </div>
 
-      <div className="min-w-0 border-slate-200 lg:w-[25%] lg:border-l lg:pl-4">
+      <div className="min-w-0 border-slate-200 lg:border-l lg:pl-4">
         <p className="text-sm font-semibold text-slate-800">{paymentLabel}</p>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
           {receiveOnDelivery && (
@@ -1799,9 +1809,11 @@ function PendingOrderRow({
         </div>
       </div>
 
-      <div className="flex min-w-0 items-center justify-between gap-3 border-slate-200 lg:ml-auto lg:w-[18%] lg:border-l lg:pl-4">
+      <div className="flex min-w-0 flex-col gap-2 border-slate-200 sm:flex-row sm:items-center sm:justify-between lg:border-l lg:pl-4">
         {timeStatus ? (
-          <div className={`flex min-w-0 items-center gap-1 text-sm font-bold ${URGENCY_TEXT[urgency]}`}>
+          <div
+            className={`flex min-w-0 items-center gap-1 text-sm font-bold ${URGENCY_TEXT[urgency]}`}
+          >
             <UrgencyIcon className="h-4 w-4 shrink-0" />
             <span className="truncate">{timeStatus.label}</span>
           </div>
@@ -1811,12 +1823,12 @@ function PendingOrderRow({
             <span className="truncate">Prazo cozinha</span>
           </div>
         )}
-        <div className="flex shrink-0 items-center justify-end gap-1.5">
+        <div className="flex shrink-0 flex-wrap items-center justify-start gap-1.5 sm:justify-end">
           {activeRoutes.length > 0 && (
             <Button
               size="sm"
               variant="outline"
-              className="h-8 px-2 text-xs gap-1 border-slate-300 text-slate-800 hover:bg-slate-50"
+              className="h-8 px-2 text-xs gap-1 whitespace-nowrap border-slate-300 text-slate-800 hover:bg-slate-50"
               onClick={(event) => {
                 event.stopPropagation();
                 onAddToRoute();
@@ -1824,13 +1836,13 @@ function PendingOrderRow({
               title="Adicionar a uma rota existente"
             >
               <PlusCircle className="h-3.5 w-3.5" />
-              <span className="hidden xl:inline">Adicionar</span>
+              <span>Adicionar</span>
             </Button>
           )}
           <Button
             size="sm"
             variant="outline"
-            className="h-8 px-2 text-xs gap-1 border-red-200 text-[#D91F16] hover:text-[#D91F16] hover:bg-red-50 dark:text-red-300"
+            className="h-8 px-2 text-xs gap-1 whitespace-nowrap border-red-200 text-[#D91F16] hover:text-[#D91F16] hover:bg-red-50 dark:text-red-300"
             onClick={(event) => {
               event.stopPropagation();
               onEmergency();
@@ -1895,6 +1907,12 @@ const DISTANCE_TONES = {
 
 type DistanceTone = keyof typeof DISTANCE_TONES;
 
+function normalizeDistanceKm(distance: number | string | null | undefined) {
+  if (distance == null || distance === "") return null;
+  const value = typeof distance === "number" ? distance : Number(distance);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
 function buildDistanceTone(
   distKm: number | null | undefined,
   scale: "individual" | "route",
@@ -1906,7 +1924,7 @@ function buildDistanceTone(
   if (distKm == null || !Number.isFinite(distKm) || distKm <= 0) {
     return {
       key: "neutral",
-      label: "distância pendente",
+      label: "sem distância calculada",
       classes: DISTANCE_TONES.neutral,
     };
   }
@@ -1950,20 +1968,26 @@ const getRouteDistanceTone = (distKm: number | null | undefined) =>
   buildDistanceTone(distKm, "route");
 
 const ROUTE_DISTANCE_LEGEND = [
-  { title: "Pedidos", entries: [
-    { tone: DISTANCE_TONES.short.accent, label: "até 2 km" },
-    { tone: DISTANCE_TONES.medium.accent, label: "2–4 km" },
-    { tone: DISTANCE_TONES.long.accent, label: "4–6 km" },
-    { tone: DISTANCE_TONES.extended.accent, label: "6–8 km" },
-    { tone: DISTANCE_TONES.far.accent, label: "> 8 km" },
-  ] },
-  { title: "Rotas", entries: [
-    { tone: DISTANCE_TONES.short.accent, label: "até 5 km" },
-    { tone: DISTANCE_TONES.medium.accent, label: "5–10 km" },
-    { tone: DISTANCE_TONES.long.accent, label: "10–15 km" },
-    { tone: DISTANCE_TONES.extended.accent, label: "15–25 km" },
-    { tone: DISTANCE_TONES.far.accent, label: "> 25 km" },
-  ] },
+  {
+    title: "Pedidos",
+    entries: [
+      { tone: DISTANCE_TONES.short.accent, label: "até 2 km" },
+      { tone: DISTANCE_TONES.medium.accent, label: "2–4 km" },
+      { tone: DISTANCE_TONES.long.accent, label: "4–6 km" },
+      { tone: DISTANCE_TONES.extended.accent, label: "6–8 km" },
+      { tone: DISTANCE_TONES.far.accent, label: "> 8 km" },
+    ],
+  },
+  {
+    title: "Rotas",
+    entries: [
+      { tone: DISTANCE_TONES.short.accent, label: "até 5 km" },
+      { tone: DISTANCE_TONES.medium.accent, label: "5–10 km" },
+      { tone: DISTANCE_TONES.long.accent, label: "10–15 km" },
+      { tone: DISTANCE_TONES.extended.accent, label: "15–25 km" },
+      { tone: DISTANCE_TONES.far.accent, label: "> 25 km" },
+    ],
+  },
 ] as const;
 
 // ─── RouteCard ────────────────────────────────────────────────────────────────
@@ -2030,29 +2054,31 @@ function RouteCard({
   const totalCount = route.orders.length;
   const allOrdersReady = totalCount > 0 && readyCount === totalCount;
 
-  const apiRouteDistance =
-    route.totalEstimatedDistanceKm ?? route.totalDistanceKm ?? null;
-  const validRouteDistances = route.orders
-    .map((order) => order.estimatedDistanceKm)
-    .filter(
-      (distance): distance is number =>
-        distance != null && Number.isFinite(distance) && distance > 0,
-    );
+  const apiRouteDistance = normalizeDistanceKm(
+    route.totalEstimatedDistanceKm ?? route.totalDistanceKm ?? null,
+  );
+  const orderRouteDistances = route.orders.map((order) =>
+    normalizeDistanceKm(order.estimatedDistanceKm),
+  );
+  const allOrdersHaveDistance =
+    orderRouteDistances.length > 0 &&
+    orderRouteDistances.every((distance) => distance != null);
   const totalRouteDistanceKm =
-    apiRouteDistance != null && Number.isFinite(apiRouteDistance) && apiRouteDistance > 0
-      ? apiRouteDistance
-      : validRouteDistances.length
-        ? validRouteDistances.reduce((sum, distance) => sum + distance, 0)
-        : null;
+    apiRouteDistance ??
+    (allOrdersHaveDistance
+      ? Math.round(
+          orderRouteDistances.reduce(
+            (sum, distance) => sum + (distance ?? 0),
+            0,
+          ) * 10,
+        ) / 10
+      : null);
   const distanceTone = getRouteDistanceTone(totalRouteDistanceKm);
   const otherNeighborhoods = route.includedNeighborhoods.filter(
     (n) => n !== route.mainNeighborhood,
   );
 
-  const hasDetailedContent =
-    !isCompleted &&
-    (totalFridges > 0 ||
-      sortedOrders.some((o) => o.paymentTiming === "on_delivery"));
+  const hasDetailedContent = !isCompleted && totalFridges > 0;
   const showExpandToggle = sortedOrders.length >= 2 || hasDetailedContent;
 
   const handleToggleExpand = () => {
@@ -2084,11 +2110,11 @@ function RouteCard({
               <Badge variant="outline" className="bg-slate-50 text-slate-700">
                 {totalCount} entrega{totalCount !== 1 ? "s" : ""}
               </Badge>
-              <Badge variant="outline" className={distanceTone.classes.badge}>
-                {totalRouteDistanceKm != null
-                  ? `${totalRouteDistanceKm.toFixed(1)} km`
-                  : "distância pendente"}
-              </Badge>
+              {totalRouteDistanceKm != null && (
+                <Badge variant="outline" className={distanceTone.classes.badge}>
+                  {totalRouteDistanceKm.toFixed(1)} km
+                </Badge>
+              )}
               {timeStatus && !isCompleted && (
                 <Badge
                   variant="outline"
@@ -2214,7 +2240,9 @@ function RouteCard({
                       <span className="truncate">
                         {[order.deliveryNeighborhood, order.deliveryCep]
                           .filter(Boolean)
-                          .join(" · ") || order.deliveryAddress || "Endereço não informado"}
+                          .join(" · ") ||
+                          order.deliveryAddress ||
+                          "Endereço não informado"}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
@@ -2231,14 +2259,21 @@ function RouteCard({
                       )}
                       {hasFridges && (
                         <span className="text-blue-600 font-semibold flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5">
-                          🥤 {orderFridges.reduce((sum, item) => sum + item.quantity, 0)} refri
+                          🥤{" "}
+                          {orderFridges.reduce(
+                            (sum, item) => sum + item.quantity,
+                            0,
+                          )}{" "}
+                          refri
                         </span>
                       )}
                       {(order.items ?? []).length > 0 && (
                         <span className="truncate text-[#64748B]">
                           {(order.items ?? [])
                             .slice(0, 2)
-                            .map((item) => `${item.quantity}× ${item.productName}`)
+                            .map(
+                              (item) => `${item.quantity}× ${item.productName}`,
+                            )
                             .join(" · ")}
                           {(order.items ?? []).length > 2 ? " · …" : ""}
                         </span>
@@ -2409,39 +2444,6 @@ function RouteCard({
           </div>
         )}
 
-        {/* ── Value info panel (always visible) ── */}
-        <div
-          className="rounded-xl px-3 py-2.5 text-xs space-y-1"
-          style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[#64748B]">Valor da rota</span>
-            <span className={`font-bold ${distanceTone.classes.text}`}>
-              R$ {route.totalDeliveryFee.toFixed(2)}
-            </span>
-          </div>
-          {route.totalToReceive > 0 && (
-            <div className="flex items-center justify-between">
-              <span className="text-[#64748B]">Receber na entrega</span>
-              <span className="font-semibold text-amber-600">
-                R$ {route.totalToReceive.toFixed(2)}
-              </span>
-            </div>
-          )}
-          {route.totalChangeNeeded > 0 && (
-            <div className="flex items-center justify-between">
-              <span className="text-[#64748B]">Troco necessário</span>
-              <span className="font-semibold text-orange-500">
-                R$ {route.totalChangeNeeded.toFixed(2)}
-              </span>
-            </div>
-          )}
-          <div className="flex items-center justify-between">
-            <span className="text-[#64748B]">Pedidos</span>
-            <span className="font-semibold text-[#0F172A]">{totalCount}</span>
-          </div>
-        </div>
-
         {/* ── Expandable: route summary with fridges + charges detail ── */}
         {expanded && hasDetailedContent && (
           <div
@@ -2459,48 +2461,6 @@ function RouteCard({
                 <span className="font-bold text-blue-700">
                   {totalFridges} un.
                 </span>
-              </div>
-            )}
-            {sortedOrders.filter((o) => o.paymentTiming === "on_delivery")
-              .length > 0 && (
-              <div className="border-t border-[#E2E8F0] pt-1.5">
-                <p className="flex items-center gap-1 text-amber-700 font-semibold mb-1">
-                  <Banknote className="w-3 h-3" /> Cobranças na entrega
-                </p>
-                {sortedOrders
-                  .filter((o) => o.paymentTiming === "on_delivery")
-                  .map((o) => {
-                    const chg =
-                      o.needsChange === "true" && o.changeFor
-                        ? Math.max(0, o.changeFor - o.totalAmount)
-                        : null;
-                    return (
-                      <div
-                        key={o.orderId}
-                        className="flex items-center justify-between py-0.5"
-                      >
-                        <span className="font-bold text-amber-800">
-                          #{o.orderId}
-                        </span>
-                        <div className="text-right">
-                          <span className="font-bold text-amber-700">
-                            R$ {o.totalAmount.toFixed(2)}
-                          </span>
-                          {chg !== null && chg > 0 && (
-                            <span className="text-orange-500 ml-1.5">
-                              · Troco R$ {chg.toFixed(2)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                <div className="border-t border-amber-200 mt-1 pt-1 flex items-center justify-between">
-                  <span className="text-amber-700">Total</span>
-                  <span className="font-bold text-amber-700">
-                    R$ {route.totalToReceive.toFixed(2)}
-                  </span>
-                </div>
               </div>
             )}
           </div>
@@ -2529,22 +2489,23 @@ function RouteCard({
           className="flex flex-col gap-2 pt-1 mt-auto sm:flex-row sm:items-center sm:justify-between"
           style={{ borderTop: "1px solid #E2E8F0" }}
         >
-          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
-            <span>
-              <strong>Rota:</strong> R$ {route.totalDeliveryFee.toFixed(2)}
+          <div className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600 sm:flex sm:flex-wrap sm:items-center sm:gap-x-4">
+            <span className="whitespace-nowrap">
+              <strong className="text-slate-900">Rota:</strong> R${" "}
+              {route.totalDeliveryFee.toFixed(2)}
             </span>
             {route.totalToReceive > 0 && (
-              <span>
+              <span className="whitespace-nowrap text-amber-700">
                 <strong>Receber:</strong> R$ {route.totalToReceive.toFixed(2)}
               </span>
             )}
             {route.totalChangeNeeded > 0 && (
-              <span>
+              <span className="whitespace-nowrap text-orange-600">
                 <strong>Troco:</strong> R$ {route.totalChangeNeeded.toFixed(2)}
               </span>
             )}
-            <span>
-              <strong>Pedidos:</strong> {totalCount}
+            <span className="whitespace-nowrap">
+              <strong className="text-slate-900">Pedidos:</strong> {totalCount}
             </span>
           </div>
 
