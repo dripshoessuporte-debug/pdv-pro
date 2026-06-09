@@ -23,6 +23,7 @@ import {
   calculateDeliveryDistanceForStore,
   deliveryCalculationErrorStatus,
 } from "../lib/delivery-distance-calculator";
+import { getStoreDeliveryOrigin } from "../lib/store-delivery-origin";
 
 const router: IRouter = Router();
 
@@ -149,7 +150,9 @@ router.post(
 
     for (const spec of specs) {
       const kitchenAcceptedAt = new Date(Date.now() - spec.minutesAgo * 60_000);
-      let distanceResult: Awaited<ReturnType<typeof calculateDeliveryDistanceForStore>>;
+      let distanceResult: Awaited<
+        ReturnType<typeof calculateDeliveryDistanceForStore>
+      >;
       try {
         distanceResult = await calculateDeliveryDistanceForStore({
           storeId,
@@ -158,12 +161,16 @@ router.post(
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        res.status(deliveryCalculationErrorStatus(error)).json({ error: message });
+        res
+          .status(deliveryCalculationErrorStatus(error))
+          .json({ error: message });
         return;
       }
-      const configuredFee = distanceResult.deliveryFeeCalculated && distanceResult.deliveryFee != null
-        ? distanceResult.deliveryFee
-        : 5;
+      const configuredFee =
+        distanceResult.deliveryFeeCalculated &&
+        distanceResult.deliveryFee != null
+          ? distanceResult.deliveryFee
+          : 5;
       const totalAmount = Number(spec.total ?? 38);
 
       const [order] = await db
@@ -187,7 +194,9 @@ router.post(
           source: "dev_seed",
           estimatedDistanceKm: String(distanceResult.estimatedDistanceKm),
           deliveryFeeCalculated: String(distanceResult.deliveryFeeCalculated),
-          deliveryFeeSource: distanceResult.deliveryFeeCalculated ? distanceResult.source : "manual",
+          deliveryFeeSource: distanceResult.deliveryFeeCalculated
+            ? distanceResult.source
+            : "manual",
           deliveryDistanceSource: distanceResult.source,
         })
         .returning({ id: ordersTable.id });
@@ -374,7 +383,7 @@ function formatCep(cep: string): string {
 }
 
 const seedMinuteGaps = [
-  6, 7, 5, 8, 10, 6, 7, 8, 5, 9, 6, 7, 10, 5, 8, 6, 7, 9, 5,
+  1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1,
 ];
 const SEED_ORDER_COUNT = curitibaDeliveryAddresses.length;
 const ROUTE_TIME_WINDOW_MINUTES = 30;
@@ -422,8 +431,7 @@ function buildSeedTimeline(now: Date, minOperationalStart: Date): SeedTimeline {
     0,
   );
   const idealOldestKitchenAcceptedAt = new Date(
-    now.getTime() -
-      (desiredSpreadMinutes + SEED_NEWEST_AGE_MINUTES) * 60_000,
+    now.getTime() - (desiredSpreadMinutes + SEED_NEWEST_AGE_MINUTES) * 60_000,
   );
   const minimumOldestKitchenAcceptedAt = new Date(
     minOperationalStart.getTime() +
@@ -446,9 +454,7 @@ function buildSeedTimeline(now: Date, minOperationalStart: Date): SeedTimeline {
   const kitchenAcceptedTimes = [oldestKitchenAcceptedAt];
   for (const gap of minuteGaps) {
     const previous = kitchenAcceptedTimes[kitchenAcceptedTimes.length - 1];
-    kitchenAcceptedTimes.push(
-      new Date(previous.getTime() + gap * 60_000),
-    );
+    kitchenAcceptedTimes.push(new Date(previous.getTime() + gap * 60_000));
   }
 
   return {
@@ -477,6 +483,18 @@ router.post(
     const { storeId } = await getCurrentActor(req);
     const count = SEED_ORDER_COUNT;
     const now = new Date();
+
+    let storeOrigin: Awaited<ReturnType<typeof getStoreDeliveryOrigin>>;
+    try {
+      storeOrigin = await getStoreDeliveryOrigin(storeId);
+    } catch (error) {
+      res.status(deliveryCalculationErrorStatus(error)).json({
+        error:
+          "Configure um CEP válido da loja em Configurações antes de gerar entregas de teste.",
+        storeId,
+      });
+      return;
+    }
 
     const [openRegister] = await db
       .select({ openedAt: cashRegistersTable.openedAt })
@@ -544,19 +562,29 @@ router.post(
       const address =
         curitibaDeliveryAddresses[i % curitibaDeliveryAddresses.length];
       try {
-        distanceResults.push(
-          await calculateDeliveryDistanceForStore({
-            storeId,
-            customerCep: address.cep,
-            customerAddress: address.address,
-          }),
-        );
+        const distanceResult = await calculateDeliveryDistanceForStore({
+          storeId,
+          customerCep: address.cep,
+          customerAddress: address.address,
+          ignoreCache: true,
+        });
+        if (distanceResult.origin.storeCep !== storeOrigin.storeCep) {
+          throw new Error(
+            `Origem do cálculo divergente. Esperado ${storeOrigin.storeCep}, recebido ${distanceResult.origin.storeCep}.`,
+          );
+        }
+        if (!Number.isFinite(distanceResult.estimatedDistanceKm)) {
+          throw new Error("Distância calculada inválida.");
+        }
+        distanceResults.push(distanceResult);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         res.status(deliveryCalculationErrorStatus(error)).json({
-          error: message,
-          detail:
-            "Não foi possível criar deliveries de teste sem distância real. Confira o CEP da loja em Configurações.",
+          error: "Não foi possível criar entregas de teste sem distância real.",
+          storeId,
+          storeCep: storeOrigin.storeCep,
+          customerCep: address.cep,
+          message,
         });
         return;
       }
@@ -573,7 +601,11 @@ router.post(
       needsChange: string;
       changeFor: string | null;
       estimatedDistanceKm: number;
+      deliveryCep: string;
       deliveryFee: number;
+      deliveryFeeCalculated: boolean;
+      deliveryFeeSource: string;
+      deliveryDistanceSource: string;
     }[] = [];
 
     await db.transaction(async (tx) => {
@@ -583,7 +615,8 @@ router.post(
         const orderNumber = String(i + 1).padStart(2, "0");
         const distanceResult = distanceResults[i];
         const deliveryFee =
-          distanceResult.deliveryFeeCalculated && distanceResult.deliveryFee != null
+          distanceResult.deliveryFeeCalculated &&
+          distanceResult.deliveryFee != null
             ? distanceResult.deliveryFee
             : address.fee;
         const itemCount = (i % 3) + 1;
@@ -721,7 +754,13 @@ router.post(
           needsChange,
           changeFor,
           estimatedDistanceKm: distanceResult.estimatedDistanceKm,
+          deliveryCep: formatCep(address.cep),
           deliveryFee,
+          deliveryFeeCalculated: distanceResult.deliveryFeeCalculated,
+          deliveryFeeSource: distanceResult.deliveryFeeCalculated
+            ? distanceResult.source
+            : "manual",
+          deliveryDistanceSource: distanceResult.source,
         });
       }
     });
@@ -741,6 +780,9 @@ router.post(
     );
     res.json({
       created: created.length,
+      storeId,
+      storeCepUsed: storeOrigin.storeCep,
+      storeOriginAddress: storeOrigin.address.fullAddress || null,
       openRegisterOpenedAt: openRegister?.openedAt?.toISOString() ?? null,
       oldestKitchenAcceptedAt:
         seedTimeline.oldestKitchenAcceptedAt.toISOString(),
@@ -749,7 +791,7 @@ router.post(
       compressedTimeline: seedTimeline.compressedTimeline,
       timeGapMinutes: seedTimeline.compressedTimeline
         ? { min: 1, max: 3 }
-        : { min: 5, max: 10 },
+        : { min: 1, max: 3 },
       routeTimeWindowMinutes: ROUTE_TIME_WINDOW_MINUTES,
       seedMinuteGaps: seedTimeline.minuteGaps,
       results: created,
