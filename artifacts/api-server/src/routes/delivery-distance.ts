@@ -43,13 +43,32 @@ router.post("/delivery/distance", async (req, res): Promise<void> => {
       "delivery distance calculated",
     );
 
+    const diagnostic = {
+      storeCep: result.origin.storeCep,
+      customerCep: result.customerCep,
+      distanceKm: result.distanceKm,
+      deliveryFeeMode: result.feeSettings.deliveryFeeMode ?? "manual",
+      deliveryPricePerKm: result.feeSettings.deliveryPricePerKm,
+      baseDeliveryDistanceKm: result.feeSettings.baseDeliveryDistanceKm,
+      baseDeliveryFee: result.feeSettings.baseDeliveryFee,
+      additionalPricePerKm: result.feeSettings.additionalPricePerKm,
+      minimumDeliveryFee: result.feeSettings.minimumDeliveryFee,
+      maximumDeliveryFee: result.feeSettings.maximumDeliveryFee,
+      deliveryFee: result.deliveryFee,
+      deliveryFeeCalculated: result.deliveryFeeCalculated,
+      source: result.source,
+      cached: result.cached,
+    };
+
     res.json({
       distanceKm: result.distanceKm,
       estimatedDistanceKm: result.estimatedDistanceKm,
       deliveryFee: result.deliveryFee,
       deliveryFeeCalculated: result.deliveryFeeCalculated,
+      deliveryFeeMode: diagnostic.deliveryFeeMode,
       source: result.source,
       cached: result.cached,
+      ...(process.env.NODE_ENV !== "production" ? diagnostic : {}),
       ...(result.fallback ? { fallback: true } : {}),
     });
   } catch (error) {

@@ -22,6 +22,7 @@ export type DeliveryDistanceResult = {
   fallback?: true;
   deliveryFee: number | null;
   deliveryFeeCalculated: boolean;
+  feeSettings: ReturnType<typeof settingsForFee>;
   origin: StoreDeliveryOrigin;
   customerCep: string;
 };
@@ -77,8 +78,9 @@ export async function calculateDeliveryDistanceForStore(input: {
       const distanceKm = Number.parseFloat(String(cached.distanceKm));
       const feeMode = settings.deliveryFeeMode ?? "manual";
       const deliveryFeeCalculated = feeMode !== "manual";
+      const feeSettings = settingsForFee(settings);
       const deliveryFee = deliveryFeeCalculated
-        ? calculateDeliveryFee(distanceKm, settingsForFee(settings))
+        ? calculateDeliveryFee(distanceKm, feeSettings)
         : null;
       return {
         estimatedDistanceKm: distanceKm,
@@ -87,6 +89,7 @@ export async function calculateDeliveryDistanceForStore(input: {
         cached: true,
         deliveryFee,
         deliveryFeeCalculated,
+        feeSettings,
         origin,
         customerCep: normCustomer,
       };
@@ -140,8 +143,9 @@ export async function calculateDeliveryDistanceForStore(input: {
 
   const feeMode = settings.deliveryFeeMode ?? "manual";
   const deliveryFeeCalculated = feeMode !== "manual";
+  const feeSettings = settingsForFee(settings);
   const deliveryFee = deliveryFeeCalculated
-    ? calculateDeliveryFee(distanceKm, settingsForFee(settings))
+    ? calculateDeliveryFee(distanceKm, feeSettings)
     : null;
 
   return {
@@ -152,6 +156,7 @@ export async function calculateDeliveryDistanceForStore(input: {
     ...(fallback ? { fallback: true as const } : {}),
     deliveryFee,
     deliveryFeeCalculated,
+    feeSettings,
     origin,
     customerCep: normCustomer,
   };

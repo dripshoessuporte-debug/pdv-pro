@@ -19,6 +19,10 @@ import {
   requireDevToolAccess,
 } from "../middleware/security";
 import { getCurrentActor } from "../middleware/rbac";
+import {
+  calculateDeliveryDistanceForStore,
+  deliveryCalculationErrorStatus,
+} from "../lib/delivery-distance-calculator";
 
 const router: IRouter = Router();
 
@@ -145,6 +149,22 @@ router.post(
 
     for (const spec of specs) {
       const kitchenAcceptedAt = new Date(Date.now() - spec.minutesAgo * 60_000);
+      let distanceResult: Awaited<ReturnType<typeof calculateDeliveryDistanceForStore>>;
+      try {
+        distanceResult = await calculateDeliveryDistanceForStore({
+          storeId,
+          customerCep: spec.cep,
+          customerAddress: spec.address,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        res.status(deliveryCalculationErrorStatus(error)).json({ error: message });
+        return;
+      }
+      const configuredFee = distanceResult.deliveryFeeCalculated && distanceResult.deliveryFee != null
+        ? distanceResult.deliveryFee
+        : 5;
+      const totalAmount = Number(spec.total ?? 38);
 
       const [order] = await db
         .insert(ordersTable)
@@ -159,12 +179,16 @@ router.post(
             .replace(/^(\d{5})(\d{3})$/, "$1-$2"),
           deliveryAddress: spec.address,
           deliveryNeighborhood: spec.neighborhood,
-          deliveryFee: "5.00",
-          totalAmount: String(spec.total ?? 38),
+          deliveryFee: formatMoney(configuredFee),
+          totalAmount: formatMoney(totalAmount - 5 + configuredFee),
           paymentTiming: "now",
           deliveryStatus: "preparing",
           kitchenAcceptedAt,
           source: "dev_seed",
+          estimatedDistanceKm: String(distanceResult.estimatedDistanceKm),
+          deliveryFeeCalculated: String(distanceResult.deliveryFeeCalculated),
+          deliveryFeeSource: distanceResult.deliveryFeeCalculated ? distanceResult.source : "manual",
+          deliveryDistanceSource: distanceResult.source,
         })
         .returning({ id: ordersTable.id });
 
@@ -513,6 +537,31 @@ router.post(
       }
     }
 
+    const distanceResults: Awaited<
+      ReturnType<typeof calculateDeliveryDistanceForStore>
+    >[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const address =
+        curitibaDeliveryAddresses[i % curitibaDeliveryAddresses.length];
+      try {
+        distanceResults.push(
+          await calculateDeliveryDistanceForStore({
+            storeId,
+            customerCep: address.cep,
+            customerAddress: address.address,
+          }),
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        res.status(deliveryCalculationErrorStatus(error)).json({
+          error: message,
+          detail:
+            "Não foi possível criar deliveries de teste sem distância real. Confira o CEP da loja em Configurações.",
+        });
+        return;
+      }
+    }
+
     const created: {
       orderId: number;
       neighborhood: string;
@@ -523,6 +572,8 @@ router.post(
       deliveryPaymentMethod: string | null;
       needsChange: string;
       changeFor: string | null;
+      estimatedDistanceKm: number;
+      deliveryFee: number;
     }[] = [];
 
     await db.transaction(async (tx) => {
@@ -530,7 +581,11 @@ router.post(
         const address =
           curitibaDeliveryAddresses[i % curitibaDeliveryAddresses.length];
         const orderNumber = String(i + 1).padStart(2, "0");
-        const deliveryFee = address.fee;
+        const distanceResult = distanceResults[i];
+        const deliveryFee =
+          distanceResult.deliveryFeeCalculated && distanceResult.deliveryFee != null
+            ? distanceResult.deliveryFee
+            : address.fee;
         const itemCount = (i % 3) + 1;
         const selectedItems = Array.from(
           { length: itemCount },
@@ -626,9 +681,12 @@ router.post(
             kitchenAcceptedAt,
             source: "dev_seed",
             integrationStatus: "received",
-            deliveryFeeCalculated: "false",
-            deliveryFeeSource: "manual",
-            deliveryDistanceSource: "approximate_cep",
+            estimatedDistanceKm: String(distanceResult.estimatedDistanceKm),
+            deliveryFeeCalculated: String(distanceResult.deliveryFeeCalculated),
+            deliveryFeeSource: distanceResult.deliveryFeeCalculated
+              ? distanceResult.source
+              : "manual",
+            deliveryDistanceSource: distanceResult.source,
           })
           .returning({ id: ordersTable.id });
 
@@ -662,6 +720,8 @@ router.post(
           deliveryPaymentMethod,
           needsChange,
           changeFor,
+          estimatedDistanceKm: distanceResult.estimatedDistanceKm,
+          deliveryFee,
         });
       }
     });

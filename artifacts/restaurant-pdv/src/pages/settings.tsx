@@ -299,12 +299,11 @@ export default function Settings() {
           | "distance"
           | "hybrid",
       );
-      // map legacy "per_km" to "distance_tier" — UI only has 2 visible modes
       const rawMode = s.deliveryFeeMode || "manual";
       setDeliveryFeeMode(
-        rawMode === "per_km"
-          ? "distance_tier"
-          : (rawMode as "manual" | "distance_tier"),
+        (["manual", "per_km", "distance_tier"].includes(rawMode)
+          ? rawMode
+          : "manual") as "manual" | "per_km" | "distance_tier",
       );
       setDeliveryPricePerKm(
         s.deliveryPricePerKm != null ? String(s.deliveryPricePerKm) : "",
@@ -825,7 +824,7 @@ export default function Settings() {
           <CardContent className="space-y-4">
             <div>
               <Label className="block mb-2">Modo de cálculo</Label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                 {(
                   [
                     {
@@ -834,8 +833,13 @@ export default function Settings() {
                       desc: "Operador digita a taxa em cada pedido",
                     },
                     {
+                      value: "per_km" as const,
+                      label: "🚚 Por km",
+                      desc: "Distância × valor por km, com mínimo/máximo",
+                    },
+                    {
                       value: "distance_tier" as const,
-                      label: "📏 Por distância (taxa fixa + extra)",
+                      label: "📏 Faixa + extra",
                       desc: "Taxa fixa até X km, valor adicional acima",
                     },
                   ] as const
@@ -875,6 +879,57 @@ export default function Settings() {
                   </p>
                 )}
                 <div className="space-y-4 border rounded-xl p-4 bg-muted/30">
+                  {deliveryFeeMode === "per_km" && (
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                      <div>
+                        <Label>Valor por km (R$)</Label>
+                        <Input
+                          type="number"
+                          step="0.50"
+                          min="0"
+                          placeholder="2,50"
+                          value={deliveryPricePerKm}
+                          onChange={(e) => setDeliveryPricePerKm(e.target.value)}
+                          data-testid="input-delivery-price-per-km"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Taxa = km real × este valor
+                        </p>
+                      </div>
+                      <div>
+                        <Label>Taxa mínima (R$)</Label>
+                        <Input
+                          type="number"
+                          step="0.50"
+                          min="0"
+                          placeholder="7,00"
+                          value={minimumDeliveryFee}
+                          onChange={(e) => setMinimumDeliveryFee(e.target.value)}
+                          data-testid="input-minimum-delivery-fee"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Piso aplicado após o cálculo por km
+                        </p>
+                      </div>
+                      <div>
+                        <Label>Taxa máxima (R$)</Label>
+                        <Input
+                          type="number"
+                          step="0.50"
+                          min="0"
+                          placeholder="25,00"
+                          value={maximumDeliveryFee}
+                          onChange={(e) => setMaximumDeliveryFee(e.target.value)}
+                          data-testid="input-maximum-delivery-fee"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Teto opcional configurado
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {deliveryFeeMode === "distance_tier" && (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label>Taxa fixa inicial (R$)</Label>
@@ -937,13 +992,30 @@ export default function Settings() {
                         data-testid="input-maximum-delivery-fee"
                       />
                       <p className="text-xs text-muted-foreground mt-1">
-                        Teto de segurança (recomendado)
+                        Teto opcional configurado
+                      </p>
+                    </div>
+                    <div>
+                      <Label>Taxa mínima (R$)</Label>
+                      <Input
+                        type="number"
+                        step="0.50"
+                        min="0"
+                        placeholder="5,00"
+                        value={minimumDeliveryFee}
+                        onChange={(e) => setMinimumDeliveryFee(e.target.value)}
+                        data-testid="input-minimum-delivery-fee"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Piso opcional aplicado ao final
                       </p>
                     </div>
                   </div>
+                  )}
 
                   {/* Exemplo dinâmico */}
-                  {baseDeliveryFee &&
+                  {deliveryFeeMode === "distance_tier" &&
+                    baseDeliveryFee &&
                     baseDeliveryDistanceKm &&
                     additionalPricePerKm &&
                     (() => {
@@ -952,17 +1024,13 @@ export default function Settings() {
                       const add = parseFloat(additionalPricePerKm);
                       const max = maximumDeliveryFee
                         ? parseFloat(maximumDeliveryFee)
-                        : 30;
+                        : null;
                       if (isNaN(bFee) || isNaN(bDist) || isNaN(add))
                         return null;
-                      const ex3 = Math.min(
-                        bFee + Math.max(0, 3 - bDist) * add,
-                        max,
-                      );
-                      const ex5 = Math.min(
-                        bFee + Math.max(0, 5 - bDist) * add,
-                        max,
-                      );
+                      const rawEx3 = bFee + Math.max(0, 3 - bDist) * add;
+                      const rawEx5 = bFee + Math.max(0, 5 - bDist) * add;
+                      const ex3 = max === null ? rawEx3 : Math.min(rawEx3, max);
+                      const ex5 = max === null ? rawEx5 : Math.min(rawEx5, max);
                       return (
                         <div className="rounded-lg bg-background border px-4 py-3 text-xs space-y-1.5">
                           <p className="font-semibold text-foreground mb-2">
