@@ -65,6 +65,7 @@ export async function calculateDeliveryDistanceForStore(input: {
   customerCep: string;
   customerAddress?: string | null;
   customerCity?: string | null;
+  ignoreCache?: boolean;
 }): Promise<DeliveryDistanceResult> {
   const origin = await getStoreDeliveryOrigin(input.storeId);
   const normCustomer = normalizeCep(String(input.customerCep ?? ""));
@@ -72,7 +73,8 @@ export async function calculateDeliveryDistanceForStore(input: {
 
   const settings = origin.settings;
   const providerPref = settings.distanceProvider ?? "approximate_cep";
-  const useCache = settings.useDistanceCache !== "false";
+  const useCache =
+    settings.useDistanceCache !== "false" && input.ignoreCache !== true;
   const orsReady = providerPref === "openrouteservice" && isOrsConfigured();
   const activeProvider = orsReady ? "openrouteservice" : "approximate_cep";
 

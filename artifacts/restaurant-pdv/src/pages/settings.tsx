@@ -469,21 +469,23 @@ export default function Settings() {
 
     setSeedingDeliveries(true);
     try {
-      const result = await apiFetch<{ created: number }>(
-        "/dev/seed-curitiba-delivery-orders",
-        {
-          method: "POST",
-          headers: adminHeaders,
-          body: JSON.stringify({ confirm: "CRIAR", count: 20 }),
-        },
-      );
+      const result = await apiFetch<{
+        created: number;
+        storeCepUsed?: string;
+      }>("/dev/seed-curitiba-delivery-orders", {
+        method: "POST",
+        headers: adminHeaders,
+        body: JSON.stringify({ confirm: "CRIAR", count: 20 }),
+      });
       toast({
-        title: `${result.created} pedidos de delivery criados para teste.`,
+        title: `${result.created} entregas criadas usando o CEP da loja: ${
+          result.storeCepUsed ?? "não informado"
+        }`,
       });
       invalidateOperationalQueries();
     } catch (e) {
       toast({
-        title: `Erro ao criar deliveries de teste: ${getDevToolErrorMessage(e)}`,
+        title: getDevToolErrorMessage(e),
         variant: "destructive",
       });
     } finally {
