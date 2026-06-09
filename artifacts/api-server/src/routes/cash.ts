@@ -5,6 +5,7 @@ import {
   cashRegistersTable,
   cashMovementsTable,
   ordersTable,
+  paymentsTable,
 } from "@workspace/db";
 import {
   OpenCashRegisterBody,
@@ -64,6 +65,22 @@ async function buildRegisterDetail(
   const totalVoucher = parsed
     .filter((m) => m.type === "payment" && m.paymentMethod === "voucher")
     .reduce((s, m) => s + m.amount, 0);
+  const [platformPaymentsSummary] = await db
+    .select({ total: sql<string>`coalesce(sum(${paymentsTable.amount}), 0)` })
+    .from(paymentsTable)
+    .leftJoin(ordersTable, eq(paymentsTable.orderId, ordersTable.id))
+    .where(
+      and(
+        eq(ordersTable.storeId, register.storeId),
+        eq(paymentsTable.status, "approved"),
+        sql`${paymentsTable.method} in ('ifood_online', 'platform')`,
+        sql`${paymentsTable.createdAt} >= ${register.openedAt}`,
+        register.closedAt
+          ? sql`${paymentsTable.createdAt} <= ${register.closedAt}`
+          : sql`true`,
+      ),
+    );
+  const totalPlatform = parseFloat(String(platformPaymentsSummary?.total ?? "0"));
   const totalSales =
     totalCash + totalPix + totalCredit + totalDebit + totalVoucher;
   const totalWithdrawals = parsed
@@ -99,6 +116,7 @@ async function buildRegisterDetail(
       totalCredit,
       totalDebit,
       totalVoucher,
+      totalPlatform,
       totalSales,
       totalWithdrawals,
       totalSupplies,

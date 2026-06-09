@@ -211,6 +211,7 @@ router.post("/kitchen/tickets/:id/ready", async (req, res): Promise<void> => {
       type: ordersTable.type,
       status: ordersTable.status,
       paidAt: ordersTable.paidAt,
+      deliveryStatus: ordersTable.deliveryStatus,
     })
     .from(ordersTable)
     .where(eq(ordersTable.id, ticket.orderId));
@@ -228,7 +229,7 @@ router.post("/kitchen/tickets/:id/ready", async (req, res): Promise<void> => {
 
   // For delivery orders, advance deliveryStatus to 'ready' (pronto para entrega)
   // regardless of payment status — needed for route/delivery tracking.
-  if (order?.type === "delivery") {
+  if (order?.type === "delivery" && order.deliveryStatus !== "platform_delivery") {
     orderUpdate.deliveryStatus = "ready";
   }
 

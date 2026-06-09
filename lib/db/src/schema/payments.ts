@@ -10,6 +10,9 @@ export const paymentsTable = pgTable("payments", {
   method: text("method").notNull(),
   status: text("status").notNull().default("approved"),
   change: numeric("change", { precision: 10, scale: 2 }),
+  source: text("source"),
+  externalPaymentId: text("external_payment_id"),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

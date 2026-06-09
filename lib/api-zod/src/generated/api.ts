@@ -1319,7 +1319,7 @@ export const createPaymentBodyAmountMin = 0;
 export const CreatePaymentBody = zod.object({
   "orderId": zod.number(),
   "amount": zod.number().min(createPaymentBodyAmountMin),
-  "method": zod.enum(['cash', 'credit_card', 'debit_card', 'pix', 'voucher']),
+  "method": zod.enum(['cash', 'credit_card', 'debit_card', 'pix', 'voucher', 'ifood_online', 'platform']),
   "amountTendered": zod.number().optional()
 })
 
@@ -1395,7 +1395,7 @@ export const GetReceiptResponse = zod.object({
   "id": zod.number(),
   "orderId": zod.number(),
   "amount": zod.number(),
-  "method": zod.enum(['cash', 'credit_card', 'debit_card', 'pix', 'voucher']),
+  "method": zod.enum(['cash', 'credit_card', 'debit_card', 'pix', 'voucher', 'ifood_online', 'platform']),
   "status": zod.enum(['pending', 'approved', 'refused']),
   "change": zod.number().nullish(),
   "createdAt": zod.string()
