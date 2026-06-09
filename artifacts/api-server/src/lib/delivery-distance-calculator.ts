@@ -1,6 +1,14 @@
 import { and, eq } from "drizzle-orm";
-import { db, deliveryDistanceCacheTable, type StoreSettings } from "@workspace/db";
-import { calculateDeliveryFee, estimateDistanceKmFromCep, normalizeCep } from "./delivery-fee";
+import {
+  db,
+  deliveryDistanceCacheTable,
+  type StoreSettings,
+} from "@workspace/db";
+import {
+  calculateDeliveryFee,
+  estimateDistanceKmFromCep,
+  normalizeCep,
+} from "./delivery-fee";
 import {
   calculateRouteDistanceKm,
   getOrsApiKey,
@@ -31,6 +39,13 @@ function numberOrNull(value: unknown): number | null {
   if (value == null || value === "") return null;
   const parsed = Number.parseFloat(String(value));
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function cleanAddressPart(value: unknown): string | null {
+  const trimmed = String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return trimmed || null;
 }
 
 function settingsForFee(settings: StoreSettings) {
@@ -101,8 +116,13 @@ export async function calculateDeliveryDistanceForStore(input: {
   let fallback = false;
 
   if (orsReady) {
-    const customerFullAddr = [input.customerAddress, input.customerCity]
-      .map((part) => (part ? String(part).trim() : ""))
+    const customerFullAddr = [
+      input.customerAddress,
+      input.customerCity,
+      normCustomer,
+      "Brasil",
+    ]
+      .map(cleanAddressPart)
       .filter(Boolean)
       .join(", ");
 

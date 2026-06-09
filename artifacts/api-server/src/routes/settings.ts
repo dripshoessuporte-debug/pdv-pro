@@ -25,6 +25,24 @@ function parseDispatchTimeMinutes(value: unknown): number | null {
 
 const router: IRouter = Router();
 
+function normalizeCepDigits(value: unknown): string | null {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  return digits.length === 8 ? digits : null;
+}
+
+function normalizeUf(value: unknown): string {
+  const uf = String(value ?? "")
+    .replace(/[^A-Za-z]/g, "")
+    .toUpperCase();
+  return /^[A-Z]{2}$/.test(uf) ? uf : "";
+}
+
+function normalizeCity(value: unknown): string {
+  return String(value ?? "")
+    .replace(/,\s*[A-Za-z]{2}$/, "")
+    .trim();
+}
+
 async function getOrCreateSettings(storeId = 1) {
   const [existing] = await db
     .select()
@@ -87,8 +105,7 @@ router.put("/settings", async (req, res): Promise<void> => {
     updates.storePhone = storePhone ? String(storePhone) : null;
   if (storeEmail !== undefined)
     updates.storeEmail = storeEmail ? String(storeEmail) : null;
-  if (storeCep !== undefined)
-    updates.storeCep = storeCep ? String(storeCep) : null;
+  if (storeCep !== undefined) updates.storeCep = normalizeCepDigits(storeCep);
   if (storeAddress !== undefined)
     updates.storeAddress = storeAddress ? String(storeAddress) : null;
   if (storeNumber !== undefined)
@@ -97,10 +114,8 @@ router.put("/settings", async (req, res): Promise<void> => {
     updates.storeNeighborhood = storeNeighborhood
       ? String(storeNeighborhood)
       : null;
-  if (storeCity !== undefined)
-    updates.storeCity = storeCity ? String(storeCity) : "";
-  if (storeState !== undefined)
-    updates.storeState = storeState ? String(storeState) : "";
+  if (storeCity !== undefined) updates.storeCity = normalizeCity(storeCity);
+  if (storeState !== undefined) updates.storeState = normalizeUf(storeState);
   if (storeCountry !== undefined)
     updates.storeCountry = storeCountry ? String(storeCountry) : "Brasil";
   if (deliveryDispatchTimeMinutes !== undefined) {

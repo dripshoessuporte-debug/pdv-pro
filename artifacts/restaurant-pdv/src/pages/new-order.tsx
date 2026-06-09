@@ -201,7 +201,9 @@ export default function NewOrder() {
     variant?: { id: number; name: string; price: number };
   } | null>(null);
   const [addonGroups, setAddonGroups] = useState<AddonGroup[]>([]);
-  const [selectedAddons, setSelectedAddons] = useState<Record<number, SelectedAddon>>({});
+  const [selectedAddons, setSelectedAddons] = useState<
+    Record<number, SelectedAddon>
+  >({});
 
   // Delivery / takeaway fields
   const [customerName, setCustomerName] = useState("");
@@ -257,7 +259,9 @@ export default function NewOrder() {
   const [distanceCalcStatus, setDistanceCalcStatus] = useState<
     "idle" | "loading" | "done" | "error"
   >("idle");
-  const [distanceCalcError, setDistanceCalcError] = useState<string | null>(null);
+  const [distanceCalcError, setDistanceCalcError] = useState<string | null>(
+    null,
+  );
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -355,6 +359,7 @@ export default function NewOrder() {
             return;
           }
           setCepLookupStatus("found");
+          setDeliveryCep(digits);
           if (!deliveryAddress && data.logradouro)
             setDeliveryAddress(data.logradouro);
           if (!deliveryNeighborhood && data.bairro)
@@ -405,7 +410,10 @@ export default function NewOrder() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             customerCep: digits,
-            customerAddress: deliveryAddress || undefined,
+            customerAddress:
+              [deliveryAddress, deliveryNeighborhood]
+                .filter(Boolean)
+                .join(", ") || undefined,
           }),
         });
         const payload = (await res.json().catch(() => ({}))) as {
@@ -443,7 +451,8 @@ export default function NewOrder() {
 
         const isAutomaticMode = mode === "per_km" || mode === "distance_tier";
         const apiFee =
-          typeof payload.deliveryFee === "number" && Number.isFinite(payload.deliveryFee)
+          typeof payload.deliveryFee === "number" &&
+          Number.isFinite(payload.deliveryFee)
             ? payload.deliveryFee
             : null;
         const fee = apiFee ?? 0;
@@ -463,8 +472,7 @@ export default function NewOrder() {
           pricePerKm: storeSettings.deliveryPricePerKm ?? undefined,
           baseDistanceKm: storeSettings.baseDeliveryDistanceKm ?? undefined,
           baseFee: storeSettings.baseDeliveryFee ?? undefined,
-          additionalPricePerKm:
-            storeSettings.additionalPricePerKm ?? undefined,
+          additionalPricePerKm: storeSettings.additionalPricePerKm ?? undefined,
           fee,
         });
         setDistanceCalcStatus("done");
@@ -482,7 +490,13 @@ export default function NewOrder() {
     return () => {
       cancelled = true;
     };
-  }, [deliveryCep, deliveryAddress, orderType, storeSettings]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    deliveryCep,
+    deliveryAddress,
+    deliveryNeighborhood,
+    orderType,
+    storeSettings,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const buildAddonKey = (addons: SelectedAddon[]) =>
     addons
@@ -538,7 +552,9 @@ export default function NewOrder() {
     product: { id: number; name: string; price: number },
     variant?: { id: number; name: string; price: number },
   ) => {
-    const response = await fetch(`/api/menu/products/${product.id}/addon-groups`);
+    const response = await fetch(
+      `/api/menu/products/${product.id}/addon-groups`,
+    );
     const groups = ((await response.json()) as AddonGroup[]).filter(
       (group) => group.active,
     );
@@ -549,20 +565,34 @@ export default function NewOrder() {
     setAddonModalOpen(true);
   };
 
-  const removeFromCart = (productId: number, variantId: number | null, addonKey = "") => {
+  const removeFromCart = (
+    productId: number,
+    variantId: number | null,
+    addonKey = "",
+  ) => {
     setCart((prev) => {
       const existing = prev.find(
-        (i) => i.productId === productId && i.variantId === variantId && i.addonKey === addonKey,
+        (i) =>
+          i.productId === productId &&
+          i.variantId === variantId &&
+          i.addonKey === addonKey,
       );
       if (existing && existing.quantity > 1) {
         return prev.map((i) =>
-          i.productId === productId && i.variantId === variantId && i.addonKey === addonKey
+          i.productId === productId &&
+          i.variantId === variantId &&
+          i.addonKey === addonKey
             ? { ...i, quantity: i.quantity - 1 }
             : i,
         );
       }
       return prev.filter(
-        (i) => !(i.productId === productId && i.variantId === variantId && i.addonKey === addonKey),
+        (i) =>
+          !(
+            i.productId === productId &&
+            i.variantId === variantId &&
+            i.addonKey === addonKey
+          ),
       );
     });
   };
@@ -575,7 +605,9 @@ export default function NewOrder() {
   ) => {
     setCart((prev) =>
       prev.map((i) =>
-        i.productId === productId && i.variantId === variantId && i.addonKey === addonKey
+        i.productId === productId &&
+        i.variantId === variantId &&
+        i.addonKey === addonKey
           ? { ...i, notes }
           : i,
       ),
@@ -746,7 +778,8 @@ export default function NewOrder() {
         // All delivery fields
         orderData.customerName = customerName.trim();
         orderData.customerPhone = customerPhone.trim();
-        if (deliveryCep.trim()) orderData.deliveryCep = deliveryCep.trim();
+        if (deliveryCep.trim())
+          orderData.deliveryCep = deliveryCep.replace(/\D/g, "");
         orderData.deliveryAddress = deliveryAddress.trim();
         orderData.deliveryNeighborhood = deliveryNeighborhood.trim();
         if (deliveryReference.trim())
@@ -825,7 +858,6 @@ export default function NewOrder() {
     }
   };
 
-
   const toggleAddon = (group: AddonGroup, option: AddonOption) => {
     if (!option.available) return;
     setSelectedAddons((prev) => {
@@ -838,7 +870,10 @@ export default function NewOrder() {
       const groupSelected = Object.values(prev).filter(
         (addon) => addon.groupId === group.id,
       );
-      if (group.maxSelected != null && groupSelected.length >= group.maxSelected) {
+      if (
+        group.maxSelected != null &&
+        groupSelected.length >= group.maxSelected
+      ) {
         toast({
           title: `Selecione no máximo ${group.maxSelected} em ${group.name}`,
           variant: "destructive",
@@ -865,15 +900,24 @@ export default function NewOrder() {
       const selectedCount = selectedAddonList.filter(
         (addon) => addon.groupId === group.id,
       ).length;
-      const minimum = group.required ? Math.max(1, group.minSelected) : group.minSelected;
-      if (selectedCount < minimum) return `Selecione pelo menos ${minimum} em ${group.name}.`;
+      const minimum = group.required
+        ? Math.max(1, group.minSelected)
+        : group.minSelected;
+      if (selectedCount < minimum)
+        return `Selecione pelo menos ${minimum} em ${group.name}.`;
       if (group.maxSelected != null && selectedCount > group.maxSelected)
         return `Selecione no máximo ${group.maxSelected} em ${group.name}.`;
       return null;
     })
     .find(Boolean);
-  const addonBasePrice = addonProduct?.variant?.price ?? addonProduct?.price ?? 0;
-  const addonTotal = addonBasePrice + selectedAddonList.reduce((sum, addon) => sum + addon.price * addon.quantity, 0);
+  const addonBasePrice =
+    addonProduct?.variant?.price ?? addonProduct?.price ?? 0;
+  const addonTotal =
+    addonBasePrice +
+    selectedAddonList.reduce(
+      (sum, addon) => sum + addon.price * addon.quantity,
+      0,
+    );
 
   const ORDER_TYPES: { value: OrderType; label: string }[] = [
     { value: "counter", label: "🍽 Balcão" },
@@ -1066,8 +1110,8 @@ export default function NewOrder() {
                         {deliveryCep.replace(/\D/g, "").length > 0 &&
                           deliveryCep.replace(/\D/g, "").length < 8 && (
                             <p className="text-xs text-muted-foreground">
-                              Digite os 8 dígitos do CEP para calcular
-                              a distância.
+                              Digite os 8 dígitos do CEP para calcular a
+                              distância.
                             </p>
                           )}
                         {cepLookupStatus === "loading" &&
@@ -1573,7 +1617,9 @@ export default function NewOrder() {
                             {item.addons.length > 0 && (
                               <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
                                 {item.addons.map((addon) => (
-                                  <p key={addon.addonOptionId}>↳ {addon.name} · R$ {addon.price.toFixed(2)}</p>
+                                  <p key={addon.addonOptionId}>
+                                    ↳ {addon.name} · R$ {addon.price.toFixed(2)}
+                                  </p>
                                 ))}
                               </div>
                             )}
@@ -1584,7 +1630,11 @@ export default function NewOrder() {
                               variant="outline"
                               className="h-7 w-7 p-0"
                               onClick={() =>
-                                removeFromCart(item.productId, item.variantId, item.addonKey)
+                                removeFromCart(
+                                  item.productId,
+                                  item.variantId,
+                                  item.addonKey,
+                                )
                               }
                             >
                               <Minus className="w-3 h-3" />
@@ -1607,7 +1657,14 @@ export default function NewOrder() {
                                     ? {
                                         id: item.variantId,
                                         name: item.variantName ?? "",
-                                        price: item.price - item.addons.reduce((sum, addon) => sum + addon.price * addon.quantity, 0),
+                                        price:
+                                          item.price -
+                                          item.addons.reduce(
+                                            (sum, addon) =>
+                                              sum +
+                                              addon.price * addon.quantity,
+                                            0,
+                                          ),
                                       }
                                     : undefined,
                                   item.addons,
@@ -1698,18 +1755,27 @@ export default function NewOrder() {
           </DialogHeader>
           <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
             {addonGroups.map((group) => {
-              const selectedCount = selectedAddonList.filter((addon) => addon.groupId === group.id).length;
+              const selectedCount = selectedAddonList.filter(
+                (addon) => addon.groupId === group.id,
+              ).length;
               return (
                 <div key={group.id} className="rounded-xl border p-4">
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <div>
                       <h3 className="font-semibold">{group.name}</h3>
                       <p className="text-xs text-muted-foreground">
-                        {group.required ? "Obrigatório" : "Opcional"} · mín. {group.required ? Math.max(1, group.minSelected) : group.minSelected}
-                        {group.maxSelected != null ? ` · máx. ${group.maxSelected}` : ""}
+                        {group.required ? "Obrigatório" : "Opcional"} · mín.{" "}
+                        {group.required
+                          ? Math.max(1, group.minSelected)
+                          : group.minSelected}
+                        {group.maxSelected != null
+                          ? ` · máx. ${group.maxSelected}`
+                          : ""}
                       </p>
                     </div>
-                    <Badge variant="outline">{selectedCount} selecionado(s)</Badge>
+                    <Badge variant="outline">
+                      {selectedCount} selecionado(s)
+                    </Badge>
                   </div>
                   <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                     {group.options.map((option) => {
@@ -1724,9 +1790,15 @@ export default function NewOrder() {
                         >
                           <div className="flex items-center justify-between gap-3">
                             <span className="font-medium">{option.name}</span>
-                            <span className="font-semibold text-primary">R$ {option.price.toFixed(2)}</span>
+                            <span className="font-semibold text-primary">
+                              R$ {option.price.toFixed(2)}
+                            </span>
                           </div>
-                          {!option.available && <p className="text-xs text-muted-foreground">Indisponível</p>}
+                          {!option.available && (
+                            <p className="text-xs text-muted-foreground">
+                              Indisponível
+                            </p>
+                          )}
                         </button>
                       );
                     })}
@@ -1737,18 +1809,30 @@ export default function NewOrder() {
           </div>
           <DialogFooter className="gap-2 border-t bg-background px-6 py-4 sm:justify-between sm:space-x-0">
             <div className="text-sm">
-              {addonValidationError && <p className="text-destructive">{addonValidationError}</p>}
-              <p className="font-semibold">Total do item: R$ {addonTotal.toFixed(2)}</p>
+              {addonValidationError && (
+                <p className="text-destructive">{addonValidationError}</p>
+              )}
+              <p className="font-semibold">
+                Total do item: R$ {addonTotal.toFixed(2)}
+              </p>
             </div>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => setAddonModalOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAddonModalOpen(false)}
+              >
                 Cancelar
               </Button>
               <Button
                 disabled={Boolean(addonValidationError) || !addonProduct}
                 onClick={() => {
                   if (!addonProduct || addonValidationError) return;
-                  addToCart(addonProduct, addonProduct.variant, selectedAddonList);
+                  addToCart(
+                    addonProduct,
+                    addonProduct.variant,
+                    selectedAddonList,
+                  );
                   setAddonModalOpen(false);
                 }}
               >

@@ -25,6 +25,10 @@ import {
 import { releaseTableIfOrderClosed } from "../lib/table-release";
 import { getCurrentActor, requireOpenShift } from "../middleware/rbac";
 import { getOrCreateSettings } from "./settings";
+import {
+  calculateDeliveryDistanceForStore,
+  deliveryCalculationErrorStatus,
+} from "../lib/delivery-distance-calculator";
 
 const router: IRouter = Router();
 
@@ -73,6 +77,104 @@ function parseEstimatedDistanceKm(value: unknown): number | null {
   if (value == null) return null;
   const distance = Number.parseFloat(String(value));
   return Number.isFinite(distance) && distance > 0 ? distance : null;
+}
+
+type DistanceBackfillOrder = {
+  id: number;
+  deliveryCep: string | null;
+  deliveryAddress?: string | null;
+  deliveryNeighborhood?: string | null;
+  estimatedDistanceKm?: unknown;
+  deliveryDistanceSource?: string | null;
+};
+
+async function ensureEstimatedDistanceForOrder(
+  order: DistanceBackfillOrder,
+  storeId: number,
+): Promise<{
+  estimatedDistanceKm: number | null;
+  deliveryDistanceSource: string | null;
+}> {
+  const existing = parseEstimatedDistanceKm(order.estimatedDistanceKm);
+  if (existing !== null) {
+    return {
+      estimatedDistanceKm: existing,
+      deliveryDistanceSource: order.deliveryDistanceSource ?? null,
+    };
+  }
+
+  if (!normalizeCep(order.deliveryCep ?? "")) {
+    return { estimatedDistanceKm: null, deliveryDistanceSource: null };
+  }
+
+  const result = await calculateDeliveryDistanceForStore({
+    storeId,
+    customerCep: order.deliveryCep ?? "",
+    customerAddress:
+      [order.deliveryAddress, order.deliveryNeighborhood]
+        .map((part) => (part ? String(part).trim() : ""))
+        .filter(Boolean)
+        .join(", ") || null,
+  });
+
+  await db
+    .update(ordersTable)
+    .set({
+      estimatedDistanceKm: String(result.estimatedDistanceKm),
+      deliveryDistanceSource: result.source,
+      ...(result.deliveryFeeCalculated && result.deliveryFee != null
+        ? {
+            deliveryFee: String(result.deliveryFee),
+            deliveryFeeCalculated: "true",
+            deliveryFeeSource: result.source,
+          }
+        : {}),
+    })
+    .where(and(eq(ordersTable.id, order.id), eq(ordersTable.storeId, storeId)));
+
+  return {
+    estimatedDistanceKm: result.estimatedDistanceKm,
+    deliveryDistanceSource: result.source,
+  };
+}
+
+async function ensureEstimatedDistancesForOrders<
+  T extends DistanceBackfillOrder,
+>(
+  orders: T[],
+  storeId: number,
+  log?: { warn: (obj: unknown, msg?: string) => void },
+): Promise<
+  Array<
+    T & {
+      estimatedDistanceKm: number | null;
+      deliveryDistanceSource: string | null;
+    }
+  >
+> {
+  const resolved = [];
+  for (const order of orders) {
+    try {
+      const distance = await ensureEstimatedDistanceForOrder(order, storeId);
+      resolved.push({ ...order, ...distance });
+    } catch (error) {
+      log?.warn(
+        {
+          storeId,
+          orderId: order.id,
+          status: deliveryCalculationErrorStatus(error),
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "delivery distance backfill failed",
+      );
+      resolved.push({
+        ...order,
+        estimatedDistanceKm: null,
+        deliveryDistanceSource: order.deliveryDistanceSource ?? null,
+      });
+    }
+  }
+  return resolved;
 }
 
 function buildStoreRouteOrigin(
@@ -169,6 +271,7 @@ async function getRouteWithOrders(
       deliveryCep: ordersTable.deliveryCep,
       deliveryFee: ordersTable.deliveryFee,
       estimatedDistanceKm: ordersTable.estimatedDistanceKm,
+      deliveryDistanceSource: ordersTable.deliveryDistanceSource,
       deliveryStatus: ordersTable.deliveryStatus,
       totalAmount: ordersTable.totalAmount,
       paymentTiming: ordersTable.paymentTiming,
@@ -184,8 +287,25 @@ async function getRouteWithOrders(
     .where(eq(deliveryRouteOrdersTable.routeId, routeId))
     .orderBy(deliveryRouteOrdersTable.stopOrder);
 
+  const routeOrdersWithDistance = [];
+  for (const routeOrder of routeOrders) {
+    try {
+      const distance = await ensureEstimatedDistanceForOrder(
+        { ...routeOrder, id: routeOrder.orderId },
+        route.storeId,
+      );
+      routeOrdersWithDistance.push({ ...routeOrder, ...distance });
+    } catch {
+      routeOrdersWithDistance.push({
+        ...routeOrder,
+        estimatedDistanceKm: null,
+        deliveryDistanceSource: routeOrder.deliveryDistanceSource ?? null,
+      });
+    }
+  }
+
   // Fetch items for all orders in this route
-  const orderIds = routeOrders.map((o) => o.orderId);
+  const orderIds = routeOrdersWithDistance.map((o) => o.orderId);
   const allItems =
     orderIds.length > 0
       ? await db
@@ -204,15 +324,16 @@ async function getRouteWithOrders(
           .where(inArray(orderItemsTable.orderId, orderIds))
       : [];
 
-  const totalDeliveryFee = routeOrders.reduce(
+  const totalDeliveryFee = routeOrdersWithDistance.reduce(
     (sum, o) => sum + parseFloat(String(o.deliveryFee ?? "0")),
     0,
   );
-  const knownDistances = routeOrders
+  const knownDistances = routeOrdersWithDistance
     .map((o) => parseEstimatedDistanceKm(o.estimatedDistanceKm))
     .filter((distance): distance is number => distance !== null);
   const hasCompleteRouteDistance =
-    routeOrders.length > 0 && knownDistances.length === routeOrders.length;
+    routeOrdersWithDistance.length > 0 &&
+    knownDistances.length === routeOrdersWithDistance.length;
   const totalEstimatedDistanceKm = hasCompleteRouteDistance
     ? Math.round(
         knownDistances.reduce((sum, distance) => sum + distance, 0) * 10,
@@ -250,10 +371,12 @@ async function getRouteWithOrders(
     startedAt: route.startedAt?.toISOString() ?? null,
     completedAt: route.completedAt?.toISOString() ?? null,
     createdAt: route.createdAt.toISOString(),
-    orders: routeOrders.map((o) => ({
+    orders: routeOrdersWithDistance.map((o) => ({
       ...o,
       deliveryFee: parseFloat(String(o.deliveryFee ?? "0")),
       estimatedDistanceKm: parseEstimatedDistanceKm(o.estimatedDistanceKm),
+      distanceSource: o.deliveryDistanceSource ?? null,
+      deliveryDistanceSource: o.deliveryDistanceSource ?? null,
       totalAmount: parseFloat(String(o.totalAmount ?? "0")),
       changeFor: o.changeFor ? parseFloat(String(o.changeFor)) : null,
       orderCreatedAt: o.orderCreatedAt?.toISOString() ?? null,
@@ -619,6 +742,8 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
       deliveryCep: ordersTable.deliveryCep,
       deliveryFee: ordersTable.deliveryFee,
+      estimatedDistanceKm: ordersTable.estimatedDistanceKm,
+      deliveryDistanceSource: ordersTable.deliveryDistanceSource,
       kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
       createdAt: ordersTable.createdAt,
     })
@@ -635,8 +760,14 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     return;
   }
 
+  const eligibleOrdersWithDistance = await ensureEstimatedDistancesForOrders(
+    eligibleOrders,
+    actor.storeId,
+    req.log,
+  );
+
   const plan = generateRoutePlan(
-    eligibleOrders as EligibleOrder[],
+    eligibleOrdersWithDistance as EligibleOrder[],
     maxPerRoute,
     settings.storeCep ?? "",
   );
@@ -737,6 +868,7 @@ router.get("/delivery/orders/pending", async (req, res): Promise<void> => {
       deliveryCep: ordersTable.deliveryCep,
       deliveryFee: ordersTable.deliveryFee,
       estimatedDistanceKm: ordersTable.estimatedDistanceKm,
+      deliveryDistanceSource: ordersTable.deliveryDistanceSource,
       totalAmount: ordersTable.totalAmount,
       deliveryStatus: ordersTable.deliveryStatus,
       paymentTiming: ordersTable.paymentTiming,
@@ -756,8 +888,14 @@ router.get("/delivery/orders/pending", async (req, res): Promise<void> => {
     )
     .orderBy(sql`${ordersTable.createdAt} DESC`);
 
+  const ordersWithDistance = await ensureEstimatedDistancesForOrders(
+    orders,
+    actor.storeId,
+    req.log,
+  );
+
   const dp = settings.deliveryDispatchTimeMinutes;
-  const result = orders.map((o) => ({
+  const result = ordersWithDistance.map((o) => ({
     id: o.id,
     customerName: o.customerName ?? null,
     customerPhone: o.customerPhone ?? null,
@@ -766,6 +904,7 @@ router.get("/delivery/orders/pending", async (req, res): Promise<void> => {
     deliveryCep: o.deliveryCep,
     deliveryFee: parseFloat(String(o.deliveryFee ?? "0")),
     estimatedDistanceKm: parseEstimatedDistanceKm(o.estimatedDistanceKm),
+    distanceSource: o.deliveryDistanceSource ?? null,
     totalAmount: parseFloat(String(o.totalAmount ?? "0")),
     deliveryStatus: o.deliveryStatus,
     paymentTiming: o.paymentTiming ?? "now",
@@ -799,6 +938,8 @@ router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
       deliveryCep: ordersTable.deliveryCep,
       deliveryFee: ordersTable.deliveryFee,
+      estimatedDistanceKm: ordersTable.estimatedDistanceKm,
+      deliveryDistanceSource: ordersTable.deliveryDistanceSource,
       kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
       createdAt: ordersTable.createdAt,
     })
@@ -809,6 +950,20 @@ router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
   if (!order) {
     res.status(404).json({ error: "Order not found" });
     return;
+  }
+
+  try {
+    await ensureEstimatedDistanceForOrder(order, actor.storeId);
+  } catch (error) {
+    req.log.warn(
+      {
+        storeId: actor.storeId,
+        orderId,
+        status: deliveryCalculationErrorStatus(error),
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "emergency route distance backfill failed",
+    );
   }
 
   const settings = await getOrCreateSettings(actor.storeId);
