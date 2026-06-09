@@ -651,8 +651,8 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
 
   for (const { group } of linkedGroups) {
     const selectedCount = selectedByGroup.get(group.id) ?? 0;
-    const minimum = group.required ? Math.max(1, group.minSelected) : group.minSelected;
-    if (selectedCount < minimum) {
+    const minimum = group.required ? Math.max(1, group.minSelected ?? 0) : 0;
+    if (group.required && selectedCount < minimum) {
       res.status(400).json({ error: `Selecione pelo menos ${minimum} opção(ões) em ${group.name}.` });
       return;
     }

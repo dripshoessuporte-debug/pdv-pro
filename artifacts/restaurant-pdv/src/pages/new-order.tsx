@@ -865,8 +865,8 @@ export default function NewOrder() {
       const selectedCount = selectedAddonList.filter(
         (addon) => addon.groupId === group.id,
       ).length;
-      const minimum = group.required ? Math.max(1, group.minSelected) : group.minSelected;
-      if (selectedCount < minimum) return `Selecione pelo menos ${minimum} em ${group.name}.`;
+      const minimum = group.required ? Math.max(1, group.minSelected ?? 0) : 0;
+      if (group.required && selectedCount < minimum) return `Selecione pelo menos ${minimum} em ${group.name}.`;
       if (group.maxSelected != null && selectedCount > group.maxSelected)
         return `Selecione no máximo ${group.maxSelected} em ${group.name}.`;
       return null;
@@ -1705,7 +1705,9 @@ export default function NewOrder() {
                     <div>
                       <h3 className="font-semibold">{group.name}</h3>
                       <p className="text-xs text-muted-foreground">
-                        {group.required ? "Obrigatório" : "Opcional"} · mín. {group.required ? Math.max(1, group.minSelected) : group.minSelected}
+                        {group.required
+                          ? `Obrigatório · mín. ${Math.max(1, group.minSelected ?? 0)}`
+                          : "Opcional · mín. 0"}
                         {group.maxSelected != null ? ` · máx. ${group.maxSelected}` : ""}
                       </p>
                     </div>
