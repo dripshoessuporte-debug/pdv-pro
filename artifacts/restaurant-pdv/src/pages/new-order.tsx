@@ -214,6 +214,8 @@ export default function NewOrder() {
   const [deliveryCep, setDeliveryCep] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryNeighborhood, setDeliveryNeighborhood] = useState("");
+  const [deliveryCity, setDeliveryCity] = useState("");
+  const [deliveryState, setDeliveryState] = useState("");
   const [deliveryReference, setDeliveryReference] = useState("");
   const [deliveryFee, setDeliveryFee] = useState("");
   const [deliveryNotes, setDeliveryNotes] = useState("");
@@ -358,12 +360,21 @@ export default function NewOrder() {
             setCepLookupStatus("not_found");
             return;
           }
+          const uf = String(data.uf ?? "")
+            .replace(/[^A-Za-z]/g, "")
+            .toUpperCase();
           setCepLookupStatus("found");
           setDeliveryCep(digits);
           if (!deliveryAddress && data.logradouro)
             setDeliveryAddress(data.logradouro);
           if (!deliveryNeighborhood && data.bairro)
             setDeliveryNeighborhood(data.bairro);
+          setDeliveryCity(
+            String(data.localidade ?? "")
+              .replace(/,\s*[A-Za-z]{2}$/i, "")
+              .trim(),
+          );
+          setDeliveryState(/^[A-Z]{2}$/.test(uf) && uf !== "UF" ? uf : "");
         },
       )
       .catch(() => {
@@ -411,9 +422,15 @@ export default function NewOrder() {
           body: JSON.stringify({
             customerCep: digits,
             customerAddress:
-              [deliveryAddress, deliveryNeighborhood]
+              [
+                deliveryAddress,
+                deliveryNeighborhood,
+                deliveryCity,
+                deliveryState,
+              ]
                 .filter(Boolean)
                 .join(", ") || undefined,
+            customerCity: deliveryCity || undefined,
           }),
         });
         const payload = (await res.json().catch(() => ({}))) as {
@@ -494,6 +511,8 @@ export default function NewOrder() {
     deliveryCep,
     deliveryAddress,
     deliveryNeighborhood,
+    deliveryCity,
+    deliveryState,
     orderType,
     storeSettings,
   ]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -952,7 +952,7 @@ export default function Settings() {
                   {deliveryFeeMode === "distance_tier" && (
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <Label>Taxa fixa inicial (R$)</Label>
+                        <Label>Taxa mínima de entrega (R$)</Label>
                         <Input
                           type="number"
                           step="0.50"
@@ -963,7 +963,7 @@ export default function Settings() {
                           data-testid="input-base-delivery-fee"
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          Cobrada até a distância incluída
+                          Valor cobrado até a distância incluída
                         </p>
                       </div>
                       <div>
@@ -980,7 +980,7 @@ export default function Settings() {
                           data-testid="input-base-delivery-distance-km"
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          Raio coberto pela taxa fixa
+                          Km já cobertos pela taxa mínima
                         </p>
                       </div>
                       <div>
@@ -1061,7 +1061,7 @@ export default function Settings() {
                             Exemplos com esta configuração:
                           </p>
                           <div className="flex justify-between text-muted-foreground">
-                            <span>Até {bDist} km</span>
+                            <span>Até {bDist} km (taxa mínima)</span>
                             <span className="font-semibold text-foreground">
                               R$ {bFee.toFixed(2)}
                             </span>
