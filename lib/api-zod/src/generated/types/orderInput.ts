@@ -17,9 +17,17 @@ export interface OrderInput {
   customerPhone?: string;
   deliveryCep?: string;
   deliveryAddress?: string;
+  deliveryNumber?: string;
   deliveryNeighborhood?: string;
+  deliveryCity?: string;
+  deliveryState?: string;
+  deliveryComplement?: string;
   deliveryReference?: string;
   deliveryFee?: number;
+  estimatedDistanceKm?: number;
+  deliveryDistanceSource?: string;
+  deliveryFeeCalculated?: boolean;
+  deliveryFeeSource?: string;
   deliveryNotes?: string;
   paymentTiming?: OrderInputPaymentTiming;
   deliveryPaymentMethod?: string;

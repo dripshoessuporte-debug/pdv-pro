@@ -79,7 +79,12 @@ interface RouteOrder {
   customerName: string | null;
   customerPhone: string | null;
   deliveryAddress: string | null;
+  deliveryNumber?: string | null;
   deliveryNeighborhood: string | null;
+  deliveryCity?: string | null;
+  deliveryState?: string | null;
+  deliveryComplement?: string | null;
+  deliveryReference?: string | null;
   deliveryCep: string | null;
   deliveryFee: number;
   estimatedDistanceKm: number | null;
@@ -124,7 +129,12 @@ interface PendingDeliveryOrder {
   customerName: string | null;
   customerPhone: string | null;
   deliveryAddress: string | null;
+  deliveryNumber?: string | null;
   deliveryNeighborhood: string | null;
+  deliveryCity?: string | null;
+  deliveryState?: string | null;
+  deliveryComplement?: string | null;
+  deliveryReference?: string | null;
   deliveryCep: string | null;
   deliveryFee: number;
   estimatedDistanceKm: number | null;
@@ -1822,6 +1832,11 @@ function PendingOrderRow({
               {reliableDistance.toFixed(1)} km
             </span>
           )}
+          {order.deliveryDistanceSource && (
+            <span className="font-mono text-[11px] text-slate-400">
+              source: {order.deliveryDistanceSource}
+            </span>
+          )}
         </div>
       </div>
 
@@ -1834,6 +1849,9 @@ function PendingOrderRow({
             </span>
           )}
           <span>Taxa R$ {order.deliveryFee.toFixed(2)}</span>
+          <span className="font-mono text-[11px] text-slate-400">
+            backend-create/backfill
+          </span>
           <span className="font-bold text-slate-900">
             Total R$ {order.totalAmount.toFixed(2)}
           </span>

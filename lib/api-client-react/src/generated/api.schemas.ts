@@ -364,7 +364,15 @@ export interface Order {
   /** @nullable */
   deliveryAddress?: string | null;
   /** @nullable */
+  deliveryNumber?: string | null;
+  /** @nullable */
   deliveryNeighborhood?: string | null;
+  /** @nullable */
+  deliveryCity?: string | null;
+  /** @nullable */
+  deliveryState?: string | null;
+  /** @nullable */
+  deliveryComplement?: string | null;
   /** @nullable */
   deliveryReference?: string | null;
   deliveryFee: number;
@@ -403,6 +411,8 @@ export interface Order {
   deliveryFeeCalculated?: boolean | null;
   /** @nullable */
   deliveryFeeSource?: string | null;
+  /** @nullable */
+  deliveryDistanceSource?: string | null;
   items: OrderItem[];
 }
 
@@ -433,9 +443,17 @@ export interface OrderInput {
   customerPhone?: string;
   deliveryCep?: string;
   deliveryAddress?: string;
+  deliveryNumber?: string;
   deliveryNeighborhood?: string;
+  deliveryCity?: string;
+  deliveryState?: string;
+  deliveryComplement?: string;
   deliveryReference?: string;
   deliveryFee?: number;
+  estimatedDistanceKm?: number;
+  deliveryDistanceSource?: string;
+  deliveryFeeCalculated?: boolean;
+  deliveryFeeSource?: string;
   deliveryNotes?: string;
   paymentTiming?: OrderInputPaymentTiming;
   deliveryPaymentMethod?: string;

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import {
   db,
@@ -28,11 +29,15 @@ export type DeliveryDistanceResult = {
   source: "openrouteservice" | "approximate_cep";
   cached: boolean;
   fallback?: true;
+  suspicious?: boolean;
   deliveryFee: number | null;
   deliveryFeeCalculated: boolean;
   feeSettings: ReturnType<typeof settingsForFee>;
   origin: StoreDeliveryOrigin;
   customerCep: string;
+  customerAddressUsed: string | null;
+  addressHash: string;
+  distanceQuoteId: string;
 };
 
 function numberOrNull(value: unknown): number | null {
@@ -46,6 +51,73 @@ function cleanAddressPart(value: unknown): string | null {
     .replace(/\s+/g, " ")
     .trim();
   return trimmed || null;
+}
+
+function normalizeTextForKey(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function hashAddress(value: string | null): string {
+  if (!value) return "";
+  return crypto
+    .createHash("sha256")
+    .update(normalizeTextForKey(value))
+    .digest("hex")
+    .slice(0, 24);
+}
+
+function buildQuoteId(parts: {
+  storeCep: string;
+  customerCep: string;
+  provider: string;
+  addressHash: string;
+  distanceKm: number;
+}): string {
+  return crypto
+    .createHash("sha256")
+    .update(
+      [
+        parts.storeCep,
+        parts.customerCep,
+        parts.provider,
+        parts.addressHash,
+        parts.distanceKm.toFixed(3),
+      ].join("|"),
+    )
+    .digest("hex")
+    .slice(0, 32);
+}
+
+function maxReasonableDeliveryDistanceKm(): number {
+  const configured = Number.parseFloat(
+    process.env.MAX_REASONABLE_DELIVERY_DISTANCE_KM ?? "",
+  );
+  return Number.isFinite(configured) && configured > 0 ? configured : 100;
+}
+
+function sameCity(
+  settings: StoreSettings,
+  customerCity?: string | null,
+): boolean {
+  const storeCity = normalizeTextForKey(settings.storeCity);
+  const city = normalizeTextForKey(customerCity);
+  return Boolean(storeCity && city && storeCity === city);
+}
+
+function isSuspiciousLocalDistance(input: {
+  settings: StoreSettings;
+  customerCity?: string | null;
+  distanceKm: number;
+}): boolean {
+  return (
+    sameCity(input.settings, input.customerCity) &&
+    input.distanceKm > maxReasonableDeliveryDistanceKm()
+  );
 }
 
 function settingsForFee(settings: StoreSettings) {
@@ -77,6 +149,20 @@ export async function calculateDeliveryDistanceForStore(input: {
     settings.useDistanceCache !== "false" && input.ignoreCache !== true;
   const orsReady = providerPref === "openrouteservice" && isOrsConfigured();
   const activeProvider = orsReady ? "openrouteservice" : "approximate_cep";
+  const customerFullAddr = [
+    input.customerAddress,
+    input.customerCity,
+    normCustomer,
+    "Brasil",
+  ]
+    .map(cleanAddressPart)
+    .filter(Boolean)
+    .join(", ");
+  const customerAddressUsed = customerFullAddr || null;
+  const addressHash =
+    activeProvider === "openrouteservice"
+      ? hashAddress(customerAddressUsed)
+      : "";
 
   if (useCache) {
     const [cached] = await db
@@ -87,53 +173,76 @@ export async function calculateDeliveryDistanceForStore(input: {
           eq(deliveryDistanceCacheTable.originCep, origin.storeCep),
           eq(deliveryDistanceCacheTable.destinationCep, normCustomer),
           eq(deliveryDistanceCacheTable.provider, activeProvider),
+          eq(deliveryDistanceCacheTable.addressHash, addressHash),
         ),
       )
       .limit(1);
 
     if (cached) {
       const distanceKm = Number.parseFloat(String(cached.distanceKm));
-      const feeMode = settings.deliveryFeeMode ?? "manual";
-      const deliveryFeeCalculated = feeMode !== "manual";
-      const feeSettings = settingsForFee(settings);
-      const deliveryFee = deliveryFeeCalculated
-        ? calculateDeliveryFee(distanceKm, feeSettings)
-        : null;
-      return {
-        estimatedDistanceKm: distanceKm,
-        distanceKm,
-        source: activeProvider,
-        cached: true,
-        deliveryFee,
-        deliveryFeeCalculated,
-        feeSettings,
-        origin,
-        customerCep: normCustomer,
-      };
+      if (
+        Number.isFinite(distanceKm) &&
+        !isSuspiciousLocalDistance({
+          settings,
+          customerCity: input.customerCity,
+          distanceKm,
+        })
+      ) {
+        const feeMode = settings.deliveryFeeMode ?? "manual";
+        const deliveryFeeCalculated = feeMode !== "manual";
+        const feeSettings = settingsForFee(settings);
+        const deliveryFee = deliveryFeeCalculated
+          ? calculateDeliveryFee(distanceKm, feeSettings)
+          : null;
+        return {
+          estimatedDistanceKm: distanceKm,
+          distanceKm,
+          source: activeProvider,
+          cached: true,
+          deliveryFee,
+          deliveryFeeCalculated,
+          feeSettings,
+          origin,
+          customerCep: normCustomer,
+          customerAddressUsed,
+          addressHash,
+          distanceQuoteId: buildQuoteId({
+            storeCep: origin.storeCep,
+            customerCep: normCustomer,
+            provider: activeProvider,
+            addressHash,
+            distanceKm,
+          }),
+        };
+      }
     }
   }
 
   let distanceKm: number | null = null;
   let source: "openrouteservice" | "approximate_cep" = activeProvider;
   let fallback = false;
+  let suspicious = false;
 
   if (orsReady) {
-    const customerFullAddr = [
-      input.customerAddress,
-      input.customerCity,
-      normCustomer,
-      "Brasil",
-    ]
-      .map(cleanAddressPart)
-      .filter(Boolean)
-      .join(", ");
-
     if (origin.address.fullAddress && customerFullAddr) {
       distanceKm = await calculateRouteDistanceKm(
         origin.address.fullAddress,
         customerFullAddr,
         getOrsApiKey()!,
       );
+    }
+
+    if (
+      distanceKm !== null &&
+      isSuspiciousLocalDistance({
+        settings,
+        customerCity: input.customerCity,
+        distanceKm,
+      })
+    ) {
+      suspicious = true;
+      distanceKm = null;
+      fallback = true;
     }
 
     if (distanceKm === null) {
@@ -151,7 +260,21 @@ export async function calculateDeliveryDistanceForStore(input: {
     throw new Error("Não foi possível calcular a distância.");
   }
 
-  if (useCache) {
+  if (
+    isSuspiciousLocalDistance({
+      settings,
+      customerCity: input.customerCity,
+      distanceKm,
+    })
+  ) {
+    suspicious = true;
+    throw new Error(
+      `Distância calculada (${distanceKm.toFixed(1)} km) parece incompatível com entrega local em ${input.customerCity}.`,
+    );
+  }
+
+  const cacheAddressHash = source === "openrouteservice" ? addressHash : "";
+  if (useCache && !suspicious) {
     await db
       .insert(deliveryDistanceCacheTable)
       .values({
@@ -159,6 +282,7 @@ export async function calculateDeliveryDistanceForStore(input: {
         destinationCep: normCustomer,
         distanceKm: String(distanceKm),
         provider: source,
+        addressHash: cacheAddressHash,
       })
       .onConflictDoNothing();
   }
@@ -176,11 +300,21 @@ export async function calculateDeliveryDistanceForStore(input: {
     source,
     cached: false,
     ...(fallback ? { fallback: true as const } : {}),
+    ...(suspicious ? { suspicious: true as const } : {}),
     deliveryFee,
     deliveryFeeCalculated,
     feeSettings,
     origin,
     customerCep: normCustomer,
+    customerAddressUsed,
+    addressHash: cacheAddressHash,
+    distanceQuoteId: buildQuoteId({
+      storeCep: origin.storeCep,
+      customerCep: normCustomer,
+      provider: source,
+      addressHash: cacheAddressHash,
+      distanceKm,
+    }),
   };
 }
 

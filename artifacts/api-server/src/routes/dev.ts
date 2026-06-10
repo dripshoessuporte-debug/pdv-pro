@@ -4,6 +4,7 @@ import {
   db,
   cashRegistersTable,
   cashMovementsTable,
+  deliveryDistanceCacheTable,
   deliveryRouteOrdersTable,
   deliveryRoutesTable,
   kitchenTicketsTable,
@@ -40,6 +41,58 @@ router.get("/dev/tool-status", requireDevToolAccess, (req, res): void => {
     allowDevAdminFallback: process.env.ALLOW_DEV_ADMIN_FALLBACK ?? "",
   });
 });
+
+router.post(
+  "/dev/clear-delivery-distance-cache",
+  requireDevToolAccess,
+  async (req, res): Promise<void> => {
+    const { storeId } = await getCurrentActor(req);
+    const origin = await getStoreDeliveryOrigin(storeId);
+    const originCep = String(req.body?.originCep ?? origin.storeCep).replace(
+      /\D/g,
+      "",
+    );
+    const destinationCep = req.body?.destinationCep
+      ? String(req.body.destinationCep).replace(/\D/g, "")
+      : null;
+    const aboveKmRaw = Number.parseFloat(String(req.body?.aboveKm ?? ""));
+    const aboveKm = Number.isFinite(aboveKmRaw) ? aboveKmRaw : null;
+    const clearAll = req.body?.all === true;
+
+    const conditions = [eq(deliveryDistanceCacheTable.originCep, originCep)];
+    if (destinationCep) {
+      conditions.push(
+        eq(deliveryDistanceCacheTable.destinationCep, destinationCep),
+      );
+    }
+    if (aboveKm != null) {
+      conditions.push(
+        sql`${deliveryDistanceCacheTable.distanceKm}::numeric > ${aboveKm}`,
+      );
+    }
+
+    if (!clearAll && !destinationCep && aboveKm == null) {
+      res.status(400).json({
+        error:
+          "Envie { all: true }, destinationCep ou aboveKm para limpar o cache de distância.",
+      });
+      return;
+    }
+
+    const deleted = await db
+      .delete(deliveryDistanceCacheTable)
+      .where(and(...conditions))
+      .returning({ id: deliveryDistanceCacheTable.id });
+
+    res.json({
+      deleted: deleted.length,
+      originCep,
+      destinationCep,
+      aboveKm,
+      all: clearAll,
+    });
+  },
+);
 
 // ─── POST /dev/reset ──────────────────────────────────────────────────────────
 // Apaga pedidos, rotas e dados transacionais da loja atual.

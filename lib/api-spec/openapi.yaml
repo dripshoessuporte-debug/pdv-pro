@@ -1799,7 +1799,15 @@ components:
           type: ["string", "null"]
         deliveryAddress:
           type: ["string", "null"]
+        deliveryNumber:
+          type: ["string", "null"]
         deliveryNeighborhood:
+          type: ["string", "null"]
+        deliveryCity:
+          type: ["string", "null"]
+        deliveryState:
+          type: ["string", "null"]
+        deliveryComplement:
           type: ["string", "null"]
         deliveryReference:
           type: ["string", "null"]
@@ -1845,6 +1853,8 @@ components:
           type: ["boolean", "null"]
         deliveryFeeSource:
           type: ["string", "null"]
+        deliveryDistanceSource:
+          type: ["string", "null"]
         items:
           type: array
           items:
@@ -1871,12 +1881,28 @@ components:
           type: string
         deliveryAddress:
           type: string
+        deliveryNumber:
+          type: string
         deliveryNeighborhood:
+          type: string
+        deliveryCity:
+          type: string
+        deliveryState:
+          type: string
+        deliveryComplement:
           type: string
         deliveryReference:
           type: string
         deliveryFee:
           type: number
+        estimatedDistanceKm:
+          type: number
+        deliveryDistanceSource:
+          type: string
+        deliveryFeeCalculated:
+          type: boolean
+        deliveryFeeSource:
+          type: string
         deliveryNotes:
           type: string
         paymentTiming:
@@ -2597,7 +2623,15 @@ components:
               type: string
             address:
               type: string
+            number:
+              type: string
             neighborhood:
+              type: string
+            city:
+              type: string
+            state:
+              type: string
+            complement:
               type: string
             reference:
               type: string

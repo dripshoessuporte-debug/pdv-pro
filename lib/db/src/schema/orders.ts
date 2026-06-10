@@ -36,7 +36,11 @@ export const ordersTable = pgTable(
     customerPhone: text("customer_phone"),
     deliveryCep: text("delivery_cep"),
     deliveryAddress: text("delivery_address"),
+    deliveryNumber: text("delivery_number"),
     deliveryNeighborhood: text("delivery_neighborhood"),
+    deliveryCity: text("delivery_city"),
+    deliveryState: text("delivery_state"),
+    deliveryComplement: text("delivery_complement"),
     deliveryReference: text("delivery_reference"),
     deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 })
       .notNull()
@@ -100,13 +104,16 @@ export const orderItemsTable = pgTable("order_items", {
   notes: text("notes"),
 });
 
-
 export const orderItemAddonsTable = pgTable(
   "order_item_addons",
   {
     id: serial("id").primaryKey(),
-    orderItemId: integer("order_item_id").notNull().references(() => orderItemsTable.id, { onDelete: "cascade" }),
-    addonOptionId: integer("addon_option_id").references(() => addonOptionsTable.id),
+    orderItemId: integer("order_item_id")
+      .notNull()
+      .references(() => orderItemsTable.id, { onDelete: "cascade" }),
+    addonOptionId: integer("addon_option_id").references(
+      () => addonOptionsTable.id,
+    ),
     addonGroupName: text("addon_group_name").notNull(),
     addonName: text("addon_name").notNull(),
     addonPrice: numeric("addon_price", { precision: 10, scale: 2 }).notNull(),
@@ -133,7 +140,8 @@ export const insertOrderItemSchema = createInsertSchema(orderItemsTable).omit({
 export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
 export type OrderItem = typeof orderItemsTable.$inferSelect;
 
-
-export const insertOrderItemAddonSchema = createInsertSchema(orderItemAddonsTable).omit({ id: true });
+export const insertOrderItemAddonSchema = createInsertSchema(
+  orderItemAddonsTable,
+).omit({ id: true });
 export type InsertOrderItemAddon = z.infer<typeof insertOrderItemAddonSchema>;
 export type OrderItemAddon = typeof orderItemAddonsTable.$inferSelect;

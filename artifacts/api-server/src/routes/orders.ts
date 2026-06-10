@@ -49,6 +49,60 @@ import {
 
 const router: IRouter = Router();
 
+function cleanAddressPart(value: unknown): string | null {
+  const trimmed = String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return trimmed || null;
+}
+
+function buildDeliveryCustomerAddress(data: {
+  deliveryAddress?: string | null;
+  deliveryNumber?: string | null;
+  deliveryNeighborhood?: string | null;
+  deliveryCity?: string | null;
+  deliveryState?: string | null;
+  deliveryCep?: string | null;
+  deliveryComplement?: string | null;
+  deliveryReference?: string | null;
+}): string | null {
+  return (
+    [
+      [data.deliveryAddress, data.deliveryNumber]
+        .map(cleanAddressPart)
+        .filter(Boolean)
+        .join(", "),
+      data.deliveryNeighborhood,
+      [data.deliveryCity, data.deliveryState]
+        .map(cleanAddressPart)
+        .filter(Boolean)
+        .join(" - "),
+      data.deliveryCep,
+      data.deliveryComplement,
+      data.deliveryReference,
+      "Brasil",
+    ]
+      .map(cleanAddressPart)
+      .filter(Boolean)
+      .join(", ") || null
+  );
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const parsed = Number.parseFloat(String(value));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function isLargeDistanceDivergence(a: number, b: number): boolean {
+  const diff = Math.abs(a - b);
+  return diff > Math.max(1, Math.min(a, b) * 0.2);
+}
+
+function isDevRuntime(): boolean {
+  return process.env.NODE_ENV !== "production";
+}
+
 async function getOrderWithItems(orderId: number, storeId?: number) {
   const [order] = await db
     .select({
@@ -65,7 +119,11 @@ async function getOrderWithItems(orderId: number, storeId?: number) {
       customerPhone: ordersTable.customerPhone,
       deliveryCep: ordersTable.deliveryCep,
       deliveryAddress: ordersTable.deliveryAddress,
+      deliveryNumber: ordersTable.deliveryNumber,
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+      deliveryCity: ordersTable.deliveryCity,
+      deliveryState: ordersTable.deliveryState,
+      deliveryComplement: ordersTable.deliveryComplement,
       deliveryReference: ordersTable.deliveryReference,
       deliveryFee: ordersTable.deliveryFee,
       deliveryNotes: ordersTable.deliveryNotes,
@@ -217,7 +275,11 @@ router.get("/orders", async (req, res): Promise<void> => {
       customerPhone: ordersTable.customerPhone,
       deliveryCep: ordersTable.deliveryCep,
       deliveryAddress: ordersTable.deliveryAddress,
+      deliveryNumber: ordersTable.deliveryNumber,
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+      deliveryCity: ordersTable.deliveryCity,
+      deliveryState: ordersTable.deliveryState,
+      deliveryComplement: ordersTable.deliveryComplement,
       deliveryReference: ordersTable.deliveryReference,
       deliveryFee: ordersTable.deliveryFee,
       deliveryNotes: ordersTable.deliveryNotes,
@@ -326,11 +388,22 @@ router.post("/orders", async (req, res): Promise<void> => {
     return;
   }
 
-  const { deliveryFee, needsChange, changeFor, ...restData } = parsed.data;
+  const {
+    deliveryFee,
+    needsChange,
+    changeFor,
+    estimatedDistanceKm: _previewEstimatedDistanceKm,
+    deliveryFeeCalculated: _previewDeliveryFeeCalculated,
+    deliveryFeeSource: _previewDeliveryFeeSource,
+    deliveryDistanceSource: _previewDeliveryDistanceSource,
+    ...restData
+  } = parsed.data;
   let fee = deliveryFee ?? 0;
-  let estimatedDistanceKm: number | null = null;
-  let deliveryFeeCalculated = false;
-  let deliveryFeeSource: string | null = null;
+  let estimatedDistanceKm = numberOrNull(parsed.data.estimatedDistanceKm);
+  let deliveryFeeCalculated = parsed.data.deliveryFeeCalculated ?? false;
+  let deliveryFeeSource: string | null = parsed.data.deliveryFeeSource ?? null;
+  let deliveryDistanceSource: string | null =
+    parsed.data.deliveryDistanceSource ?? deliveryFeeSource;
 
   const scope = await requireOpenShift(req, res);
   if (!scope) return;
@@ -338,20 +411,67 @@ router.post("/orders", async (req, res): Promise<void> => {
 
   if (parsed.data.type === "delivery" && parsed.data.deliveryCep) {
     parsed.data.deliveryCep = parsed.data.deliveryCep.replace(/\D/g, "");
+    const previewDistanceKm = estimatedDistanceKm;
+    const previewDeliveryFee = numberOrNull(deliveryFee);
+    const customerAddress = buildDeliveryCustomerAddress(parsed.data);
     try {
       const distanceResult = await calculateDeliveryDistanceForStore({
         storeId,
         customerCep: parsed.data.deliveryCep,
-        customerAddress: parsed.data.deliveryAddress ?? null,
+        customerAddress,
+        customerCity: parsed.data.deliveryCity ?? null,
+        ignoreCache: previewDistanceKm !== null,
       });
-      estimatedDistanceKm = distanceResult.estimatedDistanceKm;
-      deliveryFeeCalculated = distanceResult.deliveryFeeCalculated;
-      deliveryFeeSource = distanceResult.source;
+
       if (
-        distanceResult.deliveryFeeCalculated &&
-        distanceResult.deliveryFee != null
+        previewDistanceKm !== null &&
+        isLargeDistanceDivergence(
+          previewDistanceKm,
+          distanceResult.estimatedDistanceKm,
+        )
       ) {
-        fee = distanceResult.deliveryFee;
+        const diagnostic = {
+          previewDistanceKm,
+          backendDistanceKm: distanceResult.estimatedDistanceKm,
+          previewDeliveryFee,
+          backendDeliveryFee: distanceResult.deliveryFee,
+          customerCep: parsed.data.deliveryCep,
+          customerAddress,
+          customerAddressUsed: distanceResult.customerAddressUsed,
+          source: distanceResult.source,
+          cached: distanceResult.cached,
+        };
+        req.log.warn(diagnostic, "delivery preview/create distance divergence");
+        if (isDevRuntime()) {
+          res.status(422).json({
+            error:
+              "Divergência grande entre prévia e recálculo da entrega; pedido não foi salvo.",
+            diagnostic,
+          });
+          return;
+        }
+      }
+
+      if (previewDistanceKm !== null) {
+        estimatedDistanceKm = previewDistanceKm;
+        deliveryFeeCalculated = parsed.data.deliveryFeeCalculated ?? true;
+        deliveryFeeSource = parsed.data.deliveryFeeSource ?? "preview";
+        deliveryDistanceSource =
+          parsed.data.deliveryDistanceSource ??
+          parsed.data.deliveryFeeSource ??
+          "preview";
+        if (previewDeliveryFee !== null) fee = previewDeliveryFee;
+      } else {
+        estimatedDistanceKm = distanceResult.estimatedDistanceKm;
+        deliveryFeeCalculated = distanceResult.deliveryFeeCalculated;
+        deliveryFeeSource = distanceResult.source;
+        deliveryDistanceSource = distanceResult.source;
+        if (
+          distanceResult.deliveryFeeCalculated &&
+          distanceResult.deliveryFee != null
+        ) {
+          fee = distanceResult.deliveryFee;
+        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -419,7 +539,7 @@ router.post("/orders", async (req, res): Promise<void> => {
               estimatedDistanceKm !== null ? String(estimatedDistanceKm) : null,
             deliveryFeeCalculated: String(deliveryFeeCalculated),
             deliveryFeeSource,
-            deliveryDistanceSource: deliveryFeeSource,
+            deliveryDistanceSource,
           }
         : {}),
       ...(needsChange !== undefined
@@ -480,7 +600,12 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
       type: ordersTable.type,
       deliveryCep: ordersTable.deliveryCep,
       deliveryAddress: ordersTable.deliveryAddress,
+      deliveryNumber: ordersTable.deliveryNumber,
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+      deliveryCity: ordersTable.deliveryCity,
+      deliveryState: ordersTable.deliveryState,
+      deliveryComplement: ordersTable.deliveryComplement,
+      deliveryReference: ordersTable.deliveryReference,
       estimatedDistanceKm: ordersTable.estimatedDistanceKm,
       deliveryFee: ordersTable.deliveryFee,
     })
@@ -509,7 +634,12 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
     Boolean(nextCep) &&
     (updateData.deliveryCep !== undefined ||
       updateData.deliveryAddress !== undefined ||
+      updateData.deliveryNumber !== undefined ||
       updateData.deliveryNeighborhood !== undefined ||
+      updateData.deliveryCity !== undefined ||
+      updateData.deliveryState !== undefined ||
+      updateData.deliveryComplement !== undefined ||
+      updateData.deliveryReference !== undefined ||
       currentOrder.estimatedDistanceKm == null);
 
   if (typeof updateData.deliveryCep === "string") {
@@ -521,15 +651,39 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
       const distanceResult = await calculateDeliveryDistanceForStore({
         storeId: actor.storeId,
         customerCep: nextCep,
-        customerAddress:
-          [
-            updateData.deliveryAddress ?? currentOrder.deliveryAddress,
+        customerAddress: buildDeliveryCustomerAddress({
+          deliveryAddress: String(
+            updateData.deliveryAddress ?? currentOrder.deliveryAddress ?? "",
+          ),
+          deliveryNumber: String(
+            updateData.deliveryNumber ?? currentOrder.deliveryNumber ?? "",
+          ),
+          deliveryNeighborhood: String(
             updateData.deliveryNeighborhood ??
-              currentOrder.deliveryNeighborhood,
-          ]
-            .map((part) => (part ? String(part).trim() : ""))
-            .filter(Boolean)
-            .join(", ") || null,
+              currentOrder.deliveryNeighborhood ??
+              "",
+          ),
+          deliveryCity: String(
+            updateData.deliveryCity ?? currentOrder.deliveryCity ?? "",
+          ),
+          deliveryState: String(
+            updateData.deliveryState ?? currentOrder.deliveryState ?? "",
+          ),
+          deliveryCep: String(nextCep ?? ""),
+          deliveryComplement: String(
+            updateData.deliveryComplement ??
+              currentOrder.deliveryComplement ??
+              "",
+          ),
+          deliveryReference: String(
+            updateData.deliveryReference ??
+              currentOrder.deliveryReference ??
+              "",
+          ),
+        }),
+        customerCity: String(
+          updateData.deliveryCity ?? currentOrder.deliveryCity ?? "",
+        ),
       });
       updateData.estimatedDistanceKm = String(
         distanceResult.estimatedDistanceKm,

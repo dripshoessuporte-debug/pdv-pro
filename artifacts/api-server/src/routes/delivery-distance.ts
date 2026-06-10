@@ -58,6 +58,11 @@ router.post("/delivery/distance", async (req, res): Promise<void> => {
       deliveryFeeCalculated: result.deliveryFeeCalculated,
       source: result.source,
       cached: result.cached,
+      customerAddressUsed: result.customerAddressUsed,
+      addressHash: result.addressHash,
+      distanceQuoteId: result.distanceQuoteId,
+      deliveryDistanceSource: result.source,
+      deliveryFeeSource: result.source,
     };
 
     res.json({
@@ -68,6 +73,10 @@ router.post("/delivery/distance", async (req, res): Promise<void> => {
       deliveryFeeMode: diagnostic.deliveryFeeMode,
       source: result.source,
       cached: result.cached,
+      deliveryDistanceSource: result.source,
+      deliveryFeeSource: result.source,
+      distanceQuoteId: result.distanceQuoteId,
+      customerAddressUsed: result.customerAddressUsed,
       ...(process.env.NODE_ENV !== "production" ? diagnostic : {}),
       ...(result.fallback ? { fallback: true } : {}),
     });
