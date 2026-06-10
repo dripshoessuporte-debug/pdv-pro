@@ -8,6 +8,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { customersTable } from "./customers";
@@ -80,11 +81,11 @@ export const ordersTable = pgTable(
   (table) => [
     index("orders_store_id_idx").on(table.storeId),
     index("orders_cash_register_id_idx").on(table.cashRegisterId),
-    uniqueIndex("orders_store_source_external_unique").on(
-      table.storeId,
-      table.source,
-      table.externalOrderId,
-    ),
+    uniqueIndex("orders_store_source_external_unique")
+      .on(table.storeId, table.source, table.externalOrderId)
+      .where(
+        sql`${table.source} IS NOT NULL AND ${table.externalOrderId} IS NOT NULL`,
+      ),
   ],
 );
 

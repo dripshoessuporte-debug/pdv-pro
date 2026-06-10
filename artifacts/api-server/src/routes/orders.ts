@@ -103,6 +103,19 @@ function isDevRuntime(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
+function createOrderErrorResponse(error: unknown): {
+  error: string;
+  details?: string;
+  hint: string;
+} {
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    error: "Erro ao criar pedido.",
+    ...(isDevRuntime() ? { details: message } : {}),
+    hint: "Verifique se as migrations do banco foram aplicadas.",
+  };
+}
+
 async function getOrderWithItems(orderId: number, storeId?: number) {
   const [order] = await db
     .select({
@@ -524,30 +537,39 @@ router.post("/orders", async (req, res): Promise<void> => {
     }
   }
 
-  const [order] = await db
-    .insert(ordersTable)
-    .values({
-      ...restData,
-      storeId,
-      cashRegisterId: scope.cashRegisterId,
-      deliveryFee: String(fee),
-      totalAmount: String(fee), // items added after via addOrderItem; recalcOrderTotal updates this
-      ...(parsed.data.type === "delivery"
-        ? {
-            deliveryStatus: "pending",
-            estimatedDistanceKm:
-              estimatedDistanceKm !== null ? String(estimatedDistanceKm) : null,
-            deliveryFeeCalculated: String(deliveryFeeCalculated),
-            deliveryFeeSource,
-            deliveryDistanceSource,
-          }
-        : {}),
-      ...(needsChange !== undefined
-        ? { needsChange: String(needsChange) }
-        : {}),
-      ...(changeFor !== undefined ? { changeFor: String(changeFor) } : {}),
-    })
-    .returning();
+  let order: typeof ordersTable.$inferSelect;
+  try {
+    [order] = await db
+      .insert(ordersTable)
+      .values({
+        ...restData,
+        storeId,
+        cashRegisterId: scope.cashRegisterId,
+        deliveryFee: String(fee),
+        totalAmount: String(fee), // items added after via addOrderItem; recalcOrderTotal updates this
+        ...(parsed.data.type === "delivery"
+          ? {
+              deliveryStatus: "pending",
+              estimatedDistanceKm:
+                estimatedDistanceKm !== null
+                  ? String(estimatedDistanceKm)
+                  : null,
+              deliveryFeeCalculated: String(deliveryFeeCalculated),
+              deliveryFeeSource,
+              deliveryDistanceSource,
+            }
+          : {}),
+        ...(needsChange !== undefined
+          ? { needsChange: String(needsChange) }
+          : {}),
+        ...(changeFor !== undefined ? { changeFor: String(changeFor) } : {}),
+      })
+      .returning();
+  } catch (error) {
+    req.log.error({ error }, "failed to create order");
+    res.status(500).json(createOrderErrorResponse(error));
+    return;
+  }
 
   if (parsed.data.tableId) {
     await db
