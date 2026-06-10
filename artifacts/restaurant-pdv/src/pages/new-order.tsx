@@ -116,18 +116,28 @@ const onlyDigits = (value: string) => value.replace(/\D/g, "");
 const buildDeliveryAddressNote = ({
   cep,
   address,
+  number,
   neighborhood,
+  city,
+  state,
+  complement,
   reference,
 }: {
   cep: string;
   address: string;
+  number?: string;
   neighborhood: string;
+  city?: string;
+  state?: string;
+  complement?: string;
   reference: string;
 }) => {
   const parts = [
-    address.trim(),
+    [address.trim(), number?.trim()].filter(Boolean).join(", "),
     neighborhood.trim() ? `Bairro: ${neighborhood.trim()}` : "",
+    [city?.trim(), state?.trim()].filter(Boolean).join("/"),
     cep.trim() ? `CEP: ${cep.trim()}` : "",
+    complement?.trim() ? `Compl.: ${complement.trim()}` : "",
     reference.trim() ? `Ref.: ${reference.trim()}` : "",
   ].filter(Boolean);
 
@@ -213,9 +223,11 @@ export default function NewOrder() {
   );
   const [deliveryCep, setDeliveryCep] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryNumber, setDeliveryNumber] = useState("");
   const [deliveryNeighborhood, setDeliveryNeighborhood] = useState("");
   const [deliveryCity, setDeliveryCity] = useState("");
   const [deliveryState, setDeliveryState] = useState("");
+  const [deliveryComplement, setDeliveryComplement] = useState("");
   const [deliveryReference, setDeliveryReference] = useState("");
   const [deliveryFee, setDeliveryFee] = useState("");
   const [deliveryNotes, setDeliveryNotes] = useState("");
@@ -235,6 +247,10 @@ export default function NewOrder() {
     storeCep: string;
     distanceKm: number;
     distanceSource: string;
+    deliveryFeeSource?: string;
+    deliveryFeeCalculated?: boolean;
+    cached?: boolean;
+    customerAddressUsed?: string | null;
     mode: string;
     pricePerKm?: number;
     baseDistanceKm?: number;
@@ -423,10 +439,14 @@ export default function NewOrder() {
             customerCep: digits,
             customerAddress:
               [
-                deliveryAddress,
+                [deliveryAddress, deliveryNumber].filter(Boolean).join(", "),
                 deliveryNeighborhood,
                 deliveryCity,
                 deliveryState,
+                deliveryCep.replace(/\D/g, ""),
+                deliveryComplement,
+                deliveryReference,
+                "Brasil",
               ]
                 .filter(Boolean)
                 .join(", ") || undefined,
@@ -438,7 +458,11 @@ export default function NewOrder() {
           estimatedDistanceKm?: number;
           deliveryFee?: number | null;
           deliveryFeeCalculated?: boolean;
+          deliveryDistanceSource?: string;
+          deliveryFeeSource?: string;
           source?: string;
+          cached?: boolean;
+          customerAddressUsed?: string | null;
           error?: string;
         };
         if (cancelled) return;
@@ -484,7 +508,14 @@ export default function NewOrder() {
         setFeeCalcInfo({
           storeCep: storeSettings.storeCep ?? "",
           distanceKm,
-          distanceSource: payload.source ?? "approximate_cep",
+          distanceSource:
+            payload.deliveryDistanceSource ??
+            payload.source ??
+            "approximate_cep",
+          deliveryFeeSource: payload.deliveryFeeSource ?? payload.source,
+          deliveryFeeCalculated: payload.deliveryFeeCalculated,
+          cached: payload.cached,
+          customerAddressUsed: payload.customerAddressUsed ?? null,
           mode,
           pricePerKm: storeSettings.deliveryPricePerKm ?? undefined,
           baseDistanceKm: storeSettings.baseDeliveryDistanceKm ?? undefined,
@@ -510,9 +541,12 @@ export default function NewOrder() {
   }, [
     deliveryCep,
     deliveryAddress,
+    deliveryNumber,
     deliveryNeighborhood,
     deliveryCity,
     deliveryState,
+    deliveryComplement,
+    deliveryReference,
     orderType,
     storeSettings,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -646,7 +680,11 @@ export default function NewOrder() {
     customerName.trim() ||
     customerPhone.trim() ||
     deliveryAddress.trim() ||
+    deliveryNumber.trim() ||
     deliveryNeighborhood.trim() ||
+    deliveryCity.trim() ||
+    deliveryState.trim() ||
+    deliveryComplement.trim() ||
     deliveryReference.trim(),
   );
   const canAutoSaveCustomer =
@@ -679,7 +717,11 @@ export default function NewOrder() {
         ? buildDeliveryAddressNote({
             cep: deliveryCep,
             address: deliveryAddress,
+            number: deliveryNumber,
             neighborhood: deliveryNeighborhood,
+            city: deliveryCity,
+            state: deliveryState,
+            complement: deliveryComplement,
             reference: deliveryReference,
           })
         : "";
@@ -800,7 +842,22 @@ export default function NewOrder() {
         if (deliveryCep.trim())
           orderData.deliveryCep = deliveryCep.replace(/\D/g, "");
         orderData.deliveryAddress = deliveryAddress.trim();
+        if (deliveryNumber.trim())
+          orderData.deliveryNumber = deliveryNumber.trim();
         orderData.deliveryNeighborhood = deliveryNeighborhood.trim();
+        if (deliveryCity.trim()) orderData.deliveryCity = deliveryCity.trim();
+        if (deliveryState.trim())
+          orderData.deliveryState = deliveryState.trim();
+        if (deliveryComplement.trim())
+          orderData.deliveryComplement = deliveryComplement.trim();
+        if (feeCalcInfo) {
+          orderData.estimatedDistanceKm = feeCalcInfo.distanceKm;
+          orderData.deliveryDistanceSource = feeCalcInfo.distanceSource;
+          orderData.deliveryFeeCalculated =
+            feeCalcInfo.deliveryFeeCalculated ?? feeAutoCalculated;
+          orderData.deliveryFeeSource =
+            feeCalcInfo.deliveryFeeSource ?? feeCalcInfo.distanceSource;
+        }
         if (deliveryReference.trim())
           orderData.deliveryReference = deliveryReference.trim();
         if (deliveryNotes.trim())
@@ -1189,6 +1246,27 @@ export default function NewOrder() {
                                 {feeCalcInfo.distanceKm} km
                               </span>
                             </div>
+                            <div className="flex justify-between">
+                              <span className="text-green-600 dark:text-green-400">
+                                Origem do cálculo
+                              </span>
+                              <span className="font-mono font-semibold">
+                                {feeCalcInfo.distanceSource}
+                                {typeof feeCalcInfo.cached === "boolean"
+                                  ? ` · cached ${feeCalcInfo.cached ? "true" : "false"}`
+                                  : ""}
+                              </span>
+                            </div>
+                            {feeCalcInfo.customerAddressUsed && (
+                              <div className="border-t border-green-200 dark:border-green-700 pt-1">
+                                <span className="text-green-600 dark:text-green-400">
+                                  Endereço usado
+                                </span>
+                                <p className="font-mono break-words">
+                                  {feeCalcInfo.customerAddressUsed}
+                                </p>
+                              </div>
+                            )}
                             <div className="flex justify-between border-t border-green-200 dark:border-green-700 pt-1 mt-0.5">
                               <span className="font-semibold text-green-700 dark:text-green-200">
                                 {storeSettings.deliveryFeeMode === "manual"
@@ -1207,14 +1285,49 @@ export default function NewOrder() {
                     )}
 
                     {/* Endereço */}
-                    <div>
-                      <Label>Endereço Completo *</Label>
-                      <Input
-                        placeholder="Rua, número"
-                        value={deliveryAddress}
-                        onChange={(e) => setDeliveryAddress(e.target.value)}
-                        data-testid="input-delivery-address"
-                      />
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_120px]">
+                      <div>
+                        <Label>Endereço *</Label>
+                        <Input
+                          placeholder="Rua / Avenida"
+                          value={deliveryAddress}
+                          onChange={(e) => setDeliveryAddress(e.target.value)}
+                          data-testid="input-delivery-address"
+                        />
+                      </div>
+                      <div>
+                        <Label>Número</Label>
+                        <Input
+                          placeholder="123"
+                          value={deliveryNumber}
+                          onChange={(e) => setDeliveryNumber(e.target.value)}
+                          data-testid="input-delivery-number"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <Label>Cidade</Label>
+                        <Input
+                          placeholder="Cidade"
+                          value={deliveryCity}
+                          onChange={(e) => setDeliveryCity(e.target.value)}
+                          data-testid="input-delivery-city"
+                        />
+                      </div>
+                      <div>
+                        <Label>UF</Label>
+                        <Input
+                          placeholder="PR"
+                          value={deliveryState}
+                          onChange={(e) =>
+                            setDeliveryState(e.target.value.toUpperCase())
+                          }
+                          data-testid="input-delivery-state"
+                          maxLength={2}
+                        />
+                      </div>
                     </div>
 
                     {/* Bairro + Complemento */}
@@ -1231,14 +1344,26 @@ export default function NewOrder() {
                         />
                       </div>
                       <div>
-                        <Label>Complemento / Referência</Label>
+                        <Label>Complemento</Label>
                         <Input
-                          placeholder="Apto, ponto de referência..."
-                          value={deliveryReference}
-                          onChange={(e) => setDeliveryReference(e.target.value)}
-                          data-testid="input-delivery-reference"
+                          placeholder="Apto, bloco..."
+                          value={deliveryComplement}
+                          onChange={(e) =>
+                            setDeliveryComplement(e.target.value)
+                          }
+                          data-testid="input-delivery-complement"
                         />
                       </div>
+                    </div>
+
+                    <div>
+                      <Label>Referência</Label>
+                      <Input
+                        placeholder="Ponto de referência..."
+                        value={deliveryReference}
+                        onChange={(e) => setDeliveryReference(e.target.value)}
+                        data-testid="input-delivery-reference"
+                      />
                     </div>
 
                     {/* Observação entrega */}

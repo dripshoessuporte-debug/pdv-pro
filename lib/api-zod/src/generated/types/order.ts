@@ -33,7 +33,15 @@ export interface Order {
   /** @nullable */
   deliveryAddress?: string | null;
   /** @nullable */
+  deliveryNumber?: string | null;
+  /** @nullable */
   deliveryNeighborhood?: string | null;
+  /** @nullable */
+  deliveryCity?: string | null;
+  /** @nullable */
+  deliveryState?: string | null;
+  /** @nullable */
+  deliveryComplement?: string | null;
   /** @nullable */
   deliveryReference?: string | null;
   deliveryFee: number;
@@ -68,5 +76,7 @@ export interface Order {
   deliveryFeeCalculated?: boolean | null;
   /** @nullable */
   deliveryFeeSource?: string | null;
+  /** @nullable */
+  deliveryDistanceSource?: string | null;
   items: OrderItem[];
 }

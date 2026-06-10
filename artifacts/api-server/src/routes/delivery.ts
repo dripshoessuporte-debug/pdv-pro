@@ -97,11 +97,56 @@ type DistanceBackfillOrder = {
   id: number;
   deliveryCep: string | null;
   deliveryAddress?: string | null;
+  deliveryNumber?: string | null;
   deliveryNeighborhood?: string | null;
+  deliveryCity?: string | null;
+  deliveryState?: string | null;
+  deliveryComplement?: string | null;
+  deliveryReference?: string | null;
   estimatedDistanceKm?: unknown;
   deliveryDistanceSource?: string | null;
   deliveryFee?: unknown;
+  deliveryFeeCalculated?: string | null;
 };
+
+function cleanAddressPart(value: unknown): string | null {
+  const trimmed = String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return trimmed || null;
+}
+
+function buildDeliveryCustomerAddress(
+  order: DistanceBackfillOrder,
+): string | null {
+  return (
+    [
+      [order.deliveryAddress, order.deliveryNumber]
+        .map(cleanAddressPart)
+        .filter(Boolean)
+        .join(", "),
+      order.deliveryNeighborhood,
+      [order.deliveryCity, order.deliveryState]
+        .map(cleanAddressPart)
+        .filter(Boolean)
+        .join(" - "),
+      order.deliveryCep,
+      order.deliveryComplement,
+      order.deliveryReference,
+      "Brasil",
+    ]
+      .map(cleanAddressPart)
+      .filter(Boolean)
+      .join(", ") || null
+  );
+}
+
+function isAbsurdBackfillChange(
+  oldDistance: number | null,
+  newDistance: number,
+): boolean {
+  return oldDistance !== null && oldDistance <= 10 && newDistance > 100;
+}
 
 type DistanceBackfillResult = {
   estimatedDistanceKm: number | null;
@@ -112,9 +157,10 @@ type DistanceBackfillResult = {
 async function ensureEstimatedDistanceForOrder(
   order: DistanceBackfillOrder,
   storeId: number,
+  log?: { warn: (obj: unknown, msg?: string) => void },
 ): Promise<DistanceBackfillResult> {
   const existing = parseEstimatedDistanceKm(order.estimatedDistanceKm);
-  if (existing !== null) {
+  if (existing !== null && order.deliveryFeeCalculated === "true") {
     return {
       estimatedDistanceKm: existing,
       deliveryDistanceSource: order.deliveryDistanceSource ?? null,
@@ -122,23 +168,61 @@ async function ensureEstimatedDistanceForOrder(
   }
 
   if (!normalizeCep(order.deliveryCep ?? "")) {
-    return { estimatedDistanceKm: null, deliveryDistanceSource: null };
+    return { estimatedDistanceKm: existing, deliveryDistanceSource: null };
   }
 
+  const customerAddress = buildDeliveryCustomerAddress(order);
   const result = await calculateDeliveryDistanceForStore({
     storeId,
     customerCep: order.deliveryCep ?? "",
-    customerAddress:
-      [order.deliveryAddress, order.deliveryNeighborhood]
-        .map((part) => (part ? String(part).trim() : ""))
-        .filter(Boolean)
-        .join(", ") || null,
+    customerAddress,
+    customerCity: order.deliveryCity ?? null,
   });
 
   const calculatedFee =
     result.deliveryFeeCalculated && result.deliveryFee != null
       ? result.deliveryFee
       : null;
+  const oldDeliveryFee = parseDeliveryFee(order.deliveryFee);
+
+  if (isAbsurdBackfillChange(existing, result.estimatedDistanceKm)) {
+    log?.warn(
+      {
+        orderId: order.id,
+        oldEstimatedDistanceKm: existing,
+        newEstimatedDistanceKm: result.estimatedDistanceKm,
+        oldDeliveryFee,
+        newDeliveryFee: calculatedFee,
+        customerCep: order.deliveryCep,
+        customerAddress,
+        customerAddressUsed: result.customerAddressUsed,
+        source: result.source,
+        cached: result.cached,
+        diagnostic: "absurd-distance-backfill-skipped",
+      },
+      "delivery distance backfill produced absurd divergence; keeping existing values",
+    );
+    return {
+      estimatedDistanceKm: existing,
+      deliveryDistanceSource: order.deliveryDistanceSource ?? null,
+    };
+  }
+
+  log?.warn(
+    {
+      orderId: order.id,
+      oldEstimatedDistanceKm: existing,
+      newEstimatedDistanceKm: result.estimatedDistanceKm,
+      oldDeliveryFee,
+      newDeliveryFee: calculatedFee,
+      customerCep: order.deliveryCep,
+      customerAddress,
+      customerAddressUsed: result.customerAddressUsed,
+      source: result.source,
+      cached: result.cached,
+    },
+    "delivery distance backfill updated order",
+  );
 
   await db
     .update(ordersTable)
@@ -174,7 +258,11 @@ async function ensureEstimatedDistancesForOrders<
   const resolved = [];
   for (const order of orders) {
     try {
-      const distance = await ensureEstimatedDistanceForOrder(order, storeId);
+      const distance = await ensureEstimatedDistanceForOrder(
+        order,
+        storeId,
+        log,
+      );
       resolved.push({ ...order, ...distance });
     } catch (error) {
       log?.warn(
@@ -286,9 +374,15 @@ async function getRouteWithOrders(
       customerName: ordersTable.customerName,
       customerPhone: ordersTable.customerPhone,
       deliveryAddress: ordersTable.deliveryAddress,
+      deliveryNumber: ordersTable.deliveryNumber,
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+      deliveryCity: ordersTable.deliveryCity,
+      deliveryState: ordersTable.deliveryState,
+      deliveryComplement: ordersTable.deliveryComplement,
+      deliveryReference: ordersTable.deliveryReference,
       deliveryCep: ordersTable.deliveryCep,
       deliveryFee: ordersTable.deliveryFee,
+      deliveryFeeCalculated: ordersTable.deliveryFeeCalculated,
       estimatedDistanceKm: ordersTable.estimatedDistanceKm,
       deliveryDistanceSource: ordersTable.deliveryDistanceSource,
       deliveryStatus: ordersTable.deliveryStatus,
@@ -647,7 +741,12 @@ async function recalcRoute(
   const rows = await db
     .select({
       deliveryAddress: ordersTable.deliveryAddress,
+      deliveryNumber: ordersTable.deliveryNumber,
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+      deliveryCity: ordersTable.deliveryCity,
+      deliveryState: ordersTable.deliveryState,
+      deliveryComplement: ordersTable.deliveryComplement,
+      deliveryReference: ordersTable.deliveryReference,
       deliveryCep: ordersTable.deliveryCep,
       kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
       createdAt: ordersTable.createdAt,
@@ -758,9 +857,15 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     .select({
       id: ordersTable.id,
       deliveryAddress: ordersTable.deliveryAddress,
+      deliveryNumber: ordersTable.deliveryNumber,
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+      deliveryCity: ordersTable.deliveryCity,
+      deliveryState: ordersTable.deliveryState,
+      deliveryComplement: ordersTable.deliveryComplement,
+      deliveryReference: ordersTable.deliveryReference,
       deliveryCep: ordersTable.deliveryCep,
       deliveryFee: ordersTable.deliveryFee,
+      deliveryFeeCalculated: ordersTable.deliveryFeeCalculated,
       estimatedDistanceKm: ordersTable.estimatedDistanceKm,
       deliveryDistanceSource: ordersTable.deliveryDistanceSource,
       kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
@@ -883,9 +988,15 @@ router.get("/delivery/orders/pending", async (req, res): Promise<void> => {
         string | null
       >`coalesce(${ordersTable.customerPhone}, ${customersTable.phone})`,
       deliveryAddress: ordersTable.deliveryAddress,
+      deliveryNumber: ordersTable.deliveryNumber,
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+      deliveryCity: ordersTable.deliveryCity,
+      deliveryState: ordersTable.deliveryState,
+      deliveryComplement: ordersTable.deliveryComplement,
+      deliveryReference: ordersTable.deliveryReference,
       deliveryCep: ordersTable.deliveryCep,
       deliveryFee: ordersTable.deliveryFee,
+      deliveryFeeCalculated: ordersTable.deliveryFeeCalculated,
       estimatedDistanceKm: ordersTable.estimatedDistanceKm,
       deliveryDistanceSource: ordersTable.deliveryDistanceSource,
       totalAmount: ordersTable.totalAmount,
@@ -954,9 +1065,15 @@ router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
     .select({
       id: ordersTable.id,
       deliveryAddress: ordersTable.deliveryAddress,
+      deliveryNumber: ordersTable.deliveryNumber,
       deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+      deliveryCity: ordersTable.deliveryCity,
+      deliveryState: ordersTable.deliveryState,
+      deliveryComplement: ordersTable.deliveryComplement,
+      deliveryReference: ordersTable.deliveryReference,
       deliveryCep: ordersTable.deliveryCep,
       deliveryFee: ordersTable.deliveryFee,
+      deliveryFeeCalculated: ordersTable.deliveryFeeCalculated,
       estimatedDistanceKm: ordersTable.estimatedDistanceKm,
       deliveryDistanceSource: ordersTable.deliveryDistanceSource,
       kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
@@ -972,7 +1089,7 @@ router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
   }
 
   try {
-    await ensureEstimatedDistanceForOrder(order, actor.storeId);
+    await ensureEstimatedDistanceForOrder(order, actor.storeId, req.log);
   } catch (error) {
     req.log.warn(
       {
