@@ -45,6 +45,8 @@ import { releaseTableIfOrderClosed } from "../lib/table-release";
 import {
   calculateDeliveryDistanceForStore,
   deliveryCalculationErrorStatus,
+  INVALID_LOCAL_DELIVERY_DISTANCE_ERROR,
+  isAllowedDeliveryDistanceKm,
 } from "../lib/delivery-distance-calculator";
 
 const router: IRouter = Router();
@@ -425,6 +427,13 @@ router.post("/orders", async (req, res): Promise<void> => {
   if (parsed.data.type === "delivery" && parsed.data.deliveryCep) {
     parsed.data.deliveryCep = parsed.data.deliveryCep.replace(/\D/g, "");
     const previewDistanceKm = estimatedDistanceKm;
+    if (
+      previewDistanceKm !== null &&
+      !isAllowedDeliveryDistanceKm(previewDistanceKm)
+    ) {
+      res.status(422).json({ error: INVALID_LOCAL_DELIVERY_DISTANCE_ERROR });
+      return;
+    }
     const previewDeliveryFee = numberOrNull(deliveryFee);
     const customerAddress = buildDeliveryCustomerAddress(parsed.data);
     try {

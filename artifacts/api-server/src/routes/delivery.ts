@@ -28,6 +28,7 @@ import { getOrCreateSettings } from "./settings";
 import {
   calculateDeliveryDistanceForStore,
   deliveryCalculationErrorStatus,
+  isAllowedDeliveryDistanceKm,
 } from "../lib/delivery-distance-calculator";
 
 const router: IRouter = Router();
@@ -76,7 +77,15 @@ function deliveryOrderCanEnterRouteWhereClause(
 function parseEstimatedDistanceKm(value: unknown): number | null {
   if (value == null) return null;
   const distance = Number.parseFloat(String(value));
-  return Number.isFinite(distance) && distance > 0 ? distance : null;
+  return isAllowedDeliveryDistanceKm(distance) ? distance : null;
+}
+
+function displayEstimatedDistanceKm(value: unknown): number | null {
+  if (hasInvalidStoredDistance({ estimatedDistanceKm: value })) {
+    const distance = Number.parseFloat(String(value));
+    return Number.isFinite(distance) ? distance : null;
+  }
+  return parseEstimatedDistanceKm(value);
 }
 
 function parseDeliveryFee(value: unknown): number {
@@ -145,7 +154,19 @@ function isAbsurdBackfillChange(
   oldDistance: number | null,
   newDistance: number,
 ): boolean {
-  return oldDistance !== null && oldDistance <= 10 && newDistance > 100;
+  return (
+    !isAllowedDeliveryDistanceKm(newDistance) ||
+    (oldDistance !== null && oldDistance <= 10 && newDistance > 100)
+  );
+}
+
+function hasInvalidStoredDistance(order: {
+  estimatedDistanceKm?: unknown;
+}): boolean {
+  if (order.estimatedDistanceKm == null || order.estimatedDistanceKm === "") {
+    return false;
+  }
+  return !isAllowedDeliveryDistanceKm(order.estimatedDistanceKm);
 }
 
 type DistanceBackfillResult = {
@@ -160,6 +181,28 @@ async function ensureEstimatedDistanceForOrder(
   log?: { warn: (obj: unknown, msg?: string) => void },
 ): Promise<DistanceBackfillResult> {
   const existing = parseEstimatedDistanceKm(order.estimatedDistanceKm);
+  if (hasInvalidStoredDistance(order)) {
+    log?.warn(
+      {
+        orderId: order.id,
+        estimatedDistanceKm: order.estimatedDistanceKm,
+        deliveryFee: order.deliveryFee,
+        deliveryDistanceSource: order.deliveryDistanceSource,
+        diagnostic: "invalid-stored-distance-skipped",
+      },
+      "delivery distance backfill found invalid stored distance; keeping order out of route until cleanup",
+    );
+    const invalidDistance = Number.parseFloat(
+      String(order.estimatedDistanceKm),
+    );
+    return {
+      estimatedDistanceKm: Number.isFinite(invalidDistance)
+        ? invalidDistance
+        : null,
+      deliveryDistanceSource: order.deliveryDistanceSource ?? null,
+    };
+  }
+
   if (existing !== null && order.deliveryFeeCalculated === "true") {
     return {
       estimatedDistanceKm: existing,
@@ -246,6 +289,20 @@ async function ensureEstimatedDistanceForOrder(
     deliveryDistanceSource: result.source,
     ...(calculatedFee != null ? { calculatedDeliveryFee: calculatedFee } : {}),
   };
+}
+
+async function ensureOrderCanEnterRoute(
+  order: DistanceBackfillOrder,
+  storeId: number,
+  log?: { warn: (obj: unknown, msg?: string) => void },
+): Promise<DistanceBackfillResult> {
+  const distance = await ensureEstimatedDistanceForOrder(order, storeId, log);
+  if (parseEstimatedDistanceKm(distance.estimatedDistanceKm) === null) {
+    throw new Error(
+      "Pedido com distância inválida não pode entrar em rota. Recalcule ou limpe a distância antes de roteirizar.",
+    );
+  }
+  return distance;
 }
 
 async function ensureEstimatedDistancesForOrders<
@@ -411,7 +468,9 @@ async function getRouteWithOrders(
     } catch {
       routeOrdersWithDistance.push({
         ...routeOrder,
-        estimatedDistanceKm: null,
+        estimatedDistanceKm: parseEstimatedDistanceKm(
+          routeOrder.estimatedDistanceKm,
+        ),
         deliveryDistanceSource: routeOrder.deliveryDistanceSource ?? null,
       });
     }
@@ -487,7 +546,7 @@ async function getRouteWithOrders(
     orders: routeOrdersWithDistance.map((o) => ({
       ...o,
       deliveryFee: effectiveDeliveryFee(o),
-      estimatedDistanceKm: parseEstimatedDistanceKm(o.estimatedDistanceKm),
+      estimatedDistanceKm: displayEstimatedDistanceKm(o.estimatedDistanceKm),
       distanceSource: o.deliveryDistanceSource ?? null,
       deliveryDistanceSource: o.deliveryDistanceSource ?? null,
       totalAmount: parseFloat(String(o.totalAmount ?? "0")),
@@ -890,8 +949,22 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     req.log,
   );
 
+  const routableOrders = eligibleOrdersWithDistance.filter(
+    (order) =>
+      parseEstimatedDistanceKm(order.estimatedDistanceKm) !== null &&
+      !hasInvalidStoredDistance(order),
+  );
+
+  if (routableOrders.length === 0) {
+    res.status(422).json({
+      error:
+        "Nenhum pedido com distância válida para gerar rota. Recalcule ou limpe distâncias inválidas.",
+    });
+    return;
+  }
+
   const plan = generateRoutePlan(
-    eligibleOrdersWithDistance as EligibleOrder[],
+    routableOrders as EligibleOrder[],
     maxPerRoute,
     settings.storeCep ?? "",
   );
@@ -1033,7 +1106,7 @@ router.get("/delivery/orders/pending", async (req, res): Promise<void> => {
     deliveryNeighborhood: o.deliveryNeighborhood,
     deliveryCep: o.deliveryCep,
     deliveryFee: effectiveDeliveryFee(o),
-    estimatedDistanceKm: parseEstimatedDistanceKm(o.estimatedDistanceKm),
+    estimatedDistanceKm: displayEstimatedDistanceKm(o.estimatedDistanceKm),
     distanceSource: o.deliveryDistanceSource ?? null,
     totalAmount: parseFloat(String(o.totalAmount ?? "0")),
     deliveryStatus: o.deliveryStatus,
@@ -1089,17 +1162,20 @@ router.post("/delivery/routes/emergency", async (req, res): Promise<void> => {
   }
 
   try {
-    await ensureEstimatedDistanceForOrder(order, actor.storeId, req.log);
+    await ensureOrderCanEnterRoute(order, actor.storeId, req.log);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     req.log.warn(
       {
         storeId: actor.storeId,
         orderId,
         status: deliveryCalculationErrorStatus(error),
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       },
-      "emergency route distance backfill failed",
+      "emergency route distance validation failed",
     );
+    res.status(deliveryCalculationErrorStatus(error)).json({ error: message });
+    return;
   }
 
   const settings = await getOrCreateSettings(actor.storeId);
@@ -1456,10 +1532,27 @@ router.post(
         id: ordersTable.id,
         type: ordersTable.type,
         deliveryStatus: ordersTable.deliveryStatus,
+        deliveryAddress: ordersTable.deliveryAddress,
+        deliveryNumber: ordersTable.deliveryNumber,
+        deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+        deliveryCity: ordersTable.deliveryCity,
+        deliveryState: ordersTable.deliveryState,
+        deliveryComplement: ordersTable.deliveryComplement,
+        deliveryReference: ordersTable.deliveryReference,
+        deliveryCep: ordersTable.deliveryCep,
+        deliveryFee: ordersTable.deliveryFee,
+        deliveryFeeCalculated: ordersTable.deliveryFeeCalculated,
+        estimatedDistanceKm: ordersTable.estimatedDistanceKm,
+        deliveryDistanceSource: ordersTable.deliveryDistanceSource,
         kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
       })
       .from(ordersTable)
-      .where(eq(ordersTable.id, orderId));
+      .where(
+        and(
+          eq(ordersTable.id, orderId),
+          eq(ordersTable.storeId, actor.storeId),
+        ),
+      );
     if (!order) {
       res.status(404).json({ error: "Order not found" });
       return;
@@ -1485,6 +1578,16 @@ router.post(
       );
     if (existingAssignment.length > 0) {
       res.status(400).json({ error: "Order is already in an active route" });
+      return;
+    }
+
+    try {
+      await ensureOrderCanEnterRoute(order, actor.storeId, req.log);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res
+        .status(deliveryCalculationErrorStatus(error))
+        .json({ error: message });
       return;
     }
 

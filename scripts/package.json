@@ -6,7 +6,8 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check:orders-schema": "tsx ./check-orders-schema.ts"
+    "check:orders-schema": "tsx ./check-orders-schema.ts",
+    "clean:absurd-delivery-distances": "tsx ./clean-absurd-delivery-distances.ts"
   },
   "devDependencies": {
     "@types/node": "catalog:",

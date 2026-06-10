@@ -206,6 +206,12 @@ const PAYMENT_METHOD_ICONS: Record<string, typeof Banknote> = {
   cartao: CreditCard,
 };
 
+const MAX_ALLOWED_DELIVERY_DISTANCE_KM = Number.isFinite(
+  Number(import.meta.env.VITE_MAX_ALLOWED_DELIVERY_DISTANCE_KM),
+)
+  ? Number(import.meta.env.VITE_MAX_ALLOWED_DELIVERY_DISTANCE_KM)
+  : 80;
+
 // ─── API ─────────────────────────────────────────────────────────────────────
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -644,7 +650,20 @@ export default function Routes() {
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [bulkAdding, setBulkAdding] = useState(false);
 
+  const validPendingOrdersRenderable = pendingOrdersRenderable.filter(
+    (order) => !isInvalidDeliveryDistance(order.estimatedDistanceKm),
+  );
+
   const togglePending = (id: number) => {
+    const order = pendingOrdersRenderable.find((item) => item.id === id);
+    if (order && isInvalidDeliveryDistance(order.estimatedDistanceKm)) {
+      toast({
+        title: "Distância inválida",
+        description: "Recalcule ou limpe a distância antes de rotear o pedido.",
+        variant: "destructive",
+      });
+      return;
+    }
     setPendingSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -655,14 +674,28 @@ export default function Routes() {
 
   const toggleSelectAllPending = () => {
     if (pendingSelected.size > 0) setPendingSelected(new Set());
-    else setPendingSelected(new Set(pendingOrdersRenderable.map((o) => o.id)));
+    else
+      setPendingSelected(
+        new Set(validPendingOrdersRenderable.map((o) => o.id)),
+      );
   };
 
   const handleBulkAddToRoute = async (routeId: number) => {
     setBulkAdding(true);
     try {
+      const validSelected = Array.from(pendingSelected).filter((orderId) => {
+        const order = pendingOrdersRenderable.find(
+          (item) => item.id === orderId,
+        );
+        return order && !isInvalidDeliveryDistance(order.estimatedDistanceKm);
+      });
+      if (validSelected.length !== pendingSelected.size) {
+        throw new Error(
+          "Há pedido com distância inválida. Recalcule ou limpe antes de adicionar à rota.",
+        );
+      }
       await Promise.all(
-        Array.from(pendingSelected).map((orderId) =>
+        validSelected.map((orderId) =>
           apiFetch(`/delivery/routes/${routeId}/add-order`, {
             method: "POST",
             body: JSON.stringify({ orderId }),
@@ -699,6 +732,12 @@ export default function Routes() {
   const completedRoutes = showCompleted
     ? [...completedTodayRoutes, ...oldCompletedRoutes]
     : completedTodayRoutes;
+  const addPendingOrder = addPendingState
+    ? pendingOrders.find((order) => order.id === addPendingState.orderId)
+    : null;
+  const addPendingInvalidDistance = isInvalidDeliveryDistance(
+    addPendingOrder?.estimatedDistanceKm,
+  );
 
   const routeNavigationItems = [
     {
@@ -993,13 +1032,37 @@ export default function Routes() {
                     isLast={idx === pendingOrdersRenderable.length - 1}
                     selected={pendingSelected.has(order.id)}
                     onToggle={() => togglePending(order.id)}
-                    onAddToRoute={() =>
+                    onAddToRoute={() => {
+                      if (
+                        isInvalidDeliveryDistance(order.estimatedDistanceKm)
+                      ) {
+                        toast({
+                          title: "Distância inválida",
+                          description:
+                            "Recalcule ou limpe a distância antes de adicionar à rota.",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
                       setAddPendingState({
                         orderId: order.id,
                         customerName: order.customerName,
-                      })
-                    }
-                    onEmergency={() => handleCreateEmergency(order.id)}
+                      });
+                    }}
+                    onEmergency={() => {
+                      if (
+                        isInvalidDeliveryDistance(order.estimatedDistanceKm)
+                      ) {
+                        toast({
+                          title: "Distância inválida",
+                          description:
+                            "Recalcule ou limpe a distância antes de criar rota.",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      handleCreateEmergency(order.id);
+                    }}
                     onOpenOrder={() => openOrderDetail(order.id)}
                   />
                 ))}
@@ -1478,7 +1541,7 @@ export default function Routes() {
                       variant="outline"
                       className="w-full justify-between gap-2 h-auto py-2.5"
                       onClick={() => handleAddPendingToRoute(r.id)}
-                      disabled={addingToRoute}
+                      disabled={addingToRoute || addPendingInvalidDistance}
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <span
@@ -1749,8 +1812,11 @@ function PendingOrderRow({
   const UrgencyIcon = URGENCY_ICON[urgency];
   const receiveOnDelivery = order.paymentTiming === "on_delivery";
   const paymentLabel = receiveOnDelivery ? "Na entrega" : "Pago agora";
+  const invalidDistance = isInvalidDeliveryDistance(order.estimatedDistanceKm);
   const reliableDistance = normalizeDistanceKm(order.estimatedDistanceKm);
-  const distanceTone = getIndividualDistanceTone(reliableDistance);
+  const distanceTone = invalidDistance
+    ? buildInvalidDistanceTone()
+    : getIndividualDistanceTone(reliableDistance);
   const addressLine = [order.deliveryNeighborhood, order.deliveryCep]
     .filter(Boolean)
     .join(" · ");
@@ -1827,15 +1893,14 @@ function PendingOrderRow({
           {order.customerPhone && (
             <span className="truncate">{order.customerPhone}</span>
           )}
-          {reliableDistance != null && (
-            <span className={`font-bold ${distanceTone.classes.text}`}>
-              {reliableDistance.toFixed(1)} km
-            </span>
-          )}
-          {order.deliveryDistanceSource && (
-            <span className="font-mono text-[11px] text-slate-400">
-              source: {order.deliveryDistanceSource}
-            </span>
+          {invalidDistance ? (
+            <span className="font-bold text-red-700">distância inválida</span>
+          ) : (
+            reliableDistance != null && (
+              <span className={`font-bold ${distanceTone.classes.text}`}>
+                {reliableDistance.toFixed(1)} km
+              </span>
+            )
           )}
         </div>
       </div>
@@ -1848,10 +1913,11 @@ function PendingOrderRow({
               Receber R$ {order.totalAmount.toFixed(2)}
             </span>
           )}
-          <span>Taxa R$ {order.deliveryFee.toFixed(2)}</span>
-          <span className="font-mono text-[11px] text-slate-400">
-            backend-create/backfill
-          </span>
+          {invalidDistance ? (
+            <span className="font-bold text-red-700">Taxa inválida</span>
+          ) : (
+            <span>Taxa R$ {order.deliveryFee.toFixed(2)}</span>
+          )}
           <span className="font-bold text-slate-900">
             Total R$ {order.totalAmount.toFixed(2)}
           </span>
@@ -1878,11 +1944,16 @@ function PendingOrderRow({
               size="sm"
               variant="outline"
               className="h-8 px-2 text-xs gap-1 whitespace-nowrap border-slate-300 text-slate-800 hover:bg-slate-50"
+              disabled={invalidDistance}
               onClick={(event) => {
                 event.stopPropagation();
                 onAddToRoute();
               }}
-              title="Adicionar a uma rota existente"
+              title={
+                invalidDistance
+                  ? "Distância inválida: recalcule ou limpe antes de rotear"
+                  : "Adicionar a uma rota existente"
+              }
             >
               <PlusCircle className="h-3.5 w-3.5" />
               <span>Adicionar</span>
@@ -1896,7 +1967,12 @@ function PendingOrderRow({
               event.stopPropagation();
               onEmergency();
             }}
-            title="Criar rota solitária"
+            disabled={invalidDistance}
+            title={
+              invalidDistance
+                ? "Distância inválida: recalcule ou limpe antes de rotear"
+                : "Criar rota solitária"
+            }
           >
             <Zap className="h-3.5 w-3.5" />
             <span>Solitária</span>
@@ -1956,10 +2032,38 @@ const DISTANCE_TONES = {
 
 type DistanceTone = keyof typeof DISTANCE_TONES;
 
-function normalizeDistanceKm(distance: number | string | null | undefined) {
+function distanceValue(distance: number | string | null | undefined) {
   if (distance == null || distance === "") return null;
   const value = typeof distance === "number" ? distance : Number(distance);
-  return Number.isFinite(value) && value > 0 ? value : null;
+  return Number.isFinite(value) ? value : null;
+}
+
+function isInvalidDeliveryDistance(
+  distance: number | string | null | undefined,
+): boolean {
+  const value = distanceValue(distance);
+  return value !== null && value > MAX_ALLOWED_DELIVERY_DISTANCE_KM;
+}
+
+function normalizeDistanceKm(distance: number | string | null | undefined) {
+  const value = distanceValue(distance);
+  return value !== null &&
+    value > 0 &&
+    value <= MAX_ALLOWED_DELIVERY_DISTANCE_KM
+    ? value
+    : null;
+}
+
+function buildInvalidDistanceTone(): {
+  key: DistanceTone;
+  label: string;
+  classes: (typeof DISTANCE_TONES)[DistanceTone];
+} {
+  return {
+    key: "neutral",
+    label: "distância inválida",
+    classes: DISTANCE_TONES.neutral,
+  };
 }
 
 function buildDistanceTone(
@@ -2103,9 +2207,14 @@ function RouteCard({
   const totalCount = route.orders.length;
   const allOrdersReady = totalCount > 0 && readyCount === totalCount;
 
-  const apiRouteDistance = normalizeDistanceKm(
-    route.totalEstimatedDistanceKm ?? route.totalDistanceKm ?? null,
+  const hasInvalidRouteDistance = route.orders.some((order) =>
+    isInvalidDeliveryDistance(order.estimatedDistanceKm),
   );
+  const apiRouteDistance = hasInvalidRouteDistance
+    ? null
+    : normalizeDistanceKm(
+        route.totalEstimatedDistanceKm ?? route.totalDistanceKm ?? null,
+      );
   const orderRouteDistances = route.orders.map((order) =>
     normalizeDistanceKm(order.estimatedDistanceKm),
   );
@@ -2122,7 +2231,9 @@ function RouteCard({
           ) * 10,
         ) / 10
       : null);
-  const distanceTone = getRouteDistanceTone(totalRouteDistanceKm);
+  const distanceTone = hasInvalidRouteDistance
+    ? buildInvalidDistanceTone()
+    : getRouteDistanceTone(totalRouteDistanceKm);
   const otherNeighborhoods = route.includedNeighborhoods.filter(
     (n) => n !== route.mainNeighborhood,
   );
@@ -2162,10 +2273,22 @@ function RouteCard({
               <Badge variant="outline" className="bg-slate-50 text-slate-700">
                 {totalCount} entrega{totalCount !== 1 ? "s" : ""}
               </Badge>
-              {totalRouteDistanceKm != null && (
-                <Badge variant="outline" className={distanceTone.classes.badge}>
-                  {totalRouteDistanceKm.toFixed(1)} km
+              {hasInvalidRouteDistance ? (
+                <Badge
+                  variant="outline"
+                  className="bg-red-50 text-red-700 border-red-200"
+                >
+                  distância inválida
                 </Badge>
+              ) : (
+                totalRouteDistanceKm != null && (
+                  <Badge
+                    variant="outline"
+                    className={distanceTone.classes.badge}
+                  >
+                    {totalRouteDistanceKm.toFixed(1)} km
+                  </Badge>
+                )
               )}
               {timeStatus && !isCompleted && (
                 <Badge
@@ -2543,8 +2666,10 @@ function RouteCard({
         >
           <div className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600 sm:flex sm:flex-wrap sm:items-center sm:gap-x-4">
             <span className="whitespace-nowrap">
-              <strong className="text-slate-900">Rota:</strong> R${" "}
-              {route.totalDeliveryFee.toFixed(2)}
+              <strong className="text-slate-900">Rota:</strong>{" "}
+              {hasInvalidRouteDistance
+                ? "taxa inválida"
+                : `R$ ${route.totalDeliveryFee.toFixed(2)}`}
             </span>
             {route.totalToReceive > 0 && (
               <span className="whitespace-nowrap text-amber-700">
