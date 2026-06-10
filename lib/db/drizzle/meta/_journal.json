@@ -19,47 +19,54 @@
     {
       "idx": 2,
       "version": "7",
+      "when": 1764092250000,
+      "tag": "0002_product_commercial_fields_v1",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
       "when": 1764093000000,
       "tag": "0003_product_variants_v1",
       "breakpoints": true
     },
     {
-      "idx": 3,
+      "idx": 4,
       "version": "7",
       "when": 1764094500000,
       "tag": "0004_repair_product_commercial_columns",
       "breakpoints": true
     },
     {
-      "idx": 4,
+      "idx": 5,
       "version": "7",
       "when": 1764096000000,
       "tag": "0005_variant_templates_v1",
       "breakpoints": true
     },
     {
-      "idx": 5,
+      "idx": 6,
       "version": "7",
       "when": 1764097500000,
       "tag": "0006_order_item_variants",
       "breakpoints": true
     },
     {
-      "idx": 6,
+      "idx": 7,
       "version": "7",
       "when": 1764099000000,
       "tag": "0007_repair_orders_order_items_columns",
       "breakpoints": true
     },
     {
-      "idx": 7,
+      "idx": 8,
       "version": "7",
       "when": 1780358500000,
       "tag": "0008_rbac_v1_store_shift_scope",
       "breakpoints": true
     },
     {
-      "idx": 8,
+      "idx": 9,
       "version": "7",
       "when": 1780359000000,
       "tag": "0009_addons_v1",
@@ -75,8 +82,22 @@
     {
       "idx": 11,
       "version": "7",
+      "when": 1781047200000,
+      "tag": "0011_delivery_address_distance_hotfix",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
       "when": 1781092800000,
       "tag": "0012_orders_delivery_integration_alignment",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1781094600000,
+      "tag": "0013_orders_creation_schema_hotfix",
       "breakpoints": true
     }
   ]

@@ -112,7 +112,7 @@ function createOrderErrorResponse(error: unknown): {
   return {
     error: "Erro ao criar pedido.",
     ...(isDevRuntime() ? { details: message } : {}),
-    hint: "Verifique se as migrations do banco foram aplicadas.",
+    hint: "Banco desalinhado com o schema. Rode pnpm --filter @workspace/db db:migrate.",
   };
 }
 

@@ -2,8 +2,21 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@workspace/db": [
+        "../lib/db/src/index.ts"
+      ],
+      "@workspace/db/*": [
+        "../lib/db/src/*"
+      ]
+    }
   },
-  "include": ["src"]
+  "include": [
+    "src",
+    "*.ts"
+  ]
 }
