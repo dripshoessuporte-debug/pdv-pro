@@ -22,6 +22,33 @@ import {
 } from "./store-delivery-origin";
 
 export const INVALID_CUSTOMER_CEP_DELIVERY_ERROR = "CEP do cliente inválido.";
+export const INVALID_LOCAL_DELIVERY_DISTANCE_ERROR =
+  "Distância calculada parece inválida para entrega local. Verifique CEP/endereço.";
+
+export function maxAllowedDeliveryDistanceKm(): number {
+  const configured = Number.parseFloat(
+    process.env.MAX_ALLOWED_DELIVERY_DISTANCE_KM ?? "",
+  );
+  return Number.isFinite(configured) && configured > 0 ? configured : 80;
+}
+
+export function isAllowedDeliveryDistanceKm(distanceKm: unknown): boolean {
+  const parsed = Number.parseFloat(String(distanceKm ?? ""));
+  return (
+    Number.isFinite(parsed) &&
+    parsed > 0 &&
+    parsed <= maxAllowedDeliveryDistanceKm()
+  );
+}
+
+function isInvalidLocalDeliveryDistanceKm(distanceKm: unknown): boolean {
+  const parsed = Number.parseFloat(String(distanceKm ?? ""));
+  return (
+    !Number.isFinite(parsed) ||
+    parsed <= 0 ||
+    parsed > maxAllowedDeliveryDistanceKm()
+  );
+}
 
 export type DeliveryDistanceResult = {
   estimatedDistanceKm: number;
@@ -93,13 +120,6 @@ function buildQuoteId(parts: {
     .slice(0, 32);
 }
 
-function maxReasonableDeliveryDistanceKm(): number {
-  const configured = Number.parseFloat(
-    process.env.MAX_REASONABLE_DELIVERY_DISTANCE_KM ?? "",
-  );
-  return Number.isFinite(configured) && configured > 0 ? configured : 100;
-}
-
 function sameCity(
   settings: StoreSettings,
   customerCity?: string | null,
@@ -116,7 +136,7 @@ function isSuspiciousLocalDistance(input: {
 }): boolean {
   return (
     sameCity(input.settings, input.customerCity) &&
-    input.distanceKm > maxReasonableDeliveryDistanceKm()
+    input.distanceKm > maxAllowedDeliveryDistanceKm()
   );
 }
 
@@ -181,7 +201,7 @@ export async function calculateDeliveryDistanceForStore(input: {
     if (cached) {
       const distanceKm = Number.parseFloat(String(cached.distanceKm));
       if (
-        Number.isFinite(distanceKm) &&
+        isAllowedDeliveryDistanceKm(distanceKm) &&
         !isSuspiciousLocalDistance({
           settings,
           customerCity: input.customerCity,
@@ -234,11 +254,12 @@ export async function calculateDeliveryDistanceForStore(input: {
 
     if (
       distanceKm !== null &&
-      isSuspiciousLocalDistance({
-        settings,
-        customerCity: input.customerCity,
-        distanceKm,
-      })
+      (isInvalidLocalDeliveryDistanceKm(distanceKm) ||
+        isSuspiciousLocalDistance({
+          settings,
+          customerCity: input.customerCity,
+          distanceKm,
+        }))
     ) {
       suspicious = true;
       distanceKm = null;
@@ -261,6 +282,7 @@ export async function calculateDeliveryDistanceForStore(input: {
   }
 
   if (
+    isInvalidLocalDeliveryDistanceKm(distanceKm) ||
     isSuspiciousLocalDistance({
       settings,
       customerCity: input.customerCity,
@@ -268,9 +290,7 @@ export async function calculateDeliveryDistanceForStore(input: {
     })
   ) {
     suspicious = true;
-    throw new Error(
-      `Distância calculada (${distanceKm.toFixed(1)} km) parece incompatível com entrega local em ${input.customerCity}.`,
-    );
+    throw new Error(INVALID_LOCAL_DELIVERY_DISTANCE_ERROR);
   }
 
   const cacheAddressHash = source === "openrouteservice" ? addressHash : "";
