@@ -212,6 +212,18 @@ const MAX_ALLOWED_DELIVERY_DISTANCE_KM = Number.isFinite(
   ? Number(import.meta.env.VITE_MAX_ALLOWED_DELIVERY_DISTANCE_KM)
   : 80;
 
+function buildDevDistanceAttrs(
+  distanceOrigin: string | null | undefined,
+  distanceKm: number | null | undefined,
+) {
+  if (!import.meta.env.DEV) return {};
+
+  return {
+    "data-distance-source": distanceOrigin ?? "unknown",
+    "data-distance-km": distanceKm == null ? "null" : distanceKm.toFixed(1),
+  };
+}
+
 // ─── API ─────────────────────────────────────────────────────────────────────
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -1826,9 +1838,10 @@ function PendingOrderRow({
       className={`relative grid cursor-pointer grid-cols-1 gap-3 overflow-hidden rounded-xl border bg-white py-3 pl-5 pr-3 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50/60 hover:shadow-md lg:grid-cols-[minmax(220px,1.2fr)_minmax(200px,1.1fr)_minmax(180px,0.95fr)_minmax(210px,auto)] lg:items-center ${selected ? "border-[#D91F16] bg-red-50/40 ring-1 ring-[#D91F16]/20" : "border-slate-200"}`}
       onClick={onOpenOrder}
       data-testid={`pending-delivery-${order.id}`}
-      data-distance-km={
-        reliableDistance == null ? "null" : reliableDistance.toFixed(1)
-      }
+      {...buildDevDistanceAttrs(
+        order.deliveryDistanceSource ?? order.distanceSource,
+        reliableDistance,
+      )}
     >
       <div
         className={`absolute inset-y-0 left-0 w-1.5 ${distanceTone.classes.accent}`}
@@ -2252,9 +2265,7 @@ function RouteCard({
     <div
       className={`relative rounded-2xl overflow-hidden flex flex-col border bg-white shadow-sm transition-shadow hover:shadow-md ${distanceTone.classes.border}`}
       data-testid={`card-route-${route.id}`}
-      data-route-distance-km={
-        totalRouteDistanceKm == null ? "null" : totalRouteDistanceKm.toFixed(1)
-      }
+      {...buildDevDistanceAttrs(null, totalRouteDistanceKm)}
     >
       <div
         className={`absolute inset-y-0 left-0 w-1.5 ${distanceTone.classes.accent}`}
