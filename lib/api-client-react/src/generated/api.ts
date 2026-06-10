@@ -30,6 +30,10 @@ import type {
   AlertsSummary,
   ApplyVariantTemplateToProductBody,
   AwaitingSettlementOrder,
+  BulkReadyKitchenTicketsBody,
+  BulkReadyKitchenTicketsResponse,
+  BulkCancelKitchenTicketsBody,
+  BulkCancelKitchenTicketsResponse,
   CashMovement,
   CashMovementInput,
   CashRegisterClose,
@@ -4072,6 +4076,150 @@ export function useGetKitchenQueue<TData = Awaited<ReturnType<typeof getKitchenQ
 
 
 
+
+export const getBulkReadyKitchenTicketsUrl = () => {
+
+
+
+
+  return `/api/kitchen/tickets/bulk-ready`
+}
+
+/**
+ * @summary Mark kitchen tickets as ready in bulk
+ */
+export const bulkReadyKitchenTickets = async (
+    bulkReadyKitchenTicketsBody: BulkReadyKitchenTicketsBody, options?: RequestInit): Promise<BulkReadyKitchenTicketsResponse> => {
+
+  return customFetch<BulkReadyKitchenTicketsResponse>(getBulkReadyKitchenTicketsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      bulkReadyKitchenTicketsBody,)
+  }
+);}
+
+
+
+
+export const getBulkReadyKitchenTicketsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkReadyKitchenTickets>>, TError,{data: BodyType<BulkReadyKitchenTicketsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bulkReadyKitchenTickets>>, TError,{data: BodyType<BulkReadyKitchenTicketsBody>}, TContext> => {
+
+const mutationKey = ['bulkReadyKitchenTickets'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bulkReadyKitchenTickets>>, {data: BodyType<BulkReadyKitchenTicketsBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  bulkReadyKitchenTickets(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BulkReadyKitchenTicketsMutationResult = NonNullable<Awaited<ReturnType<typeof bulkReadyKitchenTickets>>>
+    export type BulkReadyKitchenTicketsMutationBody = BodyType<BulkReadyKitchenTicketsBody>
+    export type BulkReadyKitchenTicketsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Mark kitchen tickets as ready in bulk
+ */
+export const useBulkReadyKitchenTickets = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkReadyKitchenTickets>>, TError,{data: BodyType<BulkReadyKitchenTicketsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bulkReadyKitchenTickets>>,
+        TError,
+        {data: BodyType<BulkReadyKitchenTicketsBody>},
+        TContext
+      > => {
+      return useMutation(getBulkReadyKitchenTicketsMutationOptions(options));
+    }
+
+export const getBulkCancelKitchenTicketsUrl = () => {
+
+
+
+
+  return `/api/kitchen/tickets/bulk-cancel`
+}
+
+/**
+ * @summary Cancel kitchen tickets in bulk
+ */
+export const bulkCancelKitchenTickets = async (
+    bulkCancelKitchenTicketsBody: BulkCancelKitchenTicketsBody, options?: RequestInit): Promise<BulkCancelKitchenTicketsResponse> => {
+
+  return customFetch<BulkCancelKitchenTicketsResponse>(getBulkCancelKitchenTicketsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      bulkCancelKitchenTicketsBody,)
+  }
+);}
+
+
+
+
+export const getBulkCancelKitchenTicketsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkCancelKitchenTickets>>, TError,{data: BodyType<BulkCancelKitchenTicketsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bulkCancelKitchenTickets>>, TError,{data: BodyType<BulkCancelKitchenTicketsBody>}, TContext> => {
+
+const mutationKey = ['bulkCancelKitchenTickets'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bulkCancelKitchenTickets>>, {data: BodyType<BulkCancelKitchenTicketsBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  bulkCancelKitchenTickets(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BulkCancelKitchenTicketsMutationResult = NonNullable<Awaited<ReturnType<typeof bulkCancelKitchenTickets>>>
+    export type BulkCancelKitchenTicketsMutationBody = BodyType<BulkCancelKitchenTicketsBody>
+    export type BulkCancelKitchenTicketsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Cancel kitchen tickets in bulk
+ */
+export const useBulkCancelKitchenTickets = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkCancelKitchenTickets>>, TError,{data: BodyType<BulkCancelKitchenTicketsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bulkCancelKitchenTickets>>,
+        TError,
+        {data: BodyType<BulkCancelKitchenTicketsBody>},
+        TContext
+      > => {
+      return useMutation(getBulkCancelKitchenTicketsMutationOptions(options));
+    }
 
 export const getMarkTicketReadyUrl = (id: number,) => {
 

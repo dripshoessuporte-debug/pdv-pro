@@ -1511,6 +1511,37 @@ export const GetKitchenQueueResponseItem = zod.object({
 export const GetKitchenQueueResponse = zod.array(GetKitchenQueueResponseItem)
 
 
+export const BulkKitchenTicketIds = zod.array(zod.number().int().positive()).min(1)
+
+
+/**
+ * @summary Mark kitchen tickets as ready in bulk
+ */
+export const BulkReadyKitchenTicketsBody = zod.object({
+  "ticketIds": BulkKitchenTicketIds
+})
+
+export const BulkReadyKitchenTicketsResponse = zod.object({
+  "updatedCount": zod.number(),
+  "ticketIds": zod.array(zod.number())
+})
+
+
+/**
+ * @summary Cancel kitchen tickets in bulk
+ */
+export const BulkCancelKitchenTicketsBody = zod.object({
+  "ticketIds": BulkKitchenTicketIds,
+  "reason": zod.string().min(1).default("cancelado na cozinha")
+})
+
+export const BulkCancelKitchenTicketsResponse = zod.object({
+  "cancelledCount": zod.number(),
+  "ticketIds": zod.array(zod.number()),
+  "orderIds": zod.array(zod.number())
+})
+
+
 /**
  * @summary Mark a kitchen ticket as ready
  */

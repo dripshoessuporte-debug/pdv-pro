@@ -673,6 +673,26 @@ export interface KitchenTicket {
   items: OrderItem[];
 }
 
+export interface BulkReadyKitchenTicketsBody {
+  ticketIds: number[];
+}
+
+export interface BulkReadyKitchenTicketsResponse {
+  updatedCount: number;
+  ticketIds: number[];
+}
+
+export interface BulkCancelKitchenTicketsBody {
+  ticketIds: number[];
+  reason: string;
+}
+
+export interface BulkCancelKitchenTicketsResponse {
+  cancelledCount: number;
+  ticketIds: number[];
+  orderIds: number[];
+}
+
 export interface AlertsSummary {
   awaitingSettlement: number;
   routesInProgress: number;

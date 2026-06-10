@@ -1103,6 +1103,44 @@ paths:
                 items:
                   $ref: "#/components/schemas/KitchenTicket"
 
+  /kitchen/tickets/bulk-ready:
+    post:
+      operationId: bulkReadyKitchenTickets
+      tags: [kitchen]
+      summary: Mark kitchen tickets as ready in bulk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkReadyKitchenTicketsBody"
+      responses:
+        "200":
+          description: Tickets marked ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkReadyKitchenTicketsResponse"
+
+  /kitchen/tickets/bulk-cancel:
+    post:
+      operationId: bulkCancelKitchenTickets
+      tags: [kitchen]
+      summary: Cancel kitchen tickets in bulk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkCancelKitchenTicketsBody"
+      responses:
+        "200":
+          description: Tickets cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkCancelKitchenTicketsResponse"
+
   /kitchen/tickets/{id}/ready:
     post:
       operationId: markTicketReady
@@ -2230,6 +2268,55 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/OrderItem"
+
+    BulkReadyKitchenTicketsBody:
+      type: object
+      required: [ticketIds]
+      properties:
+        ticketIds:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+
+    BulkReadyKitchenTicketsResponse:
+      type: object
+      required: [updatedCount, ticketIds]
+      properties:
+        updatedCount:
+          type: integer
+        ticketIds:
+          type: array
+          items:
+            type: integer
+
+    BulkCancelKitchenTicketsBody:
+      type: object
+      required: [ticketIds, reason]
+      properties:
+        ticketIds:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+        reason:
+          type: string
+          default: cancelado na cozinha
+
+    BulkCancelKitchenTicketsResponse:
+      type: object
+      required: [cancelledCount, ticketIds, orderIds]
+      properties:
+        cancelledCount:
+          type: integer
+        ticketIds:
+          type: array
+          items:
+            type: integer
+        orderIds:
+          type: array
+          items:
+            type: integer
 
     # Dashboard
     AlertsSummary:

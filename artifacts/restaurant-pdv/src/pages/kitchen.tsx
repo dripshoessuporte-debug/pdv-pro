@@ -4,12 +4,23 @@ import {
   useGetKitchenQueue,
   getGetKitchenQueueQueryKey,
   useMarkTicketReady,
+  useBulkReadyKitchenTickets,
+  useBulkCancelKitchenTickets,
   getListOrdersQueryKey,
+  getGetAlertsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckCircle2, ChefHat, Clock, RefreshCw } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  CheckCircle2,
+  ChefHat,
+  Clock,
+  RefreshCw,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { OrderDetailDialog } from "@/components/order-detail-dialog";
 import { OrderTimeBadge } from "@/components/order-time-badge";
@@ -17,11 +28,13 @@ import { formatOrderTime } from "@/lib/time";
 
 function useElapsed(createdAt: string) {
   const [elapsed, setElapsed] = useState(() =>
-    Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000)
+    Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000),
   );
   useEffect(() => {
     const id = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000));
+      setElapsed(
+        Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000),
+      );
     }, 1000);
     return () => clearInterval(id);
   }, [createdAt]);
@@ -34,9 +47,8 @@ function ElapsedBadge({ createdAt }: { createdAt: string }) {
   const secs = seconds % 60;
   const isLate = mins >= 15;
   const isWarning = mins >= 8;
-  const label = mins > 0
-    ? `${mins}m ${secs.toString().padStart(2, "0")}s`
-    : `${secs}s`;
+  const label =
+    mins > 0 ? `${mins}m ${secs.toString().padStart(2, "0")}s` : `${secs}s`;
 
   if (isLate) {
     return (
@@ -113,6 +125,9 @@ export default function Kitchen() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const [selectedTicketIds, setSelectedTicketIds] = useState<Set<number>>(
+    () => new Set(),
+  );
   const [isOrderDetailOpen, setIsOrderDetailOpen] = useState(false);
   const [sortOrder, setSortOrder] = useState<KitchenSortOrder>(() => {
     if (typeof window === "undefined") return "latest";
@@ -125,19 +140,74 @@ export default function Kitchen() {
     setIsOrderDetailOpen(true);
   };
 
-  const { data: tickets, isLoading, dataUpdatedAt } = useGetKitchenQueue({
+  const {
+    data: tickets,
+    isLoading,
+    dataUpdatedAt,
+  } = useGetKitchenQueue({
     query: {
       queryKey: getGetKitchenQueueQueryKey(),
       refetchInterval: 15_000,
     },
   });
 
+  const invalidateOperationalQueries = () => {
+    queryClient.invalidateQueries({ queryKey: getGetKitchenQueueQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: ["/api/delivery/routes"] });
+    queryClient.invalidateQueries({
+      queryKey: ["/api/delivery/orders/awaiting-settlement"],
+    });
+  };
+
   const markReady = useMarkTicketReady({
     mutation: {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetKitchenQueueQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        invalidateOperationalQueries();
         toast({ title: "✅ Pedido marcado como pronto!" });
+      },
+    },
+  });
+
+  const bulkReady = useBulkReadyKitchenTickets({
+    mutation: {
+      onSuccess: (result) => {
+        setSelectedTicketIds(new Set());
+        invalidateOperationalQueries();
+        toast({
+          title: `✅ ${result.updatedCount} ${
+            result.updatedCount === 1 ? "pedido marcado" : "pedidos marcados"
+          } como pronto!`,
+        });
+      },
+      onError: () => {
+        toast({
+          title: "Não foi possível marcar os pedidos como prontos",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  const bulkCancel = useBulkCancelKitchenTickets({
+    mutation: {
+      onSuccess: (result) => {
+        setSelectedTicketIds(new Set());
+        invalidateOperationalQueries();
+        toast({
+          title: `${result.cancelledCount} ${
+            result.cancelledCount === 1
+              ? "pedido cancelado"
+              : "pedidos cancelados"
+          } na cozinha`,
+        });
+      },
+      onError: () => {
+        toast({
+          title: "Não foi possível cancelar os pedidos selecionados",
+          variant: "destructive",
+        });
       },
     },
   });
@@ -153,6 +223,75 @@ export default function Kitchen() {
       return sortOrder === "latest" ? bTime - aTime : aTime - bTime;
     });
   }, [tickets, sortOrder]);
+
+  useEffect(() => {
+    const visibleTicketIds = new Set(
+      (tickets ?? []).map((ticket) => ticket.id),
+    );
+    setSelectedTicketIds((current) => {
+      const next = new Set(
+        Array.from(current).filter((ticketId) =>
+          visibleTicketIds.has(ticketId),
+        ),
+      );
+      return next.size === current.size ? current : next;
+    });
+  }, [tickets]);
+
+  const allVisibleTicketIds = useMemo(
+    () => sortedTickets.map((ticket) => ticket.id),
+    [sortedTickets],
+  );
+  const selectedCount = selectedTicketIds.size;
+  const allSelected =
+    allVisibleTicketIds.length > 0 &&
+    allVisibleTicketIds.every((ticketId) => selectedTicketIds.has(ticketId));
+  const isBulkActionPending = bulkReady.isPending || bulkCancel.isPending;
+
+  const toggleTicketSelection = (ticketId: number) => {
+    setSelectedTicketIds((current) => {
+      const next = new Set(current);
+      if (next.has(ticketId)) {
+        next.delete(ticketId);
+      } else {
+        next.add(ticketId);
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedTicketIds(new Set());
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      clearSelection();
+      return;
+    }
+    setSelectedTicketIds(new Set(allVisibleTicketIds));
+  };
+
+  const selectedTicketIdList = () => Array.from(selectedTicketIds);
+
+  const handleBulkReady = () => {
+    const ticketIds = selectedTicketIdList();
+    if (ticketIds.length === 0) return;
+    bulkReady.mutate({ data: { ticketIds } });
+  };
+
+  const handleBulkCancel = () => {
+    const ticketIds = selectedTicketIdList();
+    if (ticketIds.length === 0) return;
+    const confirmed = window.confirm(
+      `Tem certeza que deseja cancelar ${ticketIds.length} ${
+        ticketIds.length === 1 ? "pedido" : "pedidos"
+      } da cozinha?`,
+    );
+    if (!confirmed) return;
+
+    bulkCancel.mutate({
+      data: { ticketIds, reason: "cancelado na cozinha" },
+    });
+  };
 
   const lastUpdate = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString("pt-BR", {
@@ -173,13 +312,17 @@ export default function Kitchen() {
               <h1 className="text-3xl font-bold tracking-tight">Cozinha</h1>
               <p className="text-muted-foreground mt-0.5">
                 {tickets?.length ?? 0}{" "}
-                {tickets?.length === 1 ? "pedido pendente" : "pedidos pendentes"}
+                {tickets?.length === 1
+                  ? "pedido pendente"
+                  : "pedidos pendentes"}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 text-sm shadow-sm">
-              <span className="px-2 text-xs font-semibold text-slate-500">Ordenar:</span>
+              <span className="px-2 text-xs font-semibold text-slate-500">
+                Ordenar:
+              </span>
               <Button
                 type="button"
                 size="sm"
@@ -208,6 +351,70 @@ export default function Kitchen() {
           </div>
         </div>
 
+        {!isLoading && sortedTickets.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant={allSelected ? "secondary" : "outline"}
+                size="sm"
+                onClick={toggleSelectAll}
+                disabled={isBulkActionPending}
+                data-testid="button-select-all-tickets"
+              >
+                {allSelected ? "Limpar seleção" : "Selecionar todos"}
+              </Button>
+              <span
+                className="text-sm font-semibold text-muted-foreground"
+                data-testid="text-selected-count"
+              >
+                {selectedCount} selecionados
+              </span>
+            </div>
+
+            {selectedCount > 0 && (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-2">
+                <span className="px-2 text-sm font-bold text-slate-700">
+                  {selectedCount} selecionados
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-green-600 font-bold text-white hover:bg-green-700"
+                  onClick={handleBulkReady}
+                  disabled={isBulkActionPending}
+                  data-testid="button-bulk-ready"
+                >
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Marcar prontos
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleBulkCancel}
+                  disabled={isBulkActionPending}
+                  data-testid="button-bulk-cancel"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Cancelar selecionados
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={clearSelection}
+                  disabled={isBulkActionPending}
+                  data-testid="button-clear-selection"
+                >
+                  <X className="mr-2 h-4 w-4" />
+                  Limpar seleção
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Queue */}
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -227,34 +434,77 @@ export default function Kitchen() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {sortedTickets.map((ticket) => {
-              const typeColor = ORDER_TYPE_COLORS[ticket.orderType ?? "counter"] ?? "bg-slate-600";
+              const typeColor =
+                ORDER_TYPE_COLORS[ticket.orderType ?? "counter"] ??
+                "bg-slate-600";
+              const isSelected = selectedTicketIds.has(ticket.id);
               return (
                 <div
                   key={ticket.id}
-                  className="rounded-2xl overflow-hidden shadow-lg border border-border flex flex-col bg-card cursor-pointer transition-all hover:-translate-y-0.5 hover:border-[#D91F16]/50 hover:shadow-xl"
+                  className={`rounded-2xl overflow-hidden shadow-lg border flex flex-col bg-card cursor-pointer transition-all hover:-translate-y-0.5 hover:border-[#D91F16]/50 hover:shadow-xl ${
+                    isSelected
+                      ? "border-[#D91F16] ring-2 ring-[#D91F16]/30"
+                      : "border-border"
+                  }`}
                   onClick={() => openOrderDetail(ticket.orderId)}
                   data-testid={`card-ticket-${ticket.id}`}
                 >
                   {/* Colored header strip */}
                   <div className={`${typeColor} px-4 py-3`}>
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 space-y-1">
-                        <p className="text-white font-black text-xl leading-tight">
-                          Pedido #{ticket.orderId}
-                          {ticket.tableNumber ? ` · Mesa ${ticket.tableNumber}` : ""}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-white/90">
-                          <span>{ticket.customerName ?? "Cliente não informado"}</span>
-                          <span className="text-white/50">·</span>
-                          <span>{ORDER_TYPE_LABELS[ticket.orderType ?? "counter"]}</span>
+                      <div className="flex min-w-0 gap-3">
+                        <div
+                          className="pt-1"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() =>
+                              toggleTicketSelection(ticket.id)
+                            }
+                            aria-label={`Selecionar pedido ${ticket.orderId}`}
+                            className="h-5 w-5 border-white bg-white/95 data-[state=checked]:border-white data-[state=checked]:bg-white data-[state=checked]:text-[#D91F16]"
+                            data-testid={`checkbox-ticket-${ticket.id}`}
+                          />
                         </div>
-                        <div className="grid gap-0.5 text-xs font-medium text-white/85 sm:grid-cols-2">
-                          <p>Feito: {formatOrderTime(ticket.orderCreatedAt ?? ticket.createdAt)}</p>
-                          <p>Na cozinha: {formatOrderTime(ticket.kitchenAcceptedAt ?? ticket.ticketCreatedAt ?? ticket.createdAt)}</p>
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-white font-black text-xl leading-tight">
+                            Pedido #{ticket.orderId}
+                            {ticket.tableNumber
+                              ? ` · Mesa ${ticket.tableNumber}`
+                              : ""}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-white/90">
+                            <span>
+                              {ticket.customerName ?? "Cliente não informado"}
+                            </span>
+                            <span className="text-white/50">·</span>
+                            <span>
+                              {ORDER_TYPE_LABELS[ticket.orderType ?? "counter"]}
+                            </span>
+                          </div>
+                          <div className="grid gap-0.5 text-xs font-medium text-white/85 sm:grid-cols-2">
+                            <p>
+                              Feito:{" "}
+                              {formatOrderTime(
+                                ticket.orderCreatedAt ?? ticket.createdAt,
+                              )}
+                            </p>
+                            <p>
+                              Na cozinha:{" "}
+                              {formatOrderTime(
+                                ticket.kitchenAcceptedAt ??
+                                  ticket.ticketCreatedAt ??
+                                  ticket.createdAt,
+                              )}
+                            </p>
+                          </div>
                         </div>
                       </div>
                       <div className="shrink-0 text-right space-y-1">
-                        <ElapsedBadge createdAt={ticket.ticketCreatedAt ?? ticket.createdAt} />
+                        <ElapsedBadge
+                          createdAt={ticket.ticketCreatedAt ?? ticket.createdAt}
+                        />
                         <OrderTimeBadge
                           createdAt={ticket.orderCreatedAt ?? ticket.createdAt}
                           compact
@@ -300,7 +550,11 @@ export default function Kitchen() {
                                   </p>
                                   <div className="space-y-0.5">
                                     {addonDetails.map((detail, detailIndex) => (
-                                      <p key={`${item.id}-detail-${detailIndex}`}>+ {detail}</p>
+                                      <p
+                                        key={`${item.id}-detail-${detailIndex}`}
+                                      >
+                                        + {detail}
+                                      </p>
                                     ))}
                                   </div>
                                 </div>
