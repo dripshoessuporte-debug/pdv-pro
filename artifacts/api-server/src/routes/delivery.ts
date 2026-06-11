@@ -567,6 +567,77 @@ async function getRouteWithOrders(
   };
 }
 
+type DeliveryRouteListItem = NonNullable<
+  Awaited<ReturnType<typeof getRouteWithOrders>>
+>;
+
+function timeValueMs(value: string | null | undefined): number {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+}
+
+function descendingTimeValueMs(value: string | null | undefined): number {
+  if (!value) return Number.NEGATIVE_INFINITY;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : Number.NEGATIVE_INFINITY;
+}
+
+function earliestOrderRouteTimeAt(route: DeliveryRouteListItem): number {
+  return Math.min(
+    ...route.orders.map((order) => timeValueMs(order.routeTimeAt)),
+    Number.POSITIVE_INFINITY,
+  );
+}
+
+function earliestOrderId(route: DeliveryRouteListItem): number {
+  return Math.min(
+    ...route.orders.map((order) => order.orderId),
+    Number.POSITIVE_INFINITY,
+  );
+}
+
+function compareListedRoutesByPriority(
+  a: DeliveryRouteListItem,
+  b: DeliveryRouteListItem,
+): number {
+  if (a.status === "completed" || b.status === "completed") {
+    if (a.status === "completed" && b.status === "completed") {
+      const completedDiff =
+        descendingTimeValueMs(b.completedAt) -
+        descendingTimeValueMs(a.completedAt);
+      if (completedDiff !== 0) return completedDiff;
+      return b.id - a.id;
+    }
+    return a.status === "completed" ? 1 : -1;
+  }
+
+  if (a.status === "in_progress" || b.status === "in_progress") {
+    if (a.status === "in_progress" && b.status === "in_progress") {
+      const startedDiff = timeValueMs(a.startedAt) - timeValueMs(b.startedAt);
+      if (startedDiff !== 0) return startedDiff;
+      const deadlineDiff =
+        timeValueMs(a.dispatchDeadline) - timeValueMs(b.dispatchDeadline);
+      if (deadlineDiff !== 0) return deadlineDiff;
+      const routeTimeDiff =
+        earliestOrderRouteTimeAt(a) - earliestOrderRouteTimeAt(b);
+      if (routeTimeDiff !== 0) return routeTimeDiff;
+      return earliestOrderId(a) - earliestOrderId(b);
+    }
+    return a.status === "in_progress" ? 1 : -1;
+  }
+
+  const deadlineDiff =
+    timeValueMs(a.dispatchDeadline) - timeValueMs(b.dispatchDeadline);
+  if (deadlineDiff !== 0) return deadlineDiff;
+  const createdDiff = timeValueMs(a.createdAt) - timeValueMs(b.createdAt);
+  if (createdDiff !== 0) return createdDiff;
+  const routeTimeDiff =
+    earliestOrderRouteTimeAt(a) - earliestOrderRouteTimeAt(b);
+  if (routeTimeDiff !== 0) return routeTimeDiff;
+  return earliestOrderId(a) - earliestOrderId(b);
+}
+
 // ─── Route generation algorithm ───────────────────────────────────────────────
 
 interface EligibleOrder {
@@ -692,10 +763,10 @@ function groupOrdersByTimeWindow(orders: EligibleOrder[]): EligibleOrder[][] {
   return groups;
 }
 
-function buildRouteFromBatch(
-  batch: EligibleOrder[],
-  storeCep: string,
-): { mainNeighborhood: string; orders: EligibleOrder[] } {
+function buildRouteFromBatch(batch: EligibleOrder[]): {
+  mainNeighborhood: string;
+  orders: EligibleOrder[];
+} {
   const neighborhoodCounts = new Map<string, number>();
   for (const o of batch) {
     const n = (o.deliveryNeighborhood ?? "Outros").trim();
@@ -706,12 +777,9 @@ function buildRouteFromBatch(
   )[0][0];
 
   const sortedBatch = [...batch].sort((a, b) => {
-    const sA = proximityToStore(storeCep, a.deliveryCep ?? "");
-    const sB = proximityToStore(storeCep, b.deliveryCep ?? "");
-    if (sB !== sA) return sB - sA;
-    return normalizeCep(a.deliveryCep ?? "").localeCompare(
-      normalizeCep(b.deliveryCep ?? ""),
-    );
+    const timeDiff = routeTimeMs(a) - routeTimeMs(b);
+    if (timeDiff !== 0) return timeDiff;
+    return a.id - b.id;
   });
 
   return { mainNeighborhood, orders: sortedBatch };
@@ -727,7 +795,7 @@ function buildRouteFromBatch(
  * 4. Routes may be smaller than maxPerRoute — geographically incompatible
  *    leftovers form their own routes within the same temporal group.
  *
- * Stops within each route are sorted closest-to-store first.
+ * Stops within each route are sorted chronologically (oldest/most urgent first).
  */
 function generateRoutePlan(
   orders: EligibleOrder[],
@@ -782,11 +850,29 @@ function generateRoutePlan(
         assigned.add(bestOrder.id);
       }
 
-      routes.push(buildRouteFromBatch(batch, storeCep));
+      routes.push(buildRouteFromBatch(batch));
     }
   }
 
-  return routes;
+  return routes.sort(comparePlannedRoutesByPriority);
+}
+
+function earliestRouteTimeMs(orders: EligibleOrder[]): number {
+  return Math.min(...orders.map(routeTimeMs));
+}
+
+function earliestRouteOrderId(orders: EligibleOrder[]): number {
+  return Math.min(...orders.map((order) => order.id));
+}
+
+function comparePlannedRoutesByPriority(
+  a: { orders: EligibleOrder[] },
+  b: { orders: EligibleOrder[] },
+): number {
+  const timeDiff =
+    earliestRouteTimeMs(a.orders) - earliestRouteTimeMs(b.orders);
+  if (timeDiff !== 0) return timeDiff;
+  return earliestRouteOrderId(a.orders) - earliestRouteOrderId(b.orders);
 }
 
 // ─── Helper: recalculate route metadata after order changes ───────────────────
@@ -874,7 +960,7 @@ router.get("/delivery/routes", async (req, res): Promise<void> => {
     .select()
     .from(deliveryRoutesTable)
     .where(and(...conditions))
-    .orderBy(sql`${deliveryRoutesTable.createdAt} DESC`);
+    .orderBy(deliveryRoutesTable.createdAt);
 
   const full = await Promise.all(
     routes.map((r) =>
@@ -885,7 +971,11 @@ router.get("/delivery/routes", async (req, res): Promise<void> => {
       ),
     ),
   );
-  res.json(full.filter(Boolean));
+  res.json(
+    full
+      .filter((route): route is DeliveryRouteListItem => route !== null)
+      .sort(compareListedRoutesByPriority),
+  );
 });
 
 // ─── POST /delivery/routes/generate ──────────────────────────────────────────
@@ -994,7 +1084,7 @@ router.post("/delivery/routes/generate", async (req, res): Promise<void> => {
     const color = ROUTE_COLORS[colorIndex % ROUTE_COLORS.length];
     const name = `Rota ${routeNumber} — ${mainNeighborhood}`;
 
-    // Orders are already sorted by proximity from generateRoutePlan
+    // Orders are already sorted by route time from generateRoutePlan
     const sortedOrders = orders;
 
     // Dispatch deadline = earliest operational route time + dispatchMinutes

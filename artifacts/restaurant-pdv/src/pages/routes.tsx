@@ -277,6 +277,82 @@ function isTodayLocal(iso: string | null): boolean {
   );
 }
 
+function timeMs(value: string | null | undefined): number {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+}
+
+function newestTimeMs(value: string | null | undefined): number {
+  if (!value) return Number.NEGATIVE_INFINITY;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : Number.NEGATIVE_INFINITY;
+}
+
+function pendingRouteTimeMs(order: PendingDeliveryOrder): number {
+  return timeMs(order.kitchenAcceptedAt ?? order.createdAt);
+}
+
+function routeEarliestOrderTimeMs(route: DeliveryRoute): number {
+  return Math.min(
+    ...route.orders.map((order) => timeMs(order.routeTimeAt)),
+    Number.POSITIVE_INFINITY,
+  );
+}
+
+function routeEarliestOrderId(route: DeliveryRoute): number {
+  return Math.min(
+    ...route.orders.map((order) => order.orderId),
+    Number.POSITIVE_INFINITY,
+  );
+}
+
+function compareRouteOrdersByPriority(a: RouteOrder, b: RouteOrder): number {
+  const stopDiff = a.stopOrder - b.stopOrder;
+  if (stopDiff !== 0) return stopDiff;
+  const timeDiff = timeMs(a.routeTimeAt) - timeMs(b.routeTimeAt);
+  if (timeDiff !== 0) return timeDiff;
+  return a.orderId - b.orderId;
+}
+
+function compareAvailableRoutesByPriority(
+  a: DeliveryRoute,
+  b: DeliveryRoute,
+): number {
+  const deadlineDiff = timeMs(a.dispatchDeadline) - timeMs(b.dispatchDeadline);
+  if (deadlineDiff !== 0) return deadlineDiff;
+  const createdDiff = timeMs(a.createdAt) - timeMs(b.createdAt);
+  if (createdDiff !== 0) return createdDiff;
+  const routeTimeDiff =
+    routeEarliestOrderTimeMs(a) - routeEarliestOrderTimeMs(b);
+  if (routeTimeDiff !== 0) return routeTimeDiff;
+  return routeEarliestOrderId(a) - routeEarliestOrderId(b);
+}
+
+function compareInProgressRoutesByPriority(
+  a: DeliveryRoute,
+  b: DeliveryRoute,
+): number {
+  const startedDiff = timeMs(a.startedAt) - timeMs(b.startedAt);
+  if (startedDiff !== 0) return startedDiff;
+  const deadlineDiff = timeMs(a.dispatchDeadline) - timeMs(b.dispatchDeadline);
+  if (deadlineDiff !== 0) return deadlineDiff;
+  const routeTimeDiff =
+    routeEarliestOrderTimeMs(a) - routeEarliestOrderTimeMs(b);
+  if (routeTimeDiff !== 0) return routeTimeDiff;
+  return routeEarliestOrderId(a) - routeEarliestOrderId(b);
+}
+
+function compareCompletedRoutesByPriority(
+  a: DeliveryRoute,
+  b: DeliveryRoute,
+): number {
+  const completedDiff =
+    newestTimeMs(b.completedAt) - newestTimeMs(a.completedAt);
+  if (completedDiff !== 0) return completedDiff;
+  return b.id - a.id;
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Routes() {
@@ -655,10 +731,11 @@ export default function Routes() {
         isTodayLocal(order.createdAt)
       );
     })
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
+    .sort((a, b) => {
+      const timeDiff = pendingRouteTimeMs(a) - pendingRouteTimeMs(b);
+      if (timeDiff !== 0) return timeDiff;
+      return a.id - b.id;
+    });
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [bulkAdding, setBulkAdding] = useState(false);
 
@@ -730,17 +807,21 @@ export default function Routes() {
     }
   };
 
-  const activeRoutes = routes.filter((r) => r.status !== "completed");
-  const availableRoutes = routes.filter((r) => r.status === "available");
-  const inProgressRoutes = routes.filter((r) => r.status === "in_progress");
+  const availableRoutes = routes
+    .filter((r) => r.status === "available")
+    .sort(compareAvailableRoutesByPriority);
+  const inProgressRoutes = routes
+    .filter((r) => r.status === "in_progress")
+    .sort(compareInProgressRoutesByPriority);
+  const activeRoutes = [...availableRoutes, ...inProgressRoutes];
   const hasActiveRoutes = availableRoutes.length + inProgressRoutes.length > 0;
   const hasPendingOrders = pendingOrdersRenderable.length > 0;
-  const completedTodayRoutes = routes.filter(
-    (r) => r.status === "completed" && isTodayLocal(r.completedAt),
-  );
-  const oldCompletedRoutes = routes.filter(
-    (r) => r.status === "completed" && !isTodayLocal(r.completedAt),
-  );
+  const completedTodayRoutes = routes
+    .filter((r) => r.status === "completed" && isTodayLocal(r.completedAt))
+    .sort(compareCompletedRoutesByPriority);
+  const oldCompletedRoutes = routes
+    .filter((r) => r.status === "completed" && !isTodayLocal(r.completedAt))
+    .sort(compareCompletedRoutesByPriority);
   const completedRoutes = showCompleted
     ? [...completedTodayRoutes, ...oldCompletedRoutes]
     : completedTodayRoutes;
@@ -2188,9 +2269,7 @@ function RouteCard({
   const isAvailable = route.status === "available";
   const isInProgress = route.status === "in_progress";
   const isCompleted = route.status === "completed";
-  const sortedOrders = [...route.orders].sort(
-    (a, b) => a.stopOrder - b.stopOrder,
-  );
+  const sortedOrders = [...route.orders].sort(compareRouteOrdersByPriority);
   const canMoveOrders = isAvailable || isInProgress;
 
   // Card expand/collapse (default: collapsed)
@@ -2416,11 +2495,16 @@ function RouteCard({
                     </div>
                     <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-[#64748B]">
                       <OrderTimeBadge
-                        createdAt={order.orderCreatedAt}
+                        createdAt={order.routeTimeAt ?? order.orderCreatedAt}
                         compact
                         showIcon={false}
-                        className="text-[10px]"
+                        className="text-[10px] font-semibold text-slate-700"
                       />
+                      {order.orderId === sortedOrders[0]?.orderId && (
+                        <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                          mais antigo
+                        </span>
+                      )}
                       <span className="text-slate-300">·</span>
                       <MapPin className="w-3 h-3 shrink-0" />
                       <span className="truncate">
