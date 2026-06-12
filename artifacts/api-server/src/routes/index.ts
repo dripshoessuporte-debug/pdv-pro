@@ -17,12 +17,14 @@ import deliveryDistanceRouter from "./delivery-distance";
 import devRouter from "./dev";
 import adminRouter from "./admin";
 import authRouter from "./auth";
+import platformRouter from "./platform";
 import { attachCurrentActor, rbacRouteGuard } from "../middleware/rbac";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
+router.use(platformRouter);
 
 router.use(attachCurrentActor);
 router.use(rbacRouteGuard);

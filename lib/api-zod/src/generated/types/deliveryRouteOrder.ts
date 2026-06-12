@@ -19,7 +19,28 @@ export interface DeliveryRouteOrder {
   deliveryAddress?: string | null;
   /** @nullable */
   deliveryNeighborhood?: string | null;
+  /** @nullable */
+  deliveryCep?: string | null;
   deliveryFee?: number;
+  /** @nullable */
+  estimatedDistanceKm?: number | null;
+  totalAmount?: number;
+  /** @nullable */
+  paymentTiming?: string | null;
+  /** @nullable */
+  deliveryPaymentMethod?: string | null;
+  /** @nullable */
+  needsChange?: string | null;
+  /** @nullable */
+  changeFor?: number | null;
+  /** @nullable */
+  deliveryPaymentNotes?: string | null;
+  /** @nullable */
+  orderCreatedAt?: string | null;
+  /** @nullable */
+  orderKitchenAcceptedAt?: string | null;
+  /** @nullable */
+  routeTimeAt?: string | null;
   /** @nullable */
   deliveryStatus?: string | null;
 }

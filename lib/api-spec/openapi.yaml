@@ -43,7 +43,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
-
   /auth/login:
     post:
       operationId: login
@@ -93,6 +92,42 @@ paths:
           description: Authentication required
         "403":
           description: Forbidden
+
+  /platform/overview:
+    get:
+      operationId: getPlatformOverview
+      tags: [platform]
+      summary: Get platform overview metrics
+      responses:
+        "200":
+          description: Platform metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformOverview"
+        "403":
+          description: Platform admin access required
+
+  /platform/stores:
+    get:
+      operationId: listPlatformStores
+      tags: [platform]
+      summary: List stores for Admin Max
+      responses:
+        "200":
+          description: Platform stores
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stores]
+                properties:
+                  stores:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PlatformStore"
+        "403":
+          description: Platform admin access required
 
   # Tables
   /tables:
@@ -502,8 +537,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProductVariant"
-
-
 
   /menu/addon-groups:
     get:
@@ -1496,7 +1529,6 @@ components:
       required:
         - status
 
-
     LoginInput:
       type: object
       required: [email, password]
@@ -1531,18 +1563,73 @@ components:
           type: string
           enum: [max_control, atendente, cozinha, motoboy]
 
+    PlatformRole:
+      type: string
+      enum: [platform_owner, platform_admin, platform_support, platform_finance]
+
     AuthSession:
       type: object
-      required: [user, stores, currentStore]
+      required: [user, platformRole, stores, currentStore]
       properties:
         user:
           $ref: "#/components/schemas/AuthUser"
+        platformRole:
+          oneOf:
+            - $ref: "#/components/schemas/PlatformRole"
+            - type: "null"
         stores:
           type: array
           items:
             $ref: "#/components/schemas/AuthStore"
         currentStore:
-          $ref: "#/components/schemas/AuthStore"
+          oneOf:
+            - $ref: "#/components/schemas/AuthStore"
+            - type: "null"
+
+    PlatformOverview:
+      type: object
+      required:
+        [
+          totalStores,
+          activeStores,
+          totalUsers,
+          ordersToday,
+          trialStores,
+          blockedStores,
+        ]
+      properties:
+        totalStores:
+          type: integer
+        activeStores:
+          type: integer
+        totalUsers:
+          type: integer
+        ordersToday:
+          type: integer
+        trialStores:
+          type: integer
+        blockedStores:
+          type: integer
+
+    PlatformStore:
+      type: object
+      required: [id, name, status, city, state, createdAt, membersCount]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        status:
+          type: string
+        city:
+          type: [string, "null"]
+        state:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+        membersCount:
+          type: integer
 
     CurrentActor:
       type: object
@@ -1841,7 +1928,19 @@ components:
 
     ProductVariant:
       type: object
-      required: [id, storeId, productId, name, price, active, available, sortOrder, createdAt, updatedAt]
+      required:
+        [
+          id,
+          storeId,
+          productId,
+          name,
+          price,
+          active,
+          available,
+          sortOrder,
+          createdAt,
+          updatedAt,
+        ]
       properties:
         id: { type: integer }
         storeId: { type: integer }
@@ -1936,7 +2035,16 @@ components:
           type: ["string", "null"]
         deliveryStatus:
           type: ["string", "null"]
-          enum: [pending, preparing, ready, out_for_delivery, delivered, awaiting_settlement, null]
+          enum:
+            [
+              pending,
+              preparing,
+              ready,
+              out_for_delivery,
+              delivered,
+              awaiting_settlement,
+              null,
+            ]
         paymentTiming:
           type: string
           enum: [now, on_delivery]
@@ -2055,8 +2163,15 @@ components:
       properties:
         deliveryStatus:
           type: string
-          enum: [pending, preparing, ready, out_for_delivery, delivered, awaiting_settlement]
-
+          enum:
+            [
+              pending,
+              preparing,
+              ready,
+              out_for_delivery,
+              delivered,
+              awaiting_settlement,
+            ]
 
     AddonOption:
       type: object
@@ -2106,7 +2221,8 @@ components:
 
     AddonGroup:
       type: object
-      required: [id, storeId, name, required, minSelected, active, sortOrder, options]
+      required:
+        [id, storeId, name, required, minSelected, active, sortOrder, options]
       properties:
         id:
           type: integer
@@ -2187,7 +2303,16 @@ components:
 
     OrderItemAddon:
       type: object
-      required: [id, orderItemId, addonGroupName, addonName, addonPrice, quantity, totalPrice]
+      required:
+        [
+          id,
+          orderItemId,
+          addonGroupName,
+          addonName,
+          addonPrice,
+          quantity,
+          totalPrice,
+        ]
       properties:
         id:
           type: integer
@@ -2279,7 +2404,16 @@ components:
           type: number
         method:
           type: string
-          enum: [cash, credit_card, debit_card, pix, voucher, ifood_online, platform]
+          enum:
+            [
+              cash,
+              credit_card,
+              debit_card,
+              pix,
+              voucher,
+              ifood_online,
+              platform,
+            ]
         status:
           type: string
           enum: [pending, approved, refused]
@@ -2299,7 +2433,16 @@ components:
           minimum: 0
         method:
           type: string
-          enum: [cash, credit_card, debit_card, pix, voucher, ifood_online, platform]
+          enum:
+            [
+              cash,
+              credit_card,
+              debit_card,
+              pix,
+              voucher,
+              ifood_online,
+              platform,
+            ]
         amountTendered:
           type: number
 
@@ -2402,7 +2545,17 @@ components:
     # Dashboard
     AlertsSummary:
       type: object
-      required: [awaitingSettlement, routesInProgress, routesAvailable, readyNotActioned, deliveryWithoutRoute, cashRegisterOpenHours, pendingKitchenCount, activeOrdersCount]
+      required:
+        [
+          awaitingSettlement,
+          routesInProgress,
+          routesAvailable,
+          readyNotActioned,
+          deliveryWithoutRoute,
+          cashRegisterOpenHours,
+          pendingKitchenCount,
+          activeOrdersCount,
+        ]
       properties:
         awaitingSettlement:
           type: integer
@@ -2423,7 +2576,16 @@ components:
 
     DashboardSummary:
       type: object
-      required: [totalOrdersToday, totalRevenueToday, openOrders, occupiedTables, availableTables, pendingKitchenTickets, awaitingSettlement]
+      required:
+        [
+          totalOrdersToday,
+          totalRevenueToday,
+          openOrders,
+          occupiedTables,
+          availableTables,
+          pendingKitchenTickets,
+          awaitingSettlement,
+        ]
       properties:
         totalOrdersToday:
           type: integer
@@ -2548,7 +2710,19 @@ components:
 
     CashSummary:
       type: object
-      required: [totalCash, totalPix, totalCredit, totalDebit, totalVoucher, totalSales, totalWithdrawals, totalSupplies, totalManualIn, expectedCash]
+      required:
+        [
+          totalCash,
+          totalPix,
+          totalCredit,
+          totalDebit,
+          totalVoucher,
+          totalSales,
+          totalWithdrawals,
+          totalSupplies,
+          totalManualIn,
+          expectedCash,
+        ]
       properties:
         totalCash:
           type: number
@@ -2632,7 +2806,19 @@ components:
 
     DeliveryRoute:
       type: object
-      required: [id, name, mainNeighborhood, includedNeighborhoods, status, color, storeOrigin, createdAt, orders, totalDeliveryFee]
+      required:
+        [
+          id,
+          name,
+          mainNeighborhood,
+          includedNeighborhoods,
+          status,
+          color,
+          storeOrigin,
+          createdAt,
+          orders,
+          totalDeliveryFee,
+        ]
       properties:
         id:
           type: integer
@@ -2693,7 +2879,14 @@ components:
 
     StoreSettings:
       type: object
-      required: [id, storeName, deliveryDispatchTimeMinutes, maxOrdersPerRoute, deliveryFeeMode]
+      required:
+        [
+          id,
+          storeName,
+          deliveryDispatchTimeMinutes,
+          maxOrdersPerRoute,
+          deliveryFeeMode,
+        ]
       properties:
         id:
           type: integer
@@ -2868,7 +3061,16 @@ components:
 
     AwaitingSettlementOrder:
       type: object
-      required: [id, totalAmount, deliveryFee, deliveryStatus, paymentTiming, needsChange, createdAt]
+      required:
+        [
+          id,
+          totalAmount,
+          deliveryFee,
+          deliveryStatus,
+          paymentTiming,
+          needsChange,
+          createdAt,
+        ]
       properties:
         id:
           type: integer

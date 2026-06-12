@@ -14,6 +14,8 @@ export interface Table {
   status: TableStatus;
   /** @nullable */
   currentOrderId?: number | null;
+  /** @nullable */
+  currentOrderCreatedAt?: string | null;
   openOrdersCount?: number;
   hasMultipleOpenOrders?: boolean;
   createdAt: string;

@@ -50,10 +50,10 @@ function allowDevRbacHeaders(): boolean {
 function hasDevRbacHeaders(req: Request): boolean {
   return Boolean(
     req.header("x-store-id") ||
-      req.header("x-user-id") ||
-      req.header("x-rbac-role") ||
-      req.header("x-rbac-user-id") ||
-      req.header("x-rbac-name"),
+    req.header("x-user-id") ||
+    req.header("x-rbac-role") ||
+    req.header("x-rbac-user-id") ||
+    req.header("x-rbac-name"),
   );
 }
 
@@ -81,7 +81,7 @@ export async function resolveCurrentActor(req: Request): Promise<CurrentActor> {
   if (req.actor) return req.actor;
 
   const authenticatedContext = await resolveAuthenticatedContext(req);
-  if (authenticatedContext) {
+  if (authenticatedContext?.currentStore) {
     req.actor = {
       id: authenticatedContext.user.id,
       storeId: authenticatedContext.currentStore.id,
@@ -91,6 +91,12 @@ export async function resolveCurrentActor(req: Request): Promise<CurrentActor> {
       isDevelopmentFallback: false,
     };
     return req.actor;
+  }
+
+  if (authenticatedContext) {
+    const error = new Error("Usuário sem loja ativa para acessar o PDV.");
+    (error as Error & { status?: number }).status = 403;
+    throw error;
   }
 
   const devHeadersAllowed = allowDevRbacHeaders();

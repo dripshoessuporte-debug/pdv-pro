@@ -69,6 +69,33 @@ export const storeMembersTable = pgTable(
   ],
 );
 
+export const platformAdminRoles = [
+  "platform_owner",
+  "platform_admin",
+  "platform_support",
+  "platform_finance",
+] as const;
+
+export const platformAdminsTable = pgTable(
+  "platform_admins",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id),
+    role: text("role").notNull(),
+    status: text("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [uniqueIndex("platform_admins_user_unique").on(table.userId)],
+);
+
 export const insertStoreSchema = createInsertSchema(storesTable).omit({
   id: true,
   createdAt: true,
@@ -90,3 +117,10 @@ export const insertStoreMemberSchema = createInsertSchema(
 ).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertStoreMember = z.infer<typeof insertStoreMemberSchema>;
 export type StoreMember = typeof storeMembersTable.$inferSelect;
+
+export const insertPlatformAdminSchema = createInsertSchema(
+  platformAdminsTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export type PlatformAdminRole = (typeof platformAdminRoles)[number];
+export type InsertPlatformAdmin = z.infer<typeof insertPlatformAdminSchema>;
+export type PlatformAdmin = typeof platformAdminsTable.$inferSelect;

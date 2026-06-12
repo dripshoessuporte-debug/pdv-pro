@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetCurrentActorQueryKey } from "@workspace/api-client-react";
+import { getGetCurrentSessionQueryKey } from "@workspace/api-client-react";
 import {
   Select,
   SelectContent,
@@ -80,7 +80,7 @@ export function DevRoleSwitcher() {
     setCurrentRole(nextRole);
     setStoreId(nextStoreId);
 
-    queryClient.invalidateQueries({ queryKey: getGetCurrentActorQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetCurrentSessionQueryKey() });
     queryClient.invalidateQueries();
 
     toast({ title: `Perfil de teste alterado para ${nextProfile.label}.` });

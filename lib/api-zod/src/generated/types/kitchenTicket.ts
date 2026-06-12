@@ -18,6 +18,14 @@ export interface KitchenTicket {
   status: KitchenTicketStatus;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  orderCreatedAt?: string | null;
+  /** @nullable */
+  kitchenAcceptedAt?: string | null;
+  /** @nullable */
+  ticketCreatedAt?: string | null;
   createdAt: string;
   items: OrderItem[];
 }
