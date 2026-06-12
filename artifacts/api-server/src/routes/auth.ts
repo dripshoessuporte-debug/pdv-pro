@@ -13,7 +13,9 @@ const router: IRouter = Router();
 
 const invalidCredentialsMessage = "E-mail ou senha inválidos.";
 
-function serializeContext(context: NonNullable<Awaited<ReturnType<typeof buildAuthenticatedContext>>>) {
+function serializeContext(
+  context: NonNullable<Awaited<ReturnType<typeof buildAuthenticatedContext>>>,
+) {
   return {
     user: context.user,
     stores: context.stores,
@@ -50,6 +52,37 @@ router.post("/auth/login", async (req, res) => {
   }
 
   await touchLastLogin(user.id);
+  setSessionCookie(res, context.user.id, context.currentStore?.id ?? null);
+  res.json(serializeContext(context));
+});
+
+router.post("/auth/select-store", async (req, res) => {
+  const requestedStoreId = Number.parseInt(String(req.body?.storeId ?? ""), 10);
+  if (!Number.isFinite(requestedStoreId) || requestedStoreId <= 0) {
+    res.status(400).json({ error: "Loja inválida." });
+    return;
+  }
+
+  const baseContext = await resolveAuthenticatedContext(req);
+  if (!baseContext) {
+    res.status(401).json({ error: "Autenticação necessária." });
+    return;
+  }
+
+  if (!baseContext.stores.some((store) => store.id === requestedStoreId)) {
+    res.status(403).json({ error: "Usuário não pertence à loja selecionada." });
+    return;
+  }
+
+  const context = await buildAuthenticatedContext(
+    baseContext.user.id,
+    requestedStoreId,
+  );
+  if (!context?.currentStore) {
+    res.status(403).json({ error: "Loja selecionada indisponível." });
+    return;
+  }
+
   setSessionCookie(res, context.user.id, context.currentStore.id);
   res.json(serializeContext(context));
 });

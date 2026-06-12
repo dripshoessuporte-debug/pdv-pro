@@ -29,11 +29,12 @@ import type {
   AdjustRouteTimeInput,
   AlertsSummary,
   ApplyVariantTemplateToProductBody,
+  AuthSession,
   AwaitingSettlementOrder,
-  BulkReadyKitchenTicketsBody,
-  BulkReadyKitchenTicketsResponse,
   BulkCancelKitchenTicketsBody,
   BulkCancelKitchenTicketsResponse,
+  BulkReadyKitchenTicketsBody,
+  BulkReadyKitchenTicketsResponse,
   CashMovement,
   CashMovementInput,
   CashRegisterClose,
@@ -45,7 +46,6 @@ import type {
   CategoryUpdate,
   CreateVariantTemplateBody,
   CreateVariantTemplateOptionBody,
-  CurrentActor,
   Customer,
   CustomerInput,
   CustomerUpdate,
@@ -60,6 +60,7 @@ import type {
   ListOrdersParams,
   ListProductsParams,
   ListVariantTemplates200Item,
+  LoginInput,
   Order,
   OrderInput,
   OrderItem,
@@ -75,6 +76,7 @@ import type {
   ProductVariantInput,
   ProductVariantUpdate,
   Receipt,
+  SelectStoreBody,
   SettleDeliveryBody,
   StoreSettings,
   StoreSettingsInput,
@@ -175,7 +177,219 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
-export const getGetCurrentActorUrl = () => {
+export const getLoginUrl = () => {
+
+
+
+
+  return `/api/auth/login`
+}
+
+/**
+ * @summary Login with e-mail and password
+ */
+export const login = async (loginInput: LoginInput, options?: RequestInit): Promise<AuthSession> => {
+
+  return customFetch<AuthSession>(getLoginUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      loginInput,)
+  }
+);}
+
+
+
+
+export const getLoginMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof login>>, TError,{data: BodyType<LoginInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof login>>, TError,{data: BodyType<LoginInput>}, TContext> => {
+
+const mutationKey = ['login'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof login>>, {data: BodyType<LoginInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  login(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LoginMutationResult = NonNullable<Awaited<ReturnType<typeof login>>>
+    export type LoginMutationBody = BodyType<LoginInput>
+    export type LoginMutationError = ErrorType<void>
+
+    /**
+ * @summary Login with e-mail and password
+ */
+export const useLogin = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof login>>, TError,{data: BodyType<LoginInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof login>>,
+        TError,
+        {data: BodyType<LoginInput>},
+        TContext
+      > => {
+      return useMutation(getLoginMutationOptions(options));
+    }
+
+export const getSelectStoreUrl = () => {
+
+
+
+
+  return `/api/auth/select-store`
+}
+
+/**
+ * @summary Select current store for the authenticated session
+ */
+export const selectStore = async (selectStoreBody: SelectStoreBody, options?: RequestInit): Promise<AuthSession> => {
+
+  return customFetch<AuthSession>(getSelectStoreUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      selectStoreBody,)
+  }
+);}
+
+
+
+
+export const getSelectStoreMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof selectStore>>, TError,{data: BodyType<SelectStoreBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof selectStore>>, TError,{data: BodyType<SelectStoreBody>}, TContext> => {
+
+const mutationKey = ['selectStore'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof selectStore>>, {data: BodyType<SelectStoreBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  selectStore(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SelectStoreMutationResult = NonNullable<Awaited<ReturnType<typeof selectStore>>>
+    export type SelectStoreMutationBody = BodyType<SelectStoreBody>
+    export type SelectStoreMutationError = ErrorType<void>
+
+    /**
+ * @summary Select current store for the authenticated session
+ */
+export const useSelectStore = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof selectStore>>, TError,{data: BodyType<SelectStoreBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof selectStore>>,
+        TError,
+        {data: BodyType<SelectStoreBody>},
+        TContext
+      > => {
+      return useMutation(getSelectStoreMutationOptions(options));
+    }
+
+export const getLogoutUrl = () => {
+
+
+
+
+  return `/api/auth/logout`
+}
+
+/**
+ * @summary Logout current session
+ */
+export const logout = async ( options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getLogoutUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getLogoutMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logout>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof logout>>, TError,void, TContext> => {
+
+const mutationKey = ['logout'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof logout>>, void> = () => {
+
+
+          return  logout(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LogoutMutationResult = NonNullable<Awaited<ReturnType<typeof logout>>>
+
+    export type LogoutMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Logout current session
+ */
+export const useLogout = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logout>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof logout>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getLogoutMutationOptions(options));
+    }
+
+export const getGetCurrentSessionUrl = () => {
 
 
 
@@ -184,12 +398,12 @@ export const getGetCurrentActorUrl = () => {
 }
 
 /**
- * Returns the current actor resolved by the backend auth/RBAC context.
- * @summary Get current RBAC actor
+ * Returns the current user, accessible stores and selected store resolved from the httpOnly session cookie.
+ * @summary Get current authenticated user/session
  */
-export const getCurrentActor = async ( options?: RequestInit): Promise<CurrentActor> => {
+export const getCurrentSession = async ( options?: RequestInit): Promise<AuthSession> => {
 
-  return customFetch<CurrentActor>(getGetCurrentActorUrl(),
+  return customFetch<AuthSession>(getGetCurrentSessionUrl(),
   {
     ...options,
     method: 'GET'
@@ -202,45 +416,45 @@ export const getCurrentActor = async ( options?: RequestInit): Promise<CurrentAc
 
 
 
-export const getGetCurrentActorQueryKey = () => {
+export const getGetCurrentSessionQueryKey = () => {
     return [
     `/api/auth/me`
     ] as const;
     }
 
 
-export const getGetCurrentActorQueryOptions = <TData = Awaited<ReturnType<typeof getCurrentActor>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentActor>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetCurrentSessionQueryOptions = <TData = Awaited<ReturnType<typeof getCurrentSession>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetCurrentActorQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetCurrentSessionQueryKey();
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCurrentActor>>> = ({ signal }) => getCurrentActor({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCurrentSession>>> = ({ signal }) => getCurrentSession({ signal, ...requestOptions });
 
 
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCurrentActor>>, TError, TData> & { queryKey: QueryKey }
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCurrentSession>>, TError, TData> & { queryKey: QueryKey }
 }
 
-export type GetCurrentActorQueryResult = NonNullable<Awaited<ReturnType<typeof getCurrentActor>>>
-export type GetCurrentActorQueryError = ErrorType<void>
+export type GetCurrentSessionQueryResult = NonNullable<Awaited<ReturnType<typeof getCurrentSession>>>
+export type GetCurrentSessionQueryError = ErrorType<void>
 
 
 /**
- * @summary Get current RBAC actor
+ * @summary Get current authenticated user/session
  */
 
-export function useGetCurrentActor<TData = Awaited<ReturnType<typeof getCurrentActor>>, TError = ErrorType<void>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentActor>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useGetCurrentSession<TData = Awaited<ReturnType<typeof getCurrentSession>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetCurrentActorQueryOptions(options)
+  const queryOptions = getGetCurrentSessionQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -4088,8 +4302,7 @@ export const getBulkReadyKitchenTicketsUrl = () => {
 /**
  * @summary Mark kitchen tickets as ready in bulk
  */
-export const bulkReadyKitchenTickets = async (
-    bulkReadyKitchenTicketsBody: BulkReadyKitchenTicketsBody, options?: RequestInit): Promise<BulkReadyKitchenTicketsResponse> => {
+export const bulkReadyKitchenTickets = async (bulkReadyKitchenTicketsBody: BulkReadyKitchenTicketsBody, options?: RequestInit): Promise<BulkReadyKitchenTicketsResponse> => {
 
   return customFetch<BulkReadyKitchenTicketsResponse>(getBulkReadyKitchenTicketsUrl(),
   {
@@ -4160,8 +4373,7 @@ export const getBulkCancelKitchenTicketsUrl = () => {
 /**
  * @summary Cancel kitchen tickets in bulk
  */
-export const bulkCancelKitchenTickets = async (
-    bulkCancelKitchenTicketsBody: BulkCancelKitchenTicketsBody, options?: RequestInit): Promise<BulkCancelKitchenTicketsResponse> => {
+export const bulkCancelKitchenTickets = async (bulkCancelKitchenTicketsBody: BulkCancelKitchenTicketsBody, options?: RequestInit): Promise<BulkCancelKitchenTicketsResponse> => {
 
   return customFetch<BulkCancelKitchenTicketsResponse>(getBulkCancelKitchenTicketsUrl(),
   {

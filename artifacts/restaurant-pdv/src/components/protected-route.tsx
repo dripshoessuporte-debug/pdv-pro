@@ -21,8 +21,12 @@ export function ProtectedRoute({
     );
   }
 
-  if (!isAuthenticated || !actor) {
+  if (!isAuthenticated) {
     return <Redirect to={`/login?next=${encodeURIComponent(location)}`} />;
+  }
+
+  if (!actor) {
+    return <Redirect to="/select-store" />;
   }
 
   if (!canAccessPath(actor.role, path)) {

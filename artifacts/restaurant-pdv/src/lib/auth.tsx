@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   defaultPathForRole,
   setCurrentActorFromAuth,
@@ -25,12 +26,13 @@ export type AuthStore = {
   id: number;
   name: string;
   role: Role;
+  status: "active";
 };
 
 export type AuthSession = {
   user: AuthUser;
   stores: AuthStore[];
-  currentStore: AuthStore;
+  currentStore: AuthStore | null;
 };
 
 type AuthContextValue = {
@@ -43,12 +45,13 @@ type AuthContextValue = {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  selectStore: (storeId: number) => Promise<AuthSession>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function actorFromSession(session: AuthSession | null): Actor | null {
-  if (!session) return null;
+  if (!session?.currentStore) return null;
   return {
     id: session.user.id,
     storeId: session.currentStore.id,
@@ -109,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [, navigate] = useLocation();
+  const queryClient = useQueryClient();
 
   const updateSession = useCallback((nextSession: AuthSession | null) => {
     setSession(nextSession);
@@ -138,9 +142,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ email, password }),
       });
       updateSession(nextSession);
-      navigate(defaultPathForRole(nextSession.currentStore.role));
+      navigate(
+        nextSession.currentStore
+          ? defaultPathForRole(nextSession.currentStore.role)
+          : "/select-store",
+      );
     },
     [navigate, updateSession],
+  );
+
+  const selectStore = useCallback(
+    async (storeId: number) => {
+      const nextSession = await fetchJson<AuthSession>("/api/auth/select-store", {
+        method: "POST",
+        body: JSON.stringify({ storeId }),
+      });
+      queryClient.clear();
+      updateSession(nextSession);
+      return nextSession;
+    },
+    [queryClient, updateSession],
   );
 
   const logout = useCallback(async () => {
@@ -165,8 +186,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       refresh,
+      selectStore,
     }),
-    [actor, isLoading, login, logout, refresh, session],
+    [actor, isLoading, login, logout, refresh, selectStore, session],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

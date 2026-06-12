@@ -12,6 +12,7 @@ export interface CurrentActor {
   id: number | null;
   storeId: number;
   name: string;
+  email?: string;
   role: CurrentActorRole;
   isDevelopmentFallback: boolean;
 }

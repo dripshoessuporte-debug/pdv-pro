@@ -82,6 +82,12 @@ export async function resolveCurrentActor(req: Request): Promise<CurrentActor> {
 
   const authenticatedContext = await resolveAuthenticatedContext(req);
   if (authenticatedContext) {
+    if (!authenticatedContext.currentStore) {
+      const error = new Error("Selecione uma loja para continuar.");
+      (error as Error & { status?: number }).status = 409;
+      throw error;
+    }
+
     req.actor = {
       id: authenticatedContext.user.id,
       storeId: authenticatedContext.currentStore.id,

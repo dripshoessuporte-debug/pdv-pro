@@ -17,5 +17,9 @@ export interface CashMovement {
   reason: string;
   /** @nullable */
   orderId?: number | null;
+  /** @nullable */
+  orderCreatedAt?: string | null;
+  /** @nullable */
+  orderPaidAt?: string | null;
   createdAt: string;
 }

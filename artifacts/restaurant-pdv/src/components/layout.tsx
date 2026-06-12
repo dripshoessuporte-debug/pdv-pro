@@ -14,6 +14,7 @@ import {
   Bike,
   Settings,
   LogOut,
+  ArrowLeftRight,
 } from "lucide-react";
 import {
   useHealthCheck,
@@ -25,7 +26,7 @@ import {
 import { DevRoleSwitcher } from "@/components/dev-role-switcher";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
-import { canAccessPath } from "@/lib/rbac";
+import { canAccessPath, defaultPathForRole } from "@/lib/rbac";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -50,8 +51,8 @@ function AlertBadge({ count }: { count: number }) {
 }
 
 export function Layout({ children }: { children: ReactNode }) {
-  const [location] = useLocation();
-  const { actor, user, currentStore, logout } = useAuth();
+  const [location, navigate] = useLocation();
+  const { actor, user, stores, currentStore, logout, selectStore } = useAuth();
 
   const visibleNavItems = actor
     ? navItems.filter((item) => canAccessPath(actor.role, item.href))
@@ -194,6 +195,39 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="mt-1 text-[11px] uppercase tracking-wide text-zinc-500">
             {currentStore?.role ?? actor.role}
           </div>
+          {stores.length > 1 && (
+            <div className="mt-3 space-y-1.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                <ArrowLeftRight className="h-3.5 w-3.5" />
+                Trocar loja
+              </div>
+              {stores
+                .filter((store) => store.id !== currentStore?.id)
+                .map((store) => (
+                  <Button
+                    key={store.id}
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto w-full justify-start px-2 py-1.5 text-left text-xs text-zinc-200 hover:bg-white/10 hover:text-white"
+                    onClick={() => {
+                      void selectStore(store.id).then((nextSession) => {
+                        if (nextSession.currentStore) {
+                          navigate(defaultPathForRole(nextSession.currentStore.role));
+                        }
+                      });
+                    }}
+                  >
+                    <span>
+                      <span className="block font-semibold">{store.name}</span>
+                      <span className="block text-[10px] uppercase tracking-wide text-zinc-500">
+                        {store.role}
+                      </span>
+                    </span>
+                  </Button>
+                ))}
+            </div>
+          )}
           <Button
             type="button"
             variant="secondary"

@@ -18,15 +18,84 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * Returns the current actor resolved by the backend auth/RBAC context.
- * @summary Get current RBAC actor
+ * @summary Login with e-mail and password
  */
-export const GetCurrentActorResponse = zod.object({
-  "id": zod.number().nullable(),
-  "storeId": zod.number(),
+export const LoginBody = zod.object({
+  "email": zod.string().email(),
+  "password": zod.string()
+})
+
+export const LoginResponse = zod.object({
+  "user": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "email": zod.string()
+}),
+  "stores": zod.array(zod.object({
+  "id": zod.number(),
   "name": zod.string(),
   "role": zod.enum(['max_control', 'atendente', 'cozinha', 'motoboy']),
-  "isDevelopmentFallback": zod.boolean()
+  "status": zod.enum(['active'])
+})),
+  "currentStore": zod.union([zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "role": zod.enum(['max_control', 'atendente', 'cozinha', 'motoboy']),
+  "status": zod.enum(['active'])
+}),zod.null()])
+})
+
+
+/**
+ * @summary Select current store for the authenticated session
+ */
+export const SelectStoreBody = zod.object({
+  "storeId": zod.number()
+})
+
+export const SelectStoreResponse = zod.object({
+  "user": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "email": zod.string()
+}),
+  "stores": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "role": zod.enum(['max_control', 'atendente', 'cozinha', 'motoboy']),
+  "status": zod.enum(['active'])
+})),
+  "currentStore": zod.union([zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "role": zod.enum(['max_control', 'atendente', 'cozinha', 'motoboy']),
+  "status": zod.enum(['active'])
+}),zod.null()])
+})
+
+
+/**
+ * Returns the current user, accessible stores and selected store resolved from the httpOnly session cookie.
+ * @summary Get current authenticated user/session
+ */
+export const GetCurrentSessionResponse = zod.object({
+  "user": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "email": zod.string()
+}),
+  "stores": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "role": zod.enum(['max_control', 'atendente', 'cozinha', 'motoboy']),
+  "status": zod.enum(['active'])
+})),
+  "currentStore": zod.union([zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "role": zod.enum(['max_control', 'atendente', 'cozinha', 'motoboy']),
+  "status": zod.enum(['active'])
+}),zod.null()])
 })
 
 
@@ -39,9 +108,9 @@ export const ListTablesResponseItem = zod.object({
   "capacity": zod.number(),
   "status": zod.enum(['available', 'occupied', 'reserved']),
   "currentOrderId": zod.number().nullish(),
+  "currentOrderCreatedAt": zod.string().nullish(),
   "openOrdersCount": zod.number().optional(),
   "hasMultipleOpenOrders": zod.boolean().optional(),
-  "currentOrderCreatedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListTablesResponse = zod.array(ListTablesResponseItem)
@@ -70,9 +139,9 @@ export const GetTableResponse = zod.object({
   "capacity": zod.number(),
   "status": zod.enum(['available', 'occupied', 'reserved']),
   "currentOrderId": zod.number().nullish(),
+  "currentOrderCreatedAt": zod.string().nullish(),
   "openOrdersCount": zod.number().optional(),
   "hasMultipleOpenOrders": zod.boolean().optional(),
-  "currentOrderCreatedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -96,9 +165,9 @@ export const UpdateTableResponse = zod.object({
   "capacity": zod.number(),
   "status": zod.enum(['available', 'occupied', 'reserved']),
   "currentOrderId": zod.number().nullish(),
+  "currentOrderCreatedAt": zod.string().nullish(),
   "openOrdersCount": zod.number().optional(),
   "hasMultipleOpenOrders": zod.boolean().optional(),
-  "currentOrderCreatedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -1511,14 +1580,14 @@ export const GetKitchenQueueResponseItem = zod.object({
 export const GetKitchenQueueResponse = zod.array(GetKitchenQueueResponseItem)
 
 
-export const BulkKitchenTicketIds = zod.array(zod.number().int().positive()).min(1)
-
-
 /**
  * @summary Mark kitchen tickets as ready in bulk
  */
+
+
+
 export const BulkReadyKitchenTicketsBody = zod.object({
-  "ticketIds": BulkKitchenTicketIds
+  "ticketIds": zod.array(zod.number()).min(1)
 })
 
 export const BulkReadyKitchenTicketsResponse = zod.object({
@@ -1530,9 +1599,12 @@ export const BulkReadyKitchenTicketsResponse = zod.object({
 /**
  * @summary Cancel kitchen tickets in bulk
  */
+
+export const bulkCancelKitchenTicketsBodyReasonDefault = `cancelado na cozinha`;
+
 export const BulkCancelKitchenTicketsBody = zod.object({
-  "ticketIds": BulkKitchenTicketIds,
-  "reason": zod.string().min(1).default("cancelado na cozinha")
+  "ticketIds": zod.array(zod.number()).min(1),
+  "reason": zod.string().default(bulkCancelKitchenTicketsBodyReasonDefault)
 })
 
 export const BulkCancelKitchenTicketsResponse = zod.object({
@@ -1992,7 +2064,11 @@ export const CreateInboundOrderBody = zod.object({
   "delivery": zod.object({
   "cep": zod.string().optional(),
   "address": zod.string().optional(),
+  "number": zod.string().optional(),
   "neighborhood": zod.string().optional(),
+  "city": zod.string().optional(),
+  "state": zod.string().optional(),
+  "complement": zod.string().optional(),
   "reference": zod.string().optional(),
   "fee": zod.number().optional(),
   "distanceKm": zod.number().optional()
@@ -2092,7 +2168,18 @@ export const AdjustRouteTimeResponse = zod.object({
   "customerPhone": zod.string().nullish(),
   "deliveryAddress": zod.string().nullish(),
   "deliveryNeighborhood": zod.string().nullish(),
+  "deliveryCep": zod.string().nullish(),
   "deliveryFee": zod.number().optional(),
+  "estimatedDistanceKm": zod.number().nullish(),
+  "totalAmount": zod.number().optional(),
+  "paymentTiming": zod.string().nullish(),
+  "deliveryPaymentMethod": zod.string().nullish(),
+  "needsChange": zod.string().nullish(),
+  "changeFor": zod.number().nullish(),
+  "deliveryPaymentNotes": zod.string().nullish(),
+  "orderCreatedAt": zod.string().nullish(),
+  "orderKitchenAcceptedAt": zod.string().nullish(),
+  "routeTimeAt": zod.string().nullish(),
   "deliveryStatus": zod.string().nullish()
 }))
 })
