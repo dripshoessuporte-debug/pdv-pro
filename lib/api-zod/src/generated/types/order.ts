@@ -59,6 +59,10 @@ export interface Order {
   /** @nullable */
   deliveryPaymentNotes?: string | null;
   /** @nullable */
+  kitchenAcceptedAt?: string | null;
+  /** @nullable */
+  readyAt?: string | null;
+  /** @nullable */
   paidAt?: string | null;
   /** @nullable */
   closedAt?: string | null;

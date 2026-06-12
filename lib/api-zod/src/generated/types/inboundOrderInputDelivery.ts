@@ -9,7 +9,11 @@
 export type InboundOrderInputDelivery = {
   cep?: string;
   address?: string;
+  number?: string;
   neighborhood?: string;
+  city?: string;
+  state?: string;
+  complement?: string;
   reference?: string;
   fee?: number;
   distanceKm?: number;

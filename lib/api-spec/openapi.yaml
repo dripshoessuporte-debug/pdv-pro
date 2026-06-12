@@ -67,6 +67,35 @@ paths:
         "403":
           description: No active store access
 
+  /auth/select-store:
+    post:
+      operationId: selectStore
+      tags: [auth]
+      summary: Select current store for the authenticated session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [storeId]
+              properties:
+                storeId:
+                  type: integer
+      responses:
+        "200":
+          description: Authenticated session with selected store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "400":
+          description: Invalid store
+        "401":
+          description: Authentication required
+        "403":
+          description: Forbidden
+
   /auth/logout:
     post:
       operationId: logout
@@ -1521,7 +1550,7 @@ components:
 
     AuthStore:
       type: object
-      required: [id, name, role]
+      required: [id, name, role, status]
       properties:
         id:
           type: integer
@@ -1530,6 +1559,9 @@ components:
         role:
           type: string
           enum: [max_control, atendente, cozinha, motoboy]
+        status:
+          type: string
+          enum: [active]
 
     AuthSession:
       type: object
@@ -1542,7 +1574,9 @@ components:
           items:
             $ref: "#/components/schemas/AuthStore"
         currentStore:
-          $ref: "#/components/schemas/AuthStore"
+          oneOf:
+            - $ref: "#/components/schemas/AuthStore"
+            - type: "null"
 
     CurrentActor:
       type: object

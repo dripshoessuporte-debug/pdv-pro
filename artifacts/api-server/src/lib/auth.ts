@@ -24,6 +24,7 @@ export type AuthenticatedStore = {
   id: number;
   name: string;
   role: ActorRole;
+  status: "active";
 };
 
 export type AuthenticatedUser = {
@@ -35,13 +36,13 @@ export type AuthenticatedUser = {
 export type AuthenticatedContext = {
   user: AuthenticatedUser;
   stores: AuthenticatedStore[];
-  currentStore: AuthenticatedStore;
+  currentStore: AuthenticatedStore | null;
 };
 
 type SessionPayload = {
   v: typeof SESSION_VERSION;
   userId: number;
-  currentStoreId: number;
+  currentStoreId: number | null;
   exp: number;
 };
 
@@ -98,8 +99,9 @@ function parseSessionToken(token: string | undefined): SessionPayload | null {
       parsed?.v !== SESSION_VERSION ||
       !Number.isInteger(parsed.userId) ||
       parsed.userId <= 0 ||
-      !Number.isInteger(parsed.currentStoreId) ||
-      parsed.currentStoreId <= 0 ||
+      (parsed.currentStoreId !== null &&
+        (!Number.isInteger(parsed.currentStoreId) ||
+          parsed.currentStoreId <= 0)) ||
       !Number.isInteger(parsed.exp) ||
       parsed.exp <= Date.now()
     ) {
@@ -124,7 +126,7 @@ function getCookieOptions(): CookieOptions {
 export function setSessionCookie(
   res: Response,
   userId: number,
-  currentStoreId: number,
+  currentStoreId: number | null,
 ): void {
   const token = createSessionToken({
     v: SESSION_VERSION,
@@ -200,6 +202,7 @@ async function getActiveStoresForUser(
       id: storesTable.id,
       name: storesTable.name,
       role: storeMembersTable.role,
+      status: storesTable.status,
       isDefault: storeMembersTable.isDefault,
     })
     .from(storeMembersTable)
@@ -215,16 +218,17 @@ async function getActiveStoresForUser(
 
   return memberships
     .filter((member: { role: string }) => roleSet.has(member.role))
-    .map((member: { id: number; name: string; role: string }) => ({
+    .map((member) => ({
       id: member.id,
       name: member.name,
       role: member.role as ActorRole,
+      status: member.status as "active",
     }));
 }
 
 export async function buildAuthenticatedContext(
   userId: number,
-  currentStoreId?: number,
+  currentStoreId?: number | null,
 ): Promise<AuthenticatedContext | null> {
   const [user] = await db
     .select({
@@ -241,8 +245,11 @@ export async function buildAuthenticatedContext(
   const stores = await getActiveStoresForUser(user.id);
   if (stores.length === 0) return null;
 
-  const currentStore =
-    stores.find((store) => store.id === currentStoreId) ?? stores[0];
+  const currentStore = currentStoreId
+    ? stores.find((store) => store.id === currentStoreId) ?? null
+    : stores.length === 1
+      ? stores[0]
+      : null;
 
   return { user, stores, currentStore };
 }

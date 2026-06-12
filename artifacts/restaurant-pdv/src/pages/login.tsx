@@ -23,6 +23,10 @@ export default function LoginPage() {
     return <Redirect to={defaultPathForRole(actor.role)} />;
   }
 
+  if (!isLoading && isAuthenticated && !actor) {
+    return <Redirect to="/select-store" />;
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSubmitting(true);

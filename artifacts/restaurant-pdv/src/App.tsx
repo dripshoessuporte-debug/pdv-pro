@@ -17,6 +17,7 @@ import Routes from "@/pages/routes";
 import Motoboys from "@/pages/motoboys";
 import SettingsPage from "@/pages/settings";
 import LoginPage from "@/pages/login";
+import SelectStorePage from "@/pages/select-store";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ProtectedRoute } from "@/components/protected-route";
 import { defaultPathForRole } from "@/lib/rbac";
@@ -34,7 +35,8 @@ function HomeRedirect() {
     );
   }
 
-  if (!isAuthenticated || !actor) return <Redirect to="/login" />;
+  if (!isAuthenticated) return <Redirect to="/login" />;
+  if (!actor) return <Redirect to="/select-store" />;
 
   return <Redirect to={defaultPathForRole(actor.role)} />;
 }
@@ -43,6 +45,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
+      <Route path="/select-store" component={SelectStorePage} />
       <Route path="/">
         {() => <HomeRedirect />}
       </Route>
