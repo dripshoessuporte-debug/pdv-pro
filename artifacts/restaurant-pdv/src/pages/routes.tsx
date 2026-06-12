@@ -45,6 +45,11 @@ import {
 } from "@/components/ui/dialog";
 import { Layout } from "@/components/layout";
 import { OrderDetailDialog } from "@/components/order-detail-dialog";
+import {
+  DeliveryOrderTicketDialog,
+  type TicketPaperWidth,
+  printDeliveryRouteTickets,
+} from "@/components/delivery-order-ticket";
 import { OrderTimeBadge } from "@/components/order-time-badge";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -366,6 +371,7 @@ export default function Routes() {
   const [storeDispatchMinutes, setStoreDispatchMinutes] = useState<
     number | null
   >(null);
+  const [storeName, setStoreName] = useState("Gestor Max");
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const savingDispatch = false;
@@ -407,10 +413,43 @@ export default function Routes() {
   >("pending");
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [isOrderDetailOpen, setIsOrderDetailOpen] = useState(false);
+  const [selectedRouteTicket, setSelectedRouteTicket] = useState<{
+    order: RouteOrder;
+    route: DeliveryRoute;
+  } | null>(null);
+  const [autoPrintRouteTickets, setAutoPrintRouteTickets] = useState(true);
+  const [ticketPaperWidth, setTicketPaperWidth] =
+    useState<TicketPaperWidth>("80mm");
+
+  useEffect(() => {
+    const storedAutoPrint = window.localStorage.getItem(
+      "autoPrintRouteTickets",
+    );
+    const storedPaperWidth = window.localStorage.getItem("ticketPaperWidth");
+    if (storedAutoPrint != null)
+      setAutoPrintRouteTickets(storedAutoPrint !== "false");
+    if (storedPaperWidth === "58mm" || storedPaperWidth === "80mm") {
+      setTicketPaperWidth(storedPaperWidth);
+    }
+  }, []);
+
+  const updateAutoPrintRouteTickets = (enabled: boolean) => {
+    setAutoPrintRouteTickets(enabled);
+    window.localStorage.setItem("autoPrintRouteTickets", String(enabled));
+  };
+
+  const updateTicketPaperWidth = (width: TicketPaperWidth) => {
+    setTicketPaperWidth(width);
+    window.localStorage.setItem("ticketPaperWidth", width);
+  };
 
   const openOrderDetail = (orderId: number) => {
     setSelectedOrderId(orderId);
     setIsOrderDetailOpen(true);
+  };
+
+  const openRouteTicket = (order: RouteOrder, route: DeliveryRoute) => {
+    setSelectedRouteTicket({ order, route });
   };
 
   const fetchRoutes = useCallback(async () => {
@@ -462,10 +501,12 @@ export default function Routes() {
       const s = await apiFetch<{
         deliveryDispatchTimeMinutes: number;
         maxOrdersPerRoute: number;
+        storeName?: string | null;
       }>("/settings");
       setDispatchMinutes(s.deliveryDispatchTimeMinutes);
       setStoreDispatchMinutes(s.deliveryDispatchTimeMinutes);
       setMaxOrdersPerRoute(s.maxOrdersPerRoute ?? 4);
+      setStoreName(s.storeName?.trim() || "Gestor Max");
     } catch {
       // silently ignore
     }
@@ -551,10 +592,26 @@ export default function Routes() {
         method: "POST",
         body: JSON.stringify(body),
       });
-      await refreshDeliveryAndFinanceViews();
+      const assignedRoute = assignRoute;
       const name =
         couriers.find((c) => c.id === selectedCourierId)?.name ??
         courierName.trim();
+      if (autoPrintRouteTickets && assignedRoute.orders.length > 0) {
+        const printOpened = printDeliveryRouteTickets(
+          assignedRoute.orders,
+          { ...assignedRoute, courierName: name || assignedRoute.courierName },
+          { storeName, paperWidth: ticketPaperWidth },
+        );
+        if (!printOpened) {
+          toast({
+            title: "Pop-up de impressão bloqueado",
+            description:
+              "Permita pop-ups para imprimir as comandas da rota automaticamente.",
+            variant: "destructive",
+          });
+        }
+      }
+      await refreshDeliveryAndFinanceViews();
       toast({ title: `Rota assumida por ${name}!` });
       setAssignRoute(null);
       setCourierName("");
@@ -1190,7 +1247,7 @@ export default function Routes() {
                   onDirectRemove={(orderId) =>
                     handleDirectRemoveFromRoute(route.id, orderId)
                   }
-                  onOpenOrder={openOrderDetail}
+                  onOpenOrder={openRouteTicket}
                   completing={completing === route.id}
                 />
               ))}
@@ -1231,7 +1288,7 @@ export default function Routes() {
                 onDirectRemove={(orderId) =>
                   handleDirectRemoveFromRoute(route.id, orderId)
                 }
-                onOpenOrder={openOrderDetail}
+                onOpenOrder={openRouteTicket}
                 completing={completing === route.id}
               />
             ))}
@@ -1277,7 +1334,7 @@ export default function Routes() {
                     onQrCode={() => setQrRoute(route)}
                     onMoveOrder={() => {}}
                     onDirectRemove={() => {}}
-                    onOpenOrder={openOrderDetail}
+                    onOpenOrder={openRouteTicket}
                     completing={false}
                   />
                 ))}
@@ -1313,7 +1370,7 @@ export default function Routes() {
                           onQrCode={() => setQrRoute(route)}
                           onMoveOrder={() => {}}
                           onDirectRemove={() => {}}
-                          onOpenOrder={openOrderDetail}
+                          onOpenOrder={openRouteTicket}
                           completing={false}
                         />
                       ))}
@@ -1342,6 +1399,19 @@ export default function Routes() {
         open={isOrderDetailOpen}
         onOpenChange={setIsOrderDetailOpen}
       />
+
+      {selectedRouteTicket && (
+        <DeliveryOrderTicketDialog
+          open={!!selectedRouteTicket}
+          onOpenChange={(open) => {
+            if (!open) setSelectedRouteTicket(null);
+          }}
+          order={selectedRouteTicket.order}
+          route={selectedRouteTicket.route}
+          storeName={storeName}
+          paperWidth={ticketPaperWidth}
+        />
+      )}
 
       {/* ── QR Code Modal ── */}
       <Dialog
@@ -1534,6 +1604,40 @@ export default function Routes() {
               onKeyDown={(e) => e.key === "Enter" && handleAssign()}
               data-testid="input-courier-name"
             />
+
+            <div className="rounded-xl border bg-muted/30 p-3 space-y-3">
+              <label className="flex items-start gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={autoPrintRouteTickets}
+                  onChange={(event) =>
+                    updateAutoPrintRouteTickets(event.target.checked)
+                  }
+                />
+                <span>
+                  Imprimir comandas ao assumir
+                  <span className="block text-xs font-normal text-muted-foreground">
+                    Abre o print do navegador com uma comanda por pedido.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-center justify-between gap-3 text-xs font-medium text-muted-foreground">
+                Largura do papel
+                <select
+                  className="h-8 rounded-md border bg-background px-2 text-sm text-foreground"
+                  value={ticketPaperWidth}
+                  onChange={(event) =>
+                    updateTicketPaperWidth(
+                      event.target.value as TicketPaperWidth,
+                    )
+                  }
+                >
+                  <option value="80mm">80mm</option>
+                  <option value="58mm">58mm</option>
+                </select>
+              </label>
+            </div>
 
             <div className="flex gap-2">
               <Button
@@ -2263,7 +2367,7 @@ function RouteCard({
   onQrCode: () => void;
   onMoveOrder: (orderId: number, customerName: string | null) => void;
   onDirectRemove: (orderId: number) => void;
-  onOpenOrder: (orderId: number) => void;
+  onOpenOrder: (order: RouteOrder, route: DeliveryRoute) => void;
   completing: boolean;
 }) {
   const isAvailable = route.status === "available";
@@ -2461,7 +2565,7 @@ function RouteCard({
                     if (!isOrderExpanded)
                       e.currentTarget.style.backgroundColor = "#F8FAFC";
                   }}
-                  onClick={() => onOpenOrder(order.orderId)}
+                  onClick={() => onOpenOrder(order, route)}
                   data-testid={`route-order-${order.orderId}`}
                 >
                   {/* Stop number */}
