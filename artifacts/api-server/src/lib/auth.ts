@@ -3,6 +3,8 @@ import type { CookieOptions, Request, Response } from "express";
 import { and, eq, sql } from "drizzle-orm";
 import {
   db,
+  platformAdminRoles,
+  platformAdminsTable,
   storeMembersTable,
   storesTable,
   usersTable,
@@ -19,6 +21,9 @@ const roleSet = new Set<string>([
   "cozinha",
   "motoboy",
 ]);
+const platformRoleSet = new Set<string>(platformAdminRoles);
+
+export type PlatformRole = (typeof platformAdminRoles)[number];
 
 export type AuthenticatedStore = {
   id: number;
@@ -34,14 +39,15 @@ export type AuthenticatedUser = {
 
 export type AuthenticatedContext = {
   user: AuthenticatedUser;
+  platformRole: PlatformRole | null;
   stores: AuthenticatedStore[];
-  currentStore: AuthenticatedStore;
+  currentStore: AuthenticatedStore | null;
 };
 
 type SessionPayload = {
   v: typeof SESSION_VERSION;
   userId: number;
-  currentStoreId: number;
+  currentStoreId: number | null;
   exp: number;
 };
 
@@ -94,12 +100,15 @@ function parseSessionToken(token: string | undefined): SessionPayload | null {
 
   try {
     const parsed = JSON.parse(base64UrlDecode(encodedPayload).toString("utf8"));
+    const rawCurrentStoreId = parsed.currentStoreId;
+    const hasValidCurrentStoreId =
+      rawCurrentStoreId === null ||
+      (Number.isInteger(rawCurrentStoreId) && rawCurrentStoreId > 0);
     if (
       parsed?.v !== SESSION_VERSION ||
       !Number.isInteger(parsed.userId) ||
       parsed.userId <= 0 ||
-      !Number.isInteger(parsed.currentStoreId) ||
-      parsed.currentStoreId <= 0 ||
+      !hasValidCurrentStoreId ||
       !Number.isInteger(parsed.exp) ||
       parsed.exp <= Date.now()
     ) {
@@ -124,7 +133,7 @@ function getCookieOptions(): CookieOptions {
 export function setSessionCookie(
   res: Response,
   userId: number,
-  currentStoreId: number,
+  currentStoreId: number | null,
 ): void {
   const token = createSessionToken({
     v: SESSION_VERSION,
@@ -154,7 +163,14 @@ export async function verifyPassword(
 
   const [algorithm, nRaw, rRaw, pRaw, salt, expectedHash] =
     passwordHash.split("$");
-  if (algorithm !== "scrypt" || !nRaw || !rRaw || !pRaw || !salt || !expectedHash)
+  if (
+    algorithm !== "scrypt" ||
+    !nRaw ||
+    !rRaw ||
+    !pRaw ||
+    !salt ||
+    !expectedHash
+  )
     return false;
 
   const N = Number(nRaw);
@@ -172,7 +188,8 @@ export async function verifyPassword(
   });
 
   return (
-    actual.length === expected.length && crypto.timingSafeEqual(actual, expected)
+    actual.length === expected.length &&
+    crypto.timingSafeEqual(actual, expected)
   );
 }
 
@@ -190,6 +207,25 @@ export async function findActiveUserByEmail(email: string) {
     .limit(1);
 
   return user ?? null;
+}
+
+async function getActivePlatformRole(
+  userId: number,
+): Promise<PlatformRole | null> {
+  const [admin] = await db
+    .select({ role: platformAdminsTable.role })
+    .from(platformAdminsTable)
+    .where(
+      and(
+        eq(platformAdminsTable.userId, userId),
+        eq(platformAdminsTable.status, "active"),
+      ),
+    )
+    .limit(1);
+
+  return admin && platformRoleSet.has(admin.role)
+    ? (admin.role as PlatformRole)
+    : null;
 }
 
 async function getActiveStoresForUser(
@@ -224,7 +260,7 @@ async function getActiveStoresForUser(
 
 export async function buildAuthenticatedContext(
   userId: number,
-  currentStoreId?: number,
+  currentStoreId?: number | null,
 ): Promise<AuthenticatedContext | null> {
   const [user] = await db
     .select({
@@ -238,13 +274,16 @@ export async function buildAuthenticatedContext(
 
   if (!user) return null;
 
-  const stores = await getActiveStoresForUser(user.id);
-  if (stores.length === 0) return null;
+  const [stores, platformRole] = await Promise.all([
+    getActiveStoresForUser(user.id),
+    getActivePlatformRole(user.id),
+  ]);
+  if (stores.length === 0 && !platformRole) return null;
 
   const currentStore =
-    stores.find((store) => store.id === currentStoreId) ?? stores[0];
+    stores.find((store) => store.id === currentStoreId) ?? stores[0] ?? null;
 
-  return { user, stores, currentStore };
+  return { user, platformRole, stores, currentStore };
 }
 
 export async function resolveAuthenticatedContext(

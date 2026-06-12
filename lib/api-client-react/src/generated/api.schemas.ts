@@ -9,6 +9,71 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface LoginInput {
+  email: string;
+  password: string;
+}
+
+export interface AuthUser {
+  id: number;
+  name: string;
+  email: string;
+}
+
+export type AuthStoreRole = typeof AuthStoreRole[keyof typeof AuthStoreRole];
+
+
+export const AuthStoreRole = {
+  max_control: 'max_control',
+  atendente: 'atendente',
+  cozinha: 'cozinha',
+  motoboy: 'motoboy',
+} as const;
+
+export interface AuthStore {
+  id: number;
+  name: string;
+  role: AuthStoreRole;
+}
+
+export type PlatformRole = typeof PlatformRole[keyof typeof PlatformRole];
+
+
+export const PlatformRole = {
+  platform_owner: 'platform_owner',
+  platform_admin: 'platform_admin',
+  platform_support: 'platform_support',
+  platform_finance: 'platform_finance',
+} as const;
+
+export interface AuthSession {
+  user: AuthUser;
+  platformRole: PlatformRole | null;
+  stores: AuthStore[];
+  currentStore: AuthStore | null;
+}
+
+export interface PlatformOverview {
+  totalStores: number;
+  activeStores: number;
+  totalUsers: number;
+  ordersToday: number;
+  trialStores: number;
+  blockedStores: number;
+}
+
+export interface PlatformStore {
+  id: number;
+  name: string;
+  status: string;
+  /** @nullable */
+  city: string | null;
+  /** @nullable */
+  state: string | null;
+  createdAt: string;
+  membersCount: number;
+}
+
 export type CurrentActorRole = typeof CurrentActorRole[keyof typeof CurrentActorRole];
 
 
@@ -24,6 +89,7 @@ export interface CurrentActor {
   id: number | null;
   storeId: number;
   name: string;
+  email?: string;
   role: CurrentActorRole;
   isDevelopmentFallback: boolean;
 }
@@ -44,10 +110,10 @@ export interface Table {
   status: TableStatus;
   /** @nullable */
   currentOrderId?: number | null;
-  openOrdersCount?: number;
-  hasMultipleOpenOrders?: boolean;
   /** @nullable */
   currentOrderCreatedAt?: string | null;
+  openOrdersCount?: number;
+  hasMultipleOpenOrders?: boolean;
   createdAt: string;
 }
 
@@ -90,14 +156,6 @@ export interface Customer {
   email?: string | null;
   /** @nullable */
   notes?: string | null;
-  /** @nullable */
-  customerName?: string | null;
-  /** @nullable */
-  orderCreatedAt?: string | null;
-  /** @nullable */
-  kitchenAcceptedAt?: string | null;
-  /** @nullable */
-  ticketCreatedAt?: string | null;
   createdAt: string;
 }
 
@@ -586,6 +644,8 @@ export const PaymentMethod = {
   debit_card: 'debit_card',
   pix: 'pix',
   voucher: 'voucher',
+  ifood_online: 'ifood_online',
+  platform: 'platform',
 } as const;
 
 export type PaymentStatus = typeof PaymentStatus[keyof typeof PaymentStatus];
@@ -617,6 +677,8 @@ export const PaymentInputMethod = {
   debit_card: 'debit_card',
   pix: 'pix',
   voucher: 'voucher',
+  ifood_online: 'ifood_online',
+  platform: 'platform',
 } as const;
 
 export interface PaymentInput {
@@ -674,6 +736,7 @@ export interface KitchenTicket {
 }
 
 export interface BulkReadyKitchenTicketsBody {
+  /** @minItems 1 */
   ticketIds: number[];
 }
 
@@ -683,6 +746,7 @@ export interface BulkReadyKitchenTicketsResponse {
 }
 
 export interface BulkCancelKitchenTicketsBody {
+  /** @minItems 1 */
   ticketIds: number[];
   reason: string;
 }
@@ -1000,7 +1064,11 @@ export type InboundOrderInputCustomer = {
 export type InboundOrderInputDelivery = {
   cep?: string;
   address?: string;
+  number?: string;
   neighborhood?: string;
+  city?: string;
+  state?: string;
+  complement?: string;
   reference?: string;
   fee?: number;
   distanceKm?: number;
@@ -1108,6 +1176,10 @@ export interface SettleDeliveryBody {
   amountReceived?: number;
   notes?: string;
 }
+
+export type ListPlatformStores200 = {
+  stores: PlatformStore[];
+};
 
 export type ListCustomersParams = {
 search?: string;

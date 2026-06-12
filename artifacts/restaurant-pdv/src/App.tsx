@@ -17,8 +17,11 @@ import Routes from "@/pages/routes";
 import Motoboys from "@/pages/motoboys";
 import SettingsPage from "@/pages/settings";
 import LoginPage from "@/pages/login";
+import AdminMaxLoginPage from "@/pages/admin-max-login";
+import { AdminMaxDashboardPage, AdminMaxStoresPage } from "@/pages/admin-max";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ProtectedRoute } from "@/components/protected-route";
+import { ProtectedPlatformRoute } from "@/components/protected-platform-route";
 import { defaultPathForRole } from "@/lib/rbac";
 
 const queryClient = new QueryClient();
@@ -43,9 +46,22 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
-      <Route path="/">
-        {() => <HomeRedirect />}
+      <Route path="/admin-max/login" component={AdminMaxLoginPage} />
+      <Route path="/admin-max/stores">
+        {() => (
+          <ProtectedPlatformRoute>
+            <AdminMaxStoresPage />
+          </ProtectedPlatformRoute>
+        )}
       </Route>
+      <Route path="/admin-max">
+        {() => (
+          <ProtectedPlatformRoute>
+            <AdminMaxDashboardPage />
+          </ProtectedPlatformRoute>
+        )}
+      </Route>
+      <Route path="/">{() => <HomeRedirect />}</Route>
       <Route path="/dashboard">
         {() => (
           <ProtectedRoute path="/dashboard">

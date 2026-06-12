@@ -27,20 +27,32 @@ export type AuthStore = {
   role: Role;
 };
 
+export type PlatformRole =
+  | "platform_owner"
+  | "platform_admin"
+  | "platform_support"
+  | "platform_finance";
+
 export type AuthSession = {
   user: AuthUser;
+  platformRole: PlatformRole | null;
   stores: AuthStore[];
-  currentStore: AuthStore;
+  currentStore: AuthStore | null;
 };
 
 type AuthContextValue = {
   user: AuthUser | null;
   stores: AuthStore[];
   currentStore: AuthStore | null;
+  platformRole: PlatformRole | null;
   actor: Actor | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (
+    email: string,
+    password: string,
+    options?: { redirect?: boolean },
+  ) => Promise<AuthSession>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -48,7 +60,7 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function actorFromSession(session: AuthSession | null): Actor | null {
-  if (!session) return null;
+  if (!session?.currentStore) return null;
   return {
     id: session.user.id,
     storeId: session.currentStore.id,
@@ -59,7 +71,10 @@ function actorFromSession(session: AuthSession | null): Actor | null {
   };
 }
 
-async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
+async function fetchJson<T>(
+  url: string,
+  options: RequestInit = {},
+): Promise<T> {
   const response = await fetch(url, {
     credentials: "include",
     headers: {
@@ -132,13 +147,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const login = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string, options = { redirect: true }) => {
       const nextSession = await fetchJson<AuthSession>("/api/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
       updateSession(nextSession);
-      navigate(defaultPathForRole(nextSession.currentStore.role));
+
+      if (options.redirect !== false) {
+        if (!nextSession.currentStore) {
+          throw new Error("Nenhuma loja vinculada.");
+        }
+        navigate(defaultPathForRole(nextSession.currentStore.role));
+      }
+
+      return nextSession;
     },
     [navigate, updateSession],
   );
@@ -159,6 +182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       stores: session?.stores ?? [],
       currentStore: session?.currentStore ?? null,
+      platformRole: session?.platformRole ?? null,
       actor,
       isAuthenticated: Boolean(session),
       isLoading,
@@ -174,6 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth deve ser usado dentro de AuthProvider.");
+  if (!context)
+    throw new Error("useAuth deve ser usado dentro de AuthProvider.");
   return context;
 }

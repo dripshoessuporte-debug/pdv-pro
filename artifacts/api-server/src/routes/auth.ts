@@ -13,9 +13,12 @@ const router: IRouter = Router();
 
 const invalidCredentialsMessage = "E-mail ou senha inválidos.";
 
-function serializeContext(context: NonNullable<Awaited<ReturnType<typeof buildAuthenticatedContext>>>) {
+function serializeContext(
+  context: NonNullable<Awaited<ReturnType<typeof buildAuthenticatedContext>>>,
+) {
   return {
     user: context.user,
+    platformRole: context.platformRole,
     stores: context.stores,
     currentStore: context.currentStore,
   };
@@ -45,12 +48,14 @@ router.post("/auth/login", async (req, res) => {
 
   const context = await buildAuthenticatedContext(user.id);
   if (!context) {
-    res.status(403).json({ error: "Usuário sem loja ativa." });
+    res
+      .status(403)
+      .json({ error: "Usuário sem loja ativa ou acesso administrativo." });
     return;
   }
 
   await touchLastLogin(user.id);
-  setSessionCookie(res, context.user.id, context.currentStore.id);
+  setSessionCookie(res, context.user.id, context.currentStore?.id ?? null);
   res.json(serializeContext(context));
 });
 
