@@ -44,19 +44,51 @@ paths:
                 $ref: "#/components/schemas/HealthStatus"
 
 
-  /auth/me:
-    get:
-      operationId: getCurrentActor
+  /auth/login:
+    post:
+      operationId: login
       tags: [auth]
-      summary: Get current RBAC actor
-      description: Returns the current actor resolved by the backend auth/RBAC context.
+      summary: Login with e-mail and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
       responses:
         "200":
-          description: Current actor
+          description: Authenticated session
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CurrentActor"
+                $ref: "#/components/schemas/AuthSession"
+        "401":
+          description: Invalid credentials
+        "403":
+          description: No active store access
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout current session
+      responses:
+        "204":
+          description: Session cleared
+
+  /auth/me:
+    get:
+      operationId: getCurrentSession
+      tags: [auth]
+      summary: Get current authenticated user/session
+      description: Returns the current user, accessible stores and selected store resolved from the httpOnly session cookie.
+      responses:
+        "200":
+          description: Current authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
         "401":
           description: Authentication required
         "403":
@@ -1465,6 +1497,53 @@ components:
         - status
 
 
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    AuthUser:
+      type: object
+      required: [id, name, email]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+
+    AuthStore:
+      type: object
+      required: [id, name, role]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        role:
+          type: string
+          enum: [max_control, atendente, cozinha, motoboy]
+
+    AuthSession:
+      type: object
+      required: [user, stores, currentStore]
+      properties:
+        user:
+          $ref: "#/components/schemas/AuthUser"
+        stores:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuthStore"
+        currentStore:
+          $ref: "#/components/schemas/AuthStore"
+
     CurrentActor:
       type: object
       required: [id, storeId, name, role, isDevelopmentFallback]
@@ -1474,6 +1553,8 @@ components:
         storeId:
           type: integer
         name:
+          type: string
+        email:
           type: string
         role:
           type: string

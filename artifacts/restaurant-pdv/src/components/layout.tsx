@@ -13,6 +13,7 @@ import {
   Truck,
   Bike,
   Settings,
+  LogOut,
 } from "lucide-react";
 import {
   useHealthCheck,
@@ -22,10 +23,12 @@ import {
   getGetAlertsQueryKey,
 } from "@workspace/api-client-react";
 import { DevRoleSwitcher } from "@/components/dev-role-switcher";
-import { canAccessPath, getCurrentActor } from "@/lib/rbac";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/lib/auth";
+import { canAccessPath } from "@/lib/rbac";
 
 const navItems = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/cash", label: "Caixa", icon: Wallet },
   { href: "/orders", label: "Pedidos", icon: ListOrdered },
   { href: "/tables", label: "Mesas", icon: UtensilsCrossed },
@@ -48,10 +51,11 @@ function AlertBadge({ count }: { count: number }) {
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
-  const actor = getCurrentActor();
-  const visibleNavItems = navItems.filter((item) =>
-    canAccessPath(actor.role, item.href),
-  );
+  const { actor, user, currentStore, logout } = useAuth();
+
+  const visibleNavItems = actor
+    ? navItems.filter((item) => canAccessPath(actor.role, item.href))
+    : [];
   const { data: health } = useHealthCheck();
 
   const { data: cashRegister, isError: noCash } = useGetCurrentCashRegister({
@@ -83,6 +87,14 @@ export function Layout({ children }: { children: ReactNode }) {
     (alerts?.deliveryWithoutRoute ?? 0);
   const kitchenBadge = alerts?.pendingKitchenCount ?? 0;
   const ordersBadge = alerts?.activeOrdersCount ?? 0;
+
+  if (!actor) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">
+        Carregando sessão...
+      </div>
+    );
+  }
 
   function getBadge(href: string): number {
     if (href === "/cash") return cashBadge;
@@ -175,6 +187,24 @@ export function Layout({ children }: { children: ReactNode }) {
         )}
 
         <DevRoleSwitcher />
+
+        <div className="mx-4 mb-3 rounded-xl border border-white/10 bg-white/5 px-3.5 py-3 text-xs text-zinc-200">
+          <div className="font-semibold text-white">{user?.name ?? actor.name}</div>
+          <div className="mt-1 text-zinc-400">{currentStore?.name ?? `Loja ${actor.storeId}`}</div>
+          <div className="mt-1 text-[11px] uppercase tracking-wide text-zinc-500">
+            {currentStore?.role ?? actor.role}
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="mt-3 w-full justify-center gap-2 bg-white/10 text-white hover:bg-white/15"
+            onClick={() => void logout()}
+          >
+            <LogOut className="h-4 w-4" />
+            Sair
+          </Button>
+        </div>
 
         <div className="p-4 border-t border-white/10 text-sm flex items-center justify-between">
           <div className="flex items-center text-zinc-300">

@@ -1,5 +1,3 @@
-import { ReactNode } from "react";
-import { Redirect } from "wouter";
 import { AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -15,6 +13,7 @@ export type Actor = {
   id: number | null;
   storeId: number;
   name: string;
+  email?: string;
   role: Role;
   isDevelopmentFallback: boolean;
 };
@@ -24,7 +23,16 @@ const DEV_ROLE_STORAGE_KEY = "gestor-max-dev-role";
 const DEV_NAME_STORAGE_KEY = "gestor-max-dev-name";
 const DEV_STORE_ID_STORAGE_KEY = "gestor-max-dev-store-id";
 
+let authenticatedActor: Actor | null = null;
+
+export function setCurrentActorFromAuth(actor: Actor | null): void {
+  authenticatedActor = actor;
+}
+
 function canUseDevRoleSwitcherStorage(): boolean {
+  if (import.meta.env.PROD) return false;
+  if (import.meta.env.VITE_ALLOW_DEV_RBAC_HEADERS === "false") return false;
+
   return (
     import.meta.env.DEV === true ||
     import.meta.env.VITE_ENABLE_DEV_ROLE_SWITCHER === "true"
@@ -39,6 +47,8 @@ function readDevStorageValue(key: string): string | null {
 }
 
 export function getCurrentActor(): Actor {
+  if (authenticatedActor) return authenticatedActor;
+
   const storedRole = readDevStorageValue(DEV_ROLE_STORAGE_KEY);
   const configuredRole = storedRole ?? import.meta.env.VITE_RBAC_ROLE;
   const role = roleSet.has(configuredRole)
@@ -66,6 +76,7 @@ export function getCurrentActor(): Actor {
 export const routePermissions: Record<Role, string[]> = {
   max_control: [
     "/",
+    "/dashboard",
     "/cash",
     "/orders",
     "/orders/new",
@@ -102,7 +113,7 @@ export function defaultPathForRole(role: Role): string {
   if (role === "cozinha") return "/kitchen";
   if (role === "motoboy") return "/routes";
   if (role === "atendente") return "/orders";
-  return "/";
+  return "/dashboard";
 }
 
 export function UnauthorizedMessage() {
@@ -120,18 +131,4 @@ export function UnauthorizedMessage() {
       </CardContent>
     </Card>
   );
-}
-
-export function ProtectedRoute({
-  path,
-  children,
-}: {
-  path: string;
-  children: ReactNode;
-}) {
-  const actor = getCurrentActor();
-  if (!canAccessPath(actor.role, path)) {
-    return <Redirect to={defaultPathForRole(actor.role)} />;
-  }
-  return <>{children}</>;
 }
