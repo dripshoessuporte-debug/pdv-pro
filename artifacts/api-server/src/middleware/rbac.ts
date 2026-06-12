@@ -4,9 +4,11 @@ import {
   cashRegistersTable,
   db,
   storeMembersTable,
+  storesTable,
   usersTable,
 } from "@workspace/db";
 import { getDefaultStoreIdOrThrow } from "../lib/store-context";
+import { resolveAuthenticatedContext } from "../lib/auth";
 
 export const roles = [
   "max_control",
@@ -20,6 +22,7 @@ export type CurrentActor = {
   id: number | null;
   storeId: number;
   name: string;
+  email?: string;
   role: ActorRole;
   isDevelopmentFallback: boolean;
 };
@@ -35,9 +38,22 @@ declare global {
 const roleSet = new Set<string>(roles);
 
 function allowDevRbacHeaders(): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  if (process.env.ALLOW_DEV_RBAC_HEADERS === "false") return false;
+
   return (
     process.env.ALLOW_DEV_RBAC_HEADERS === "true" ||
     process.env.NODE_ENV !== "production"
+  );
+}
+
+function hasDevRbacHeaders(req: Request): boolean {
+  return Boolean(
+    req.header("x-store-id") ||
+      req.header("x-user-id") ||
+      req.header("x-rbac-role") ||
+      req.header("x-rbac-user-id") ||
+      req.header("x-rbac-name"),
   );
 }
 
@@ -64,30 +80,54 @@ function parseRole(value: unknown): ActorRole | null {
 export async function resolveCurrentActor(req: Request): Promise<CurrentActor> {
   if (req.actor) return req.actor;
 
+  const authenticatedContext = await resolveAuthenticatedContext(req);
+  if (authenticatedContext) {
+    req.actor = {
+      id: authenticatedContext.user.id,
+      storeId: authenticatedContext.currentStore.id,
+      name: authenticatedContext.user.name,
+      email: authenticatedContext.user.email,
+      role: authenticatedContext.currentStore.role,
+      isDevelopmentFallback: false,
+    };
+    return req.actor;
+  }
+
   const devHeadersAllowed = allowDevRbacHeaders();
-  const requestedStoreId = devHeadersAllowed
-    ? parsePositiveInt(req.header("x-store-id"))
-    : null;
+  if (!devHeadersAllowed) {
+    if (hasDevRbacHeaders(req)) {
+      const error = new Error(
+        "Headers de desenvolvimento não são aceitos neste ambiente.",
+      );
+      (error as Error & { status?: number }).status = 403;
+      throw error;
+    }
+    throw authenticationRequiredError();
+  }
+
+  const requestedStoreId = parsePositiveInt(req.header("x-store-id"));
   const storeId = requestedStoreId ?? (await getDefaultStoreIdOrThrow());
-  const userId = devHeadersAllowed
-    ? parsePositiveInt(req.header("x-user-id"))
-    : null;
+  const userId = parsePositiveInt(req.header("x-user-id"));
 
   if (userId) {
     const [member] = await db
       .select({
         userId: usersTable.id,
         name: usersTable.name,
+        email: usersTable.email,
         role: storeMembersTable.role,
         storeId: storeMembersTable.storeId,
       })
       .from(storeMembersTable)
       .innerJoin(usersTable, eq(storeMembersTable.userId, usersTable.id))
+      .innerJoin(storesTable, eq(storeMembersTable.storeId, storesTable.id))
       .where(
         and(
           eq(storeMembersTable.userId, userId),
           eq(storeMembersTable.storeId, storeId),
+          eq(storeMembersTable.active, true),
           eq(usersTable.status, "active"),
+          eq(storesTable.status, "active"),
         ),
       )
       .limit(1);
@@ -107,14 +147,11 @@ export async function resolveCurrentActor(req: Request): Promise<CurrentActor> {
       id: member.userId,
       storeId: member.storeId,
       name: member.name,
+      email: member.email,
       role: memberRole,
       isDevelopmentFallback: false,
     };
     return req.actor;
-  }
-
-  if (!devHeadersAllowed) {
-    throw authenticationRequiredError();
   }
 
   const fallbackRole =

@@ -16,24 +16,42 @@ import Cash from "@/pages/cash";
 import Routes from "@/pages/routes";
 import Motoboys from "@/pages/motoboys";
 import SettingsPage from "@/pages/settings";
-import {
-  ProtectedRoute,
-  getCurrentActor,
-  defaultPathForRole,
-} from "@/lib/rbac";
+import LoginPage from "@/pages/login";
+import { AuthProvider, useAuth } from "@/lib/auth";
+import { ProtectedRoute } from "@/components/protected-route";
+import { defaultPathForRole } from "@/lib/rbac";
 
 const queryClient = new QueryClient();
+
+function HomeRedirect() {
+  const { actor, isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">
+        Carregando sessão...
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !actor) return <Redirect to="/login" />;
+
+  return <Redirect to={defaultPathForRole(actor.role)} />;
+}
 
 function Router() {
   return (
     <Switch>
+      <Route path="/login" component={LoginPage} />
       <Route path="/">
-        {() => {
-          const actor = getCurrentActor();
-          if (actor.role !== "max_control")
-            return <Redirect to={defaultPathForRole(actor.role)} />;
-          return <Dashboard />;
-        }}
+        {() => <HomeRedirect />}
+      </Route>
+      <Route path="/dashboard">
+        {() => (
+          <ProtectedRoute path="/dashboard">
+            <Dashboard />
+          </ProtectedRoute>
+        )}
       </Route>
       <Route path="/orders/new">
         {() => (
@@ -129,7 +147,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
+          <AuthProvider>
+            <Router />
+          </AuthProvider>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>

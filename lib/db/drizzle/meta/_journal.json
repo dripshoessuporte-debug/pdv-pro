@@ -99,6 +99,13 @@
       "when": 1781094600000,
       "tag": "0013_orders_creation_schema_hotfix",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1781222400000,
+      "tag": "0014_secure_auth_sessions_seed",
+      "breakpoints": true
     }
   ]
 }

@@ -37,6 +37,7 @@ export const usersTable = pgTable("users", {
     .notNull()
     .defaultNow()
     .$onUpdate(() => new Date()),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
 });
 
 export const storeMembersTable = pgTable(

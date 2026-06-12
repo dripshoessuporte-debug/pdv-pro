@@ -26,6 +26,9 @@ const devRoleProfiles: Record<Role, { label: string; name: string }> = {
 const roleSet = new Set<string>(roles);
 
 function canShowDevRoleSwitcher(): boolean {
+  if (import.meta.env.PROD) return false;
+  if (import.meta.env.VITE_ALLOW_DEV_RBAC_HEADERS === "false") return false;
+
   return (
     import.meta.env.DEV === true ||
     import.meta.env.VITE_ENABLE_DEV_ROLE_SWITCHER === "true"

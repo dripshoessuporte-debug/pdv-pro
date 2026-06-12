@@ -392,9 +392,11 @@ export async function customFetch<T = unknown>(
       : undefined;
   const env = maybeImportMeta?.env;
   const allowDevRbacHeaders =
-    env?.DEV === true ||
-    env?.VITE_ENABLE_DEV_ROLE_SWITCHER === "true" ||
-    env?.VITE_ALLOW_DEV_RBAC_HEADERS === "true";
+    env?.PROD !== true &&
+    env?.VITE_ALLOW_DEV_RBAC_HEADERS !== "false" &&
+    (env?.DEV === true ||
+      env?.VITE_ENABLE_DEV_ROLE_SWITCHER === "true" ||
+      env?.VITE_ALLOW_DEV_RBAC_HEADERS === "true");
   if (allowDevRbacHeaders) {
     const devRole = readLocalStorageValue(DEV_ROLE_STORAGE_KEY);
     const devStoreId = readLocalStorageValue(DEV_STORE_ID_STORAGE_KEY);
@@ -420,7 +422,12 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  const response = await fetch(input, {
+    credentials: init.credentials ?? "include",
+    ...init,
+    method,
+    headers,
+  });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);
