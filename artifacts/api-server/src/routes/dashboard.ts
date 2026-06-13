@@ -31,8 +31,10 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
   const [revenueToday] = await db
     .select({ total: sql<string>`coalesce(sum(${paymentsTable.amount}), 0)` })
     .from(paymentsTable)
+    .innerJoin(ordersTable, eq(paymentsTable.orderId, ordersTable.id))
     .where(
       and(
+        eq(ordersTable.storeId, actor.storeId),
         gte(paymentsTable.createdAt, operationalStart),
         eq(paymentsTable.status, "approved"),
       ),
@@ -210,6 +212,7 @@ router.get("/dashboard/sales-by-category", async (req, res): Promise<void> => {
     .where(
       and(
         eq(categoriesTable.storeId, actor.storeId),
+        eq(ordersTable.storeId, actor.storeId),
         gte(ordersTable.createdAt, operationalStart),
         gte(paymentsTable.createdAt, operationalStart),
         eq(paymentsTable.status, "approved"),
