@@ -454,7 +454,12 @@ async function getRouteWithOrders(
     })
     .from(deliveryRouteOrdersTable)
     .leftJoin(ordersTable, eq(deliveryRouteOrdersTable.orderId, ordersTable.id))
-    .where(eq(deliveryRouteOrdersTable.routeId, routeId))
+    .where(
+      and(
+        eq(deliveryRouteOrdersTable.routeId, routeId),
+        eq(ordersTable.storeId, route.storeId),
+      ),
+    )
     .orderBy(deliveryRouteOrdersTable.stopOrder);
 
   const routeOrdersWithDistance = [];
@@ -1576,7 +1581,7 @@ router.post(
       .set({ dispatchDeadline: newDeadline })
       .where(eq(deliveryRoutesTable.id, routeId));
 
-    res.json(await getRouteWithOrders(routeId));
+    res.json(await getRouteWithOrders(routeId, actor.storeId));
   },
 );
 
@@ -1715,7 +1720,7 @@ router.post(
       settings.deliveryDispatchTimeMinutes,
     );
 
-    res.json(await getRouteWithOrders(routeId));
+    res.json(await getRouteWithOrders(routeId, actor.storeId));
   },
 );
 
@@ -1826,11 +1831,11 @@ router.post(
     }
 
     const sourceRoute = sourceStillExists
-      ? await getRouteWithOrders(routeId)
+      ? await getRouteWithOrders(routeId, actor.storeId)
       : null;
     const targetRoute =
       targetRouteId !== null && !isNaN(targetRouteId)
-        ? await getRouteWithOrders(targetRouteId)
+        ? await getRouteWithOrders(targetRouteId, actor.storeId)
         : null;
 
     res.json({ sourceRoute, targetRoute });
@@ -1842,7 +1847,8 @@ router.post(
 
 router.get(
   "/delivery/orders/awaiting-settlement",
-  async (_req, res): Promise<void> => {
+  async (req, res): Promise<void> => {
+    const actor = await getCurrentActor(req);
     const orders = await db
       .select({
         id: ordersTable.id,
@@ -1864,6 +1870,7 @@ router.get(
       .from(ordersTable)
       .where(
         and(
+          eq(ordersTable.storeId, actor.storeId),
           eq(ordersTable.type, "delivery"),
           eq(ordersTable.deliveryStatus, "awaiting_settlement"),
           eq(ordersTable.paymentTiming, "on_delivery"),
@@ -1952,6 +1959,7 @@ router.post("/delivery/orders/:id/settle", async (req, res): Promise<void> => {
     return;
   }
 
+  const actor = await getCurrentActor(req);
   const [order] = await db
     .select({
       id: ordersTable.id,
@@ -1962,7 +1970,9 @@ router.post("/delivery/orders/:id/settle", async (req, res): Promise<void> => {
       status: ordersTable.status,
     })
     .from(ordersTable)
-    .where(eq(ordersTable.id, orderId))
+    .where(
+      and(eq(ordersTable.id, orderId), eq(ordersTable.storeId, actor.storeId)),
+    )
     .limit(1);
 
   if (!order) {
@@ -2028,7 +2038,12 @@ router.post("/delivery/orders/:id/settle", async (req, res): Promise<void> => {
       const [openRegister] = await tx
         .select({ id: cashRegistersTable.id })
         .from(cashRegistersTable)
-        .where(eq(cashRegistersTable.status, "open"))
+        .where(
+          and(
+            eq(cashRegistersTable.storeId, actor.storeId),
+            eq(cashRegistersTable.status, "open"),
+          ),
+        )
         .orderBy(sql`${cashRegistersTable.openedAt} DESC`)
         .limit(1);
 
@@ -2073,7 +2088,12 @@ router.post("/delivery/orders/:id/settle", async (req, res): Promise<void> => {
           paidAt: now,
           closedAt: now,
         })
-        .where(eq(ordersTable.id, orderId));
+        .where(
+          and(
+            eq(ordersTable.id, orderId),
+            eq(ordersTable.storeId, actor.storeId),
+          ),
+        );
       await releaseTableIfOrderClosed(orderId, tx as unknown as typeof db);
 
       return payment!;
@@ -2117,6 +2137,7 @@ router.post(
       return;
     }
 
+    const actor = await getCurrentActor(req);
     const [order] = await db
       .select({
         id: ordersTable.id,
@@ -2125,7 +2146,12 @@ router.post(
         paymentTiming: ordersTable.paymentTiming,
       })
       .from(ordersTable)
-      .where(eq(ordersTable.id, orderId))
+      .where(
+        and(
+          eq(ordersTable.id, orderId),
+          eq(ordersTable.storeId, actor.storeId),
+        ),
+      )
       .limit(1);
 
     if (!order) {
@@ -2146,13 +2172,23 @@ router.post(
       await db
         .update(ordersTable)
         .set({ deliveryStatus: "awaiting_settlement" })
-        .where(eq(ordersTable.id, orderId));
+        .where(
+          and(
+            eq(ordersTable.id, orderId),
+            eq(ordersTable.storeId, actor.storeId),
+          ),
+        );
       req.log.info({ orderId }, "delivery order moved to awaiting_settlement");
     } else {
       await db
         .update(ordersTable)
         .set({ deliveryStatus: "delivered", status: "closed", closedAt: now })
-        .where(eq(ordersTable.id, orderId));
+        .where(
+          and(
+            eq(ordersTable.id, orderId),
+            eq(ordersTable.storeId, actor.storeId),
+          ),
+        );
       await releaseTableIfOrderClosed(orderId);
       req.log.info(
         { orderId },
