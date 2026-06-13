@@ -186,7 +186,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         )}
 
-        <DevRoleSwitcher />
+        {actor.isDevelopmentFallback && <DevRoleSwitcher />}
 
         <div className="mx-4 mb-3 rounded-xl border border-white/10 bg-white/5 px-3.5 py-3 text-xs text-zinc-200">
           <div className="font-semibold text-white">{user?.name ?? actor.name}</div>

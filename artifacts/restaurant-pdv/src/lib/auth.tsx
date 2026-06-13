@@ -7,6 +7,8 @@ import {
   useMemo,
   useState,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { setHasAuthenticatedSession } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 import {
   defaultPathForRole,
@@ -74,6 +76,20 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+const DEV_STORAGE_KEYS = [
+  "gestor-max-dev-role",
+  "gestor-max-dev-name",
+  "gestor-max-dev-store-id",
+] as const;
+
+function clearDevRbacStorage(): void {
+  if (typeof window === "undefined") return;
+
+  for (const key of DEV_STORAGE_KEYS) {
+    window.localStorage.removeItem(key);
+  }
+}
 
 function actorFromSession(session: AuthSession | null): Actor | null {
   if (!session?.currentStore) return null;
@@ -147,11 +163,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [, navigate] = useLocation();
+  const queryClient = useQueryClient();
 
-  const updateSession = useCallback((nextSession: AuthSession | null) => {
-    setSession(nextSession);
-    setCurrentActorFromAuth(actorFromSession(nextSession));
-  }, []);
+  const updateSession = useCallback(
+    (nextSession: AuthSession | null) => {
+      setHasAuthenticatedSession(Boolean(nextSession));
+      setSession(nextSession);
+      setCurrentActorFromAuth(actorFromSession(nextSession));
+      queryClient.clear();
+    },
+    [queryClient],
+  );
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -175,6 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
+      clearDevRbacStorage();
       updateSession(nextSession);
 
       if (options.redirect !== false) {
@@ -198,6 +221,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         method: "POST",
         body: JSON.stringify(data),
       });
+      clearDevRbacStorage();
       updateSession(nextSession);
       return nextSession;
     },
