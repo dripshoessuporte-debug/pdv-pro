@@ -21,6 +21,7 @@ const DEV_STORE_ID_STORAGE_KEY = "gestor-max-dev-store-id";
 
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
+let _hasAuthenticatedSession = false;
 
 /**
  * Set a base URL that is prepended to every relative request URL
@@ -46,6 +47,16 @@ export function setBaseUrl(url: string | null): void {
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
+}
+
+/**
+ * In browser apps that use HttpOnly session cookies, AuthProvider calls this
+ * when a real user session is present. While true, development RBAC headers
+ * are neither generated nor forwarded, so x-store-id/x-rbac-* cannot override
+ * the store resolved from the session cookie.
+ */
+export function setHasAuthenticatedSession(hasSession: boolean): void {
+  _hasAuthenticatedSession = hasSession;
 }
 
 function readLocalStorageValue(key: string): string | undefined {
@@ -397,7 +408,15 @@ export async function customFetch<T = unknown>(
     (env?.DEV === true ||
       env?.VITE_ENABLE_DEV_ROLE_SWITCHER === "true" ||
       env?.VITE_ALLOW_DEV_RBAC_HEADERS === "true");
-  if (allowDevRbacHeaders) {
+  if (_hasAuthenticatedSession) {
+    headers.delete("x-store-id");
+    headers.delete("x-user-id");
+    headers.delete("x-rbac-user-id");
+    headers.delete("x-rbac-role");
+    headers.delete("x-rbac-name");
+  }
+
+  if (allowDevRbacHeaders && !_hasAuthenticatedSession) {
     const devRole = readLocalStorageValue(DEV_ROLE_STORAGE_KEY);
     const devStoreId = readLocalStorageValue(DEV_STORE_ID_STORAGE_KEY);
     const devName = readLocalStorageValue(DEV_NAME_STORAGE_KEY);
