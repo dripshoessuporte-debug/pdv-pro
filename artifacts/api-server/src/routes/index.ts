@@ -18,6 +18,7 @@ import devRouter from "./dev";
 import adminRouter from "./admin";
 import authRouter from "./auth";
 import platformRouter from "./platform";
+import onboardingRouter from "./onboarding";
 import { attachCurrentActor, rbacRouteGuard } from "../middleware/rbac";
 
 const router: IRouter = Router();
@@ -25,6 +26,7 @@ const router: IRouter = Router();
 router.use(healthRouter);
 router.use(authRouter);
 router.use(platformRouter);
+router.use(onboardingRouter);
 
 router.use(attachCurrentActor);
 router.use(rbacRouteGuard);

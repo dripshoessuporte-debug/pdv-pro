@@ -278,10 +278,10 @@ export async function buildAuthenticatedContext(
     getActiveStoresForUser(user.id),
     getActivePlatformRole(user.id),
   ]);
-  if (stores.length === 0 && !platformRole) return null;
-
   const currentStore =
-    stores.find((store) => store.id === currentStoreId) ?? stores[0] ?? null;
+    stores.find((store: AuthenticatedStore) => store.id === currentStoreId) ??
+    stores[0] ??
+    null;
 
   return { user, platformRole, stores, currentStore };
 }
