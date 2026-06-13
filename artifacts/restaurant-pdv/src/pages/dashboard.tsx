@@ -28,6 +28,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { OrderTimeBadge } from "@/components/order-time-badge";
+import { useAuth } from "@/lib/auth";
 import { compareNewestFirst } from "@/lib/time";
 import {
   BarChart,
@@ -49,25 +50,28 @@ const STATUS_LABELS: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, string> = {
   open: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  preparing: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  preparing:
+    "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
   ready: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
   closed: "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400",
   cancelled: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
 };
 
 export default function Dashboard() {
+  const { currentStore } = useAuth();
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({
     query: {
       queryKey: getGetDashboardSummaryQueryKey(),
       refetchInterval: 30_000,
     },
   });
-  const { data: allRecentOrders, isLoading: loadingOrders } = useGetRecentOrders({
-    query: {
-      queryKey: getGetRecentOrdersQueryKey(),
-      refetchInterval: 30_000,
-    },
-  });
+  const { data: allRecentOrders, isLoading: loadingOrders } =
+    useGetRecentOrders({
+      query: {
+        queryKey: getGetRecentOrdersQueryKey(),
+        refetchInterval: 30_000,
+      },
+    });
 
   const recentOrders = useMemo(() => {
     if (!allRecentOrders) return allRecentOrders;
@@ -85,7 +89,8 @@ export default function Dashboard() {
 
   const { data: alerts } = useGetAlerts({
     query: {
-      queryKey: getGetAlertsQueryKey(),
+      queryKey: [...getGetAlertsQueryKey(), currentStore?.id],
+      enabled: Boolean(currentStore?.id),
       refetchInterval: 30_000,
       staleTime: 20_000,
       retry: false,
@@ -152,7 +157,9 @@ export default function Dashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-            <p className="text-muted-foreground mt-1">Visão geral das operações de hoje</p>
+            <p className="text-muted-foreground mt-1">
+              Visão geral das operações de hoje
+            </p>
           </div>
           <Button asChild>
             <Link href="/orders/new">+ Novo Pedido</Link>
@@ -175,9 +182,13 @@ export default function Dashboard() {
                   const Icon = alert.icon;
                   return (
                     <Link key={alert.key} href={alert.href}>
-                      <div className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:opacity-80 transition-opacity ${alert.bg}`}>
+                      <div
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:opacity-80 transition-opacity ${alert.bg}`}
+                      >
                         <Icon className={`w-4 h-4 shrink-0 ${alert.color}`} />
-                        <span className={`text-sm font-medium ${alert.color}`}>{alert.label}</span>
+                        <span className={`text-sm font-medium ${alert.color}`}>
+                          {alert.label}
+                        </span>
                       </div>
                     </Link>
                   );
@@ -191,7 +202,9 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             title="Faturamento Hoje"
-            value={summary ? `R$ ${summary.totalRevenueToday.toFixed(2)}` : null}
+            value={
+              summary ? `R$ ${summary.totalRevenueToday.toFixed(2)}` : null
+            }
             sub="pedidos pagos"
             icon={DollarSign}
             loading={loadingSummary}
@@ -228,7 +241,9 @@ export default function Dashboard() {
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="w-3 h-3 rounded-full bg-green-500 shrink-0" />
                 <div>
-                  <p className="text-2xl font-bold text-green-700">{summary.availableTables}</p>
+                  <p className="text-2xl font-bold text-green-700">
+                    {summary.availableTables}
+                  </p>
                   <p className="text-sm text-green-600">Mesas livres</p>
                 </div>
               </CardContent>
@@ -237,7 +252,9 @@ export default function Dashboard() {
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="w-3 h-3 rounded-full bg-[#FF2A1F] shrink-0" />
                 <div>
-                  <p className="text-2xl font-bold text-amber-700">{summary.occupiedTables}</p>
+                  <p className="text-2xl font-bold text-amber-700">
+                    {summary.occupiedTables}
+                  </p>
                   <p className="text-sm text-[#D91F16]">Mesas ocupadas</p>
                 </div>
               </CardContent>
@@ -262,15 +279,32 @@ export default function Dashboard() {
               ) : (
                 <div className="h-[280px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={sales ?? []} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
+                    <BarChart
+                      data={sales ?? []}
+                      margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        vertical={false}
+                        className="stroke-border"
+                      />
                       <XAxis dataKey="categoryName" tick={{ fontSize: 12 }} />
-                      <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `R$${v}`} />
+                      <YAxis
+                        tick={{ fontSize: 12 }}
+                        tickFormatter={(v) => `R$${v}`}
+                      />
                       <Tooltip
-                        formatter={(v: number) => [`R$ ${v.toFixed(2)}`, "Vendas"]}
+                        formatter={(v: number) => [
+                          `R$ ${v.toFixed(2)}`,
+                          "Vendas",
+                        ]}
                         labelFormatter={(l) => `Categoria: ${l}`}
                       />
-                      <Bar dataKey="totalSales" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                      <Bar
+                        dataKey="totalSales"
+                        fill="hsl(var(--primary))"
+                        radius={[4, 4, 0, 0]}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -291,7 +325,9 @@ export default function Dashboard() {
             <CardContent>
               {loadingOrders ? (
                 <div className="space-y-3">
-                  {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-14 w-full" />)}
+                  {[1, 2, 3, 4].map((i) => (
+                    <Skeleton key={i} className="h-14 w-full" />
+                  ))}
                 </div>
               ) : recentOrders?.length === 0 ? (
                 <div className="text-center text-muted-foreground py-8 text-sm">
@@ -299,29 +335,52 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {[...(recentOrders ?? [])].sort(compareNewestFirst).map((order) => (
-                    <Link key={order.id} href={`/orders/${order.id}`}>
-                      <div className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/60 transition-colors cursor-pointer">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-semibold text-sm">#{order.id}</p>
-                            <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[order.status]}`}>
-                              {STATUS_LABELS[order.status]}
-                            </span>
+                  {[...(recentOrders ?? [])]
+                    .sort(compareNewestFirst)
+                    .map((order) => (
+                      <Link key={order.id} href={`/orders/${order.id}`}>
+                        <div className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/60 transition-colors cursor-pointer">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-sm">
+                                #{order.id}
+                              </p>
+                              <span
+                                className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[order.status]}`}
+                              >
+                                {STATUS_LABELS[order.status]}
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {order.type === "table"
+                                ? `Mesa ${order.tableNumber ?? "?"}`
+                                : order.type === "counter"
+                                  ? "Balcão"
+                                  : order.type === "delivery"
+                                    ? "Delivery"
+                                    : "Viagem"}
+                              {order.customerName
+                                ? ` · ${order.customerName}`
+                                : ""}
+                            </p>
+                            <OrderTimeBadge
+                              createdAt={order.createdAt}
+                              compact
+                              showIcon={false}
+                              className="mt-0.5"
+                            />
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            {order.type === "table" ? `Mesa ${order.tableNumber ?? "?"}` : order.type === "counter" ? "Balcão" : order.type === "delivery" ? "Delivery" : "Viagem"}
-                            {order.customerName ? ` · ${order.customerName}` : ""}
-                          </p>
-                          <OrderTimeBadge createdAt={order.createdAt} compact showIcon={false} className="mt-0.5" />
+                          <div className="text-right">
+                            <p className="font-bold text-sm">
+                              R$ {order.totalAmount.toFixed(2)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {STATUS_LABELS[order.status] ?? order.status}
+                            </p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="font-bold text-sm">R$ {order.totalAmount.toFixed(2)}</p>
-                          <p className="text-xs text-muted-foreground">{STATUS_LABELS[order.status] ?? order.status}</p>
-                        </div>
-                      </div>
-                    </Link>
-                  ))}
+                      </Link>
+                    ))}
                 </div>
               )}
             </CardContent>
@@ -333,7 +392,13 @@ export default function Dashboard() {
 }
 
 function StatCard({
-  title, value, sub, icon: Icon, loading, accent, highlight,
+  title,
+  value,
+  sub,
+  icon: Icon,
+  loading,
+  accent,
+  highlight,
 }: {
   title: string;
   value?: string | null;
@@ -344,20 +409,34 @@ function StatCard({
   highlight?: boolean;
 }) {
   return (
-    <Card className={highlight ? "border-red-300 dark:border-red-700 shadow-red-100 dark:shadow-red-900/20 shadow-md" : ""}>
+    <Card
+      className={
+        highlight
+          ? "border-red-300 dark:border-red-700 shadow-red-100 dark:shadow-red-900/20 shadow-md"
+          : ""
+      }
+    >
       <CardHeader className="flex flex-row items-center justify-between pb-1 pt-4">
-        <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</CardTitle>
-        <Icon className={`w-4 h-4 ${accent ? "text-primary" : "text-muted-foreground"}`} />
+        <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          {title}
+        </CardTitle>
+        <Icon
+          className={`w-4 h-4 ${accent ? "text-primary" : "text-muted-foreground"}`}
+        />
       </CardHeader>
       <CardContent className="pt-1 pb-4">
         {loading ? (
           <Skeleton className="h-8 w-24" />
         ) : (
           <>
-            <div className={`text-2xl font-bold ${accent ? "text-primary" : ""} ${highlight ? "text-[#D91F16] dark:text-red-300" : ""}`}>
+            <div
+              className={`text-2xl font-bold ${accent ? "text-primary" : ""} ${highlight ? "text-[#D91F16] dark:text-red-300" : ""}`}
+            >
               {value ?? "0"}
             </div>
-            {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+            {sub && (
+              <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
+            )}
           </>
         )}
       </CardContent>

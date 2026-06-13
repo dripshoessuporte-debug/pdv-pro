@@ -69,7 +69,8 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const { data: alerts } = useGetAlerts({
     query: {
-      queryKey: getGetAlertsQueryKey(),
+      queryKey: [...getGetAlertsQueryKey(), currentStore?.id],
+      enabled: Boolean(currentStore?.id),
       refetchInterval: 30_000,
       staleTime: 20_000,
       refetchOnWindowFocus: true,
@@ -189,8 +190,12 @@ export function Layout({ children }: { children: ReactNode }) {
         {actor.isDevelopmentFallback && <DevRoleSwitcher />}
 
         <div className="mx-4 mb-3 rounded-xl border border-white/10 bg-white/5 px-3.5 py-3 text-xs text-zinc-200">
-          <div className="font-semibold text-white">{user?.name ?? actor.name}</div>
-          <div className="mt-1 text-zinc-400">{currentStore?.name ?? `Loja ${actor.storeId}`}</div>
+          <div className="font-semibold text-white">
+            {user?.name ?? actor.name}
+          </div>
+          <div className="mt-1 text-zinc-400">
+            {currentStore?.name ?? `Loja ${actor.storeId}`}
+          </div>
           <div className="mt-1 text-[11px] uppercase tracking-wide text-zinc-500">
             {currentStore?.role ?? actor.role}
           </div>

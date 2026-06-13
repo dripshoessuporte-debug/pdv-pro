@@ -1,5 +1,14 @@
 import { Router, type IRouter } from "express";
-import { eq, and, inArray, notInArray, lt, gte, sql, isNull } from "drizzle-orm";
+import {
+  eq,
+  and,
+  inArray,
+  notInArray,
+  lt,
+  gte,
+  sql,
+  isNull,
+} from "drizzle-orm";
 import {
   db,
   ordersTable,
@@ -7,7 +16,11 @@ import {
   deliveryRouteOrdersTable,
   kitchenTicketsTable,
 } from "@workspace/db";
-import { getOperationalSessionStart, getOpenRegisterOpenedAt } from "../lib/operational-session";
+import {
+  getOperationalSessionStart,
+  getOpenRegisterOpenedAt,
+} from "../lib/operational-session";
+import { getCurrentActor } from "../middleware/rbac";
 
 const router: IRouter = Router();
 
@@ -38,9 +51,11 @@ const isNotLogisticallyDone = sql`NOT ${isLogisticallyDone}`;
 
 router.get("/alerts", async (req, res) => {
   try {
+    const actor = await getCurrentActor(req);
+    const storeId = actor.storeId;
     const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
-    const operationalStart = await getOperationalSessionStart();
-    const openRegisterOpenedAt = await getOpenRegisterOpenedAt();
+    const operationalStart = await getOperationalSessionStart(storeId);
+    const openRegisterOpenedAt = await getOpenRegisterOpenedAt(storeId);
 
     const [
       awaitingSettlementRows,
@@ -57,10 +72,11 @@ router.get("/alerts", async (req, res) => {
         .from(ordersTable)
         .where(
           and(
+            eq(ordersTable.storeId, storeId),
             eq(ordersTable.deliveryStatus, "awaiting_settlement"),
             eq(ordersTable.paymentTiming, "on_delivery"),
-            isNull(ordersTable.paidAt)
-          )
+            isNull(ordersTable.paidAt),
+          ),
         ),
 
       // 2. routesInProgress
@@ -69,9 +85,10 @@ router.get("/alerts", async (req, res) => {
         .from(deliveryRoutesTable)
         .where(
           and(
+            eq(deliveryRoutesTable.storeId, storeId),
             eq(deliveryRoutesTable.status, "in_progress"),
-            gte(deliveryRoutesTable.createdAt, operationalStart)
-          )
+            gte(deliveryRoutesTable.createdAt, operationalStart),
+          ),
         ),
 
       // 3. routesAvailable
@@ -80,9 +97,10 @@ router.get("/alerts", async (req, res) => {
         .from(deliveryRoutesTable)
         .where(
           and(
+            eq(deliveryRoutesTable.storeId, storeId),
             eq(deliveryRoutesTable.status, "available"),
-            gte(deliveryRoutesTable.createdAt, operationalStart)
-          )
+            gte(deliveryRoutesTable.createdAt, operationalStart),
+          ),
         ),
 
       // 4. readyNotActioned: orders still in "ready" status, last updated > 20 min ago
@@ -92,11 +110,15 @@ router.get("/alerts", async (req, res) => {
         .from(ordersTable)
         .where(
           and(
+            eq(ordersTable.storeId, storeId),
             eq(ordersTable.status, "ready"),
             gte(ordersTable.createdAt, operationalStart),
-            lt(sql`coalesce(${ordersTable.readyAt}, ${ordersTable.updatedAt})`, twentyMinsAgo),
-            isNotLogisticallyDone
-          )
+            lt(
+              sql`coalesce(${ordersTable.readyAt}, ${ordersTable.updatedAt})`,
+              twentyMinsAgo,
+            ),
+            isNotLogisticallyDone,
+          ),
         ),
 
       // 5. activeOrdersCount: operational orders pending action in current session
@@ -106,10 +128,11 @@ router.get("/alerts", async (req, res) => {
         .from(ordersTable)
         .where(
           and(
+            eq(ordersTable.storeId, storeId),
             gte(ordersTable.createdAt, operationalStart),
             inArray(ordersTable.status, ["open", "preparing", "ready"]),
-            isNotLogisticallyDone
-          )
+            isNotLogisticallyDone,
+          ),
         ),
 
       // 6. pendingKitchenCount: kitchen tickets still pending in the current session
@@ -121,11 +144,12 @@ router.get("/alerts", async (req, res) => {
         .innerJoin(ordersTable, eq(kitchenTicketsTable.orderId, ordersTable.id))
         .where(
           and(
+            eq(ordersTable.storeId, storeId),
             eq(kitchenTicketsTable.status, "pending"),
             gte(ordersTable.createdAt, operationalStart),
             notInArray(ordersTable.status, ["closed", "cancelled"]),
-            isNotLogisticallyDone
-          )
+            isNotLogisticallyDone,
+          ),
         ),
 
       // 7. active route order IDs (for deliveryWithoutRoute calc)
@@ -134,13 +158,14 @@ router.get("/alerts", async (req, res) => {
         .from(deliveryRouteOrdersTable)
         .innerJoin(
           deliveryRoutesTable,
-          eq(deliveryRouteOrdersTable.routeId, deliveryRoutesTable.id)
+          eq(deliveryRouteOrdersTable.routeId, deliveryRoutesTable.id),
         )
         .where(
           and(
+            eq(deliveryRoutesTable.storeId, storeId),
             inArray(deliveryRoutesTable.status, ["available", "in_progress"]),
-            gte(deliveryRoutesTable.createdAt, operationalStart)
-          )
+            gte(deliveryRoutesTable.createdAt, operationalStart),
+          ),
         ),
     ]);
 
@@ -153,11 +178,12 @@ router.get("/alerts", async (req, res) => {
         .from(ordersTable)
         .where(
           and(
+            eq(ordersTable.storeId, storeId),
             eq(ordersTable.type, "delivery"),
             inArray(ordersTable.deliveryStatus, ["preparing", "ready"]),
             gte(ordersTable.createdAt, operationalStart),
-            notInArray(ordersTable.id, activeIds)
-          )
+            notInArray(ordersTable.id, activeIds),
+          ),
         );
       deliveryWithoutRoute = rows.length;
     } else {
@@ -166,10 +192,11 @@ router.get("/alerts", async (req, res) => {
         .from(ordersTable)
         .where(
           and(
+            eq(ordersTable.storeId, storeId),
             eq(ordersTable.type, "delivery"),
             inArray(ordersTable.deliveryStatus, ["preparing", "ready"]),
-            gte(ordersTable.createdAt, operationalStart)
-          )
+            gte(ordersTable.createdAt, operationalStart),
+          ),
         );
       deliveryWithoutRoute = rows.length;
     }
