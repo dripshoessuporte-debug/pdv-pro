@@ -17,6 +17,7 @@ import Routes from "@/pages/routes";
 import Motoboys from "@/pages/motoboys";
 import SettingsPage from "@/pages/settings";
 import LoginPage from "@/pages/login";
+import CreateStorePage from "@/pages/create-store";
 import AdminMaxLoginPage from "@/pages/admin-max-login";
 import { AdminMaxDashboardPage, AdminMaxStoresPage } from "@/pages/admin-max";
 import { AuthProvider, useAuth } from "@/lib/auth";
@@ -27,7 +28,7 @@ import { defaultPathForRole } from "@/lib/rbac";
 const queryClient = new QueryClient();
 
 function HomeRedirect() {
-  const { actor, isAuthenticated, isLoading } = useAuth();
+  const { actor, isAuthenticated, isLoading, platformRole } = useAuth();
 
   if (isLoading) {
     return (
@@ -37,7 +38,9 @@ function HomeRedirect() {
     );
   }
 
-  if (!isAuthenticated || !actor) return <Redirect to="/login" />;
+  if (!isAuthenticated) return <Redirect to="/login" />;
+  if (platformRole && !actor) return <Redirect to="/admin-max" />;
+  if (!actor) return <Redirect to="/create-store" />;
 
   return <Redirect to={defaultPathForRole(actor.role)} />;
 }
@@ -47,6 +50,7 @@ function Router() {
     <Switch>
       <Route path="/login" component={LoginPage} />
       <Route path="/admin-max/login" component={AdminMaxLoginPage} />
+      <Route path="/create-store" component={CreateStorePage} />
       <Route path="/admin-max/stores">
         {() => (
           <ProtectedPlatformRoute>

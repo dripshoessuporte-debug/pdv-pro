@@ -10,7 +10,7 @@ export function ProtectedRoute({
   path: string;
   children: ReactNode;
 }) {
-  const { actor, isAuthenticated, isLoading } = useAuth();
+  const { actor, isAuthenticated, isLoading, platformRole } = useAuth();
   const [location] = useLocation();
 
   if (isLoading) {
@@ -21,8 +21,16 @@ export function ProtectedRoute({
     );
   }
 
-  if (!isAuthenticated || !actor) {
+  if (!isAuthenticated) {
     return <Redirect to={`/login?next=${encodeURIComponent(location)}`} />;
+  }
+
+  if (platformRole && !actor) {
+    return <Redirect to="/admin-max" />;
+  }
+
+  if (!actor) {
+    return <Redirect to="/create-store" />;
   }
 
   if (!canAccessPath(actor.role, path)) {

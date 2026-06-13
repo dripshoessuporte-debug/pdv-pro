@@ -9,7 +9,7 @@ import { useAuth, getAuthErrorMessage } from "@/lib/auth";
 import { defaultPathForRole } from "@/lib/rbac";
 
 export default function LoginPage() {
-  const { actor, isAuthenticated, isLoading, login } = useAuth();
+  const { actor, isAuthenticated, isLoading, login, platformRole } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -19,8 +19,10 @@ export default function LoginPage() {
     setError(null);
   }, [email, password]);
 
-  if (!isLoading && isAuthenticated && actor) {
-    return <Redirect to={defaultPathForRole(actor.role)} />;
+  if (!isLoading && isAuthenticated) {
+    if (actor) return <Redirect to={defaultPathForRole(actor.role)} />;
+    if (platformRole) return <Redirect to="/admin-max" />;
+    return <Redirect to="/create-store" />;
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {

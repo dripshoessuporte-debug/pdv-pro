@@ -33,6 +33,21 @@ export type PlatformRole =
   | "platform_support"
   | "platform_finance";
 
+export type CreateOwnStorePayload = {
+  name: string;
+  phone: string;
+  email: string;
+  cep: string;
+  address: string;
+  number: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  country: string;
+  complement?: string;
+  tradeName?: string;
+};
+
 export type AuthSession = {
   user: AuthUser;
   platformRole: PlatformRole | null;
@@ -55,6 +70,7 @@ type AuthContextValue = {
   ) => Promise<AuthSession>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  createOwnStore: (data: CreateOwnStorePayload) => Promise<AuthSession>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -101,6 +117,13 @@ async function fetchJson<T>(
 
   if (response.status === 204) return null as T;
   return (await response.json()) as T;
+}
+
+export async function authFetchJson<T>(
+  url: string,
+  options: RequestInit = {},
+): Promise<T> {
+  return fetchJson<T>(url, options);
 }
 
 function getErrorMessage(error: unknown): string {
@@ -155,15 +178,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updateSession(nextSession);
 
       if (options.redirect !== false) {
-        if (!nextSession.currentStore) {
-          throw new Error("Nenhuma loja vinculada.");
+        if (nextSession.platformRole && !nextSession.currentStore) {
+          navigate("/admin-max");
+        } else if (!nextSession.currentStore) {
+          navigate("/create-store");
+        } else {
+          navigate(defaultPathForRole(nextSession.currentStore.role));
         }
-        navigate(defaultPathForRole(nextSession.currentStore.role));
       }
 
       return nextSession;
     },
     [navigate, updateSession],
+  );
+
+  const createOwnStore = useCallback(
+    async (data: CreateOwnStorePayload) => {
+      const nextSession = await fetchJson<AuthSession>("/api/onboarding/store", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      updateSession(nextSession);
+      return nextSession;
+    },
+    [updateSession],
   );
 
   const logout = useCallback(async () => {
@@ -189,8 +227,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       refresh,
+      createOwnStore,
     }),
-    [actor, isLoading, login, logout, refresh, session],
+    [actor, createOwnStore, isLoading, login, logout, refresh, session],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
