@@ -1,7 +1,10 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Redirect, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { canAccessPath, defaultPathForRole } from "@/lib/rbac";
+import { getOnboardingStatus } from "@/pages/onboarding";
+
+const onboardingAllowedPaths = new Set(["/onboarding", "/settings", "/team"]);
 
 export function ProtectedRoute({
   path,
@@ -12,8 +15,35 @@ export function ProtectedRoute({
 }) {
   const { actor, isAuthenticated, isLoading, platformRole } = useAuth();
   const [location] = useLocation();
+  const [mustOnboard, setMustOnboard] = useState(false);
+  const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(false);
 
-  if (isLoading) {
+  useEffect(() => {
+    let cancelled = false;
+    if (!actor || actor.role !== "max_control" || onboardingAllowedPaths.has(path)) {
+      setMustOnboard(false);
+      setIsCheckingOnboarding(false);
+      return;
+    }
+
+    setIsCheckingOnboarding(true);
+    getOnboardingStatus()
+      .then((status) => {
+        if (!cancelled) setMustOnboard(status.applies && !status.completed);
+      })
+      .catch(() => {
+        if (!cancelled) setMustOnboard(false);
+      })
+      .finally(() => {
+        if (!cancelled) setIsCheckingOnboarding(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [actor, path]);
+
+  if (isLoading || isCheckingOnboarding) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">
         Carregando sessão...
@@ -35,6 +65,10 @@ export function ProtectedRoute({
 
   if (!canAccessPath(actor.role, path)) {
     return <Redirect to={defaultPathForRole(actor.role)} />;
+  }
+
+  if (mustOnboard) {
+    return <Redirect to="/onboarding" />;
   }
 
   return <>{children}</>;

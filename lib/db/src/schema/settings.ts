@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, numeric, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, numeric, timestamp, uniqueIndex, boolean } from "drizzle-orm/pg-core";
 import { storesTable } from "./tenancy";
 
 export const storeSettingsTable = pgTable(
@@ -32,6 +32,15 @@ export const storeSettingsTable = pgTable(
     // distance calculation provider
     distanceProvider: text("distance_provider").notNull().default("approximate_cep"),
     useDistanceCache: text("use_distance_cache").notNull().default("true"),
+    onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
+    onboardingStep: text("onboarding_step"),
+    onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
+    usesDelivery: boolean("uses_delivery").notNull().default(true),
+    acceptsCash: boolean("accepts_cash").notNull().default(true),
+    acceptsCard: boolean("accepts_card").notNull().default(true),
+    acceptsPix: boolean("accepts_pix").notNull().default(true),
+    acceptsOnlinePayment: boolean("accepts_online_payment").notNull().default(false),
+    usesTables: boolean("uses_tables").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
