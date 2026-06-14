@@ -88,6 +88,7 @@ export const routePermissions: Record<Role, string[]> = {
     "/motoboys",
     "/settings",
     "/payments",
+    "/team",
   ],
   atendente: [
     "/orders",

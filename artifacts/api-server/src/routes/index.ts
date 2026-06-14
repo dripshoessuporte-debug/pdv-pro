@@ -19,6 +19,7 @@ import adminRouter from "./admin";
 import authRouter from "./auth";
 import platformRouter from "./platform";
 import onboardingRouter from "./onboarding";
+import teamRouter from "./team";
 import { attachCurrentActor, rbacRouteGuard } from "../middleware/rbac";
 
 const router: IRouter = Router();
@@ -42,6 +43,7 @@ router.use(cashRouter);
 router.use(deliveryRouter);
 router.use(couriersRouter);
 router.use(settingsRouter);
+router.use(teamRouter);
 router.use(alertsRouter);
 router.use(integrationsRouter);
 router.use(deliveryDistanceRouter);
