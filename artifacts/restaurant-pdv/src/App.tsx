@@ -20,6 +20,7 @@ import TeamPage from "@/pages/team";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import CreateStorePage from "@/pages/create-store";
+import OnboardingPage from "@/pages/onboarding";
 import AdminMaxLoginPage from "@/pages/admin-max-login";
 import { AdminMaxDashboardPage, AdminMaxStoresPage } from "@/pages/admin-max";
 import { AuthProvider, useAuth } from "@/lib/auth";
@@ -54,6 +55,13 @@ function Router() {
       <Route path="/register" component={RegisterPage} />
       <Route path="/admin-max/login" component={AdminMaxLoginPage} />
       <Route path="/create-store" component={CreateStorePage} />
+      <Route path="/onboarding">
+        {() => (
+          <ProtectedRoute path="/onboarding">
+            <OnboardingPage />
+          </ProtectedRoute>
+        )}
+      </Route>
       <Route path="/admin-max/stores">
         {() => (
           <ProtectedPlatformRoute>

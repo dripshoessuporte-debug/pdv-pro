@@ -112,7 +112,7 @@ export default function CreateStorePage() {
       toast({
         title: "Loja criada com sucesso. Complete as configurações para começar.",
       });
-      navigate("/settings");
+      navigate("/onboarding");
     } catch (caughtError) {
       setError(getAuthErrorMessage(caughtError));
     } finally {
