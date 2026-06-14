@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Redirect } from "wouter";
+import { Link, Redirect } from "wouter";
 import { Loader2, LockKeyhole } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -104,6 +104,16 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
+
+            <p className="mt-5 text-center text-sm text-slate-600">
+              Ainda não tem conta?{" "}
+              <Link
+                href="/register"
+                className="font-semibold text-primary hover:underline"
+              >
+                Criar conta
+              </Link>
+            </p>
           </CardContent>
         </Card>
 
