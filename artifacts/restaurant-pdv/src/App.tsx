@@ -16,6 +16,7 @@ import Cash from "@/pages/cash";
 import Routes from "@/pages/routes";
 import Motoboys from "@/pages/motoboys";
 import SettingsPage from "@/pages/settings";
+import TeamPage from "@/pages/team";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import CreateStorePage from "@/pages/create-store";
@@ -156,6 +157,13 @@ function Router() {
         {() => (
           <ProtectedRoute path="/settings">
             <SettingsPage />
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/team">
+        {() => (
+          <ProtectedRoute path="/team">
+            <TeamPage />
           </ProtectedRoute>
         )}
       </Route>

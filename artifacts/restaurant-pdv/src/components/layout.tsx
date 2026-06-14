@@ -35,6 +35,7 @@ const navItems = [
   { href: "/kitchen", label: "Cozinha", icon: ChefHat },
   { href: "/menu", label: "Cardápio", icon: BookOpen },
   { href: "/customers", label: "Clientes", icon: Users },
+  { href: "/team", label: "Equipe", icon: Users },
   { href: "/routes", label: "Rotas", icon: Truck },
   { href: "/motoboys", label: "Motoboys", icon: Bike },
   { href: "/settings", label: "Configurações", icon: Settings },
