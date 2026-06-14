@@ -35,6 +35,13 @@ export type PlatformRole =
   | "platform_support"
   | "platform_finance";
 
+export type RegisterPayload = {
+  name: string;
+  email: string;
+  password: string;
+  phone?: string;
+};
+
 export type CreateOwnStorePayload = {
   name: string;
   phone: string;
@@ -72,6 +79,7 @@ type AuthContextValue = {
   ) => Promise<AuthSession>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  register: (data: RegisterPayload) => Promise<AuthSession>;
   createOwnStore: (data: CreateOwnStorePayload) => Promise<AuthSession>;
 };
 
@@ -215,6 +223,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [navigate, updateSession],
   );
 
+  const register = useCallback(
+    async (data: RegisterPayload) => {
+      const nextSession = await fetchJson<AuthSession>("/api/auth/register", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      clearDevRbacStorage();
+      updateSession(nextSession);
+      navigate("/create-store");
+      return nextSession;
+    },
+    [navigate, updateSession],
+  );
+
   const createOwnStore = useCallback(
     async (data: CreateOwnStorePayload) => {
       const nextSession = await fetchJson<AuthSession>("/api/onboarding/store", {
@@ -251,9 +273,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       refresh,
+      register,
       createOwnStore,
     }),
-    [actor, createOwnStore, isLoading, login, logout, refresh, session],
+    [
+      actor,
+      createOwnStore,
+      isLoading,
+      login,
+      logout,
+      refresh,
+      register,
+      session,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

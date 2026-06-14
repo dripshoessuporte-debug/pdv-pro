@@ -17,6 +17,7 @@ import Routes from "@/pages/routes";
 import Motoboys from "@/pages/motoboys";
 import SettingsPage from "@/pages/settings";
 import LoginPage from "@/pages/login";
+import RegisterPage from "@/pages/register";
 import CreateStorePage from "@/pages/create-store";
 import AdminMaxLoginPage from "@/pages/admin-max-login";
 import { AdminMaxDashboardPage, AdminMaxStoresPage } from "@/pages/admin-max";
@@ -49,6 +50,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
+      <Route path="/register" component={RegisterPage} />
       <Route path="/admin-max/login" component={AdminMaxLoginPage} />
       <Route path="/create-store" component={CreateStorePage} />
       <Route path="/admin-max/stores">

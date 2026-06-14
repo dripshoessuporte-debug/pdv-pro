@@ -1,8 +1,13 @@
 import { Router, type IRouter } from "express";
+import { sql } from "drizzle-orm";
+import { db, usersTable } from "@workspace/db";
 import {
   buildAuthenticatedContext,
   clearSessionCookie,
   findActiveUserByEmail,
+  hashPassword,
+  isValidEmail,
+  normalizeEmail,
   resolveAuthenticatedContext,
   setSessionCookie,
   touchLastLogin,
@@ -23,6 +28,74 @@ function serializeContext(
     currentStore: context.currentStore,
   };
 }
+
+const minimumPasswordLength = 6;
+
+function asTrimmedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+router.post("/auth/register", async (req, res) => {
+  const name = asTrimmedString(req.body?.name);
+  const email = normalizeEmail(asTrimmedString(req.body?.email));
+  const password =
+    typeof req.body?.password === "string" ? req.body.password : "";
+
+  if (!name) {
+    res.status(400).json({ error: "Informe seu nome completo." });
+    return;
+  }
+
+  if (!email || !isValidEmail(email)) {
+    res.status(400).json({ error: "Informe um e-mail válido." });
+    return;
+  }
+
+  if (password.length < minimumPasswordLength) {
+    res.status(400).json({
+      error: `A senha deve ter pelo menos ${minimumPasswordLength} caracteres.`,
+    });
+    return;
+  }
+
+  const [existingUser] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(sql`lower(${usersTable.email}) = ${email}`)
+    .limit(1);
+  if (existingUser) {
+    res.status(409).json({ error: "Este e-mail já está cadastrado." });
+    return;
+  }
+
+  let createdUser: { id: number };
+  try {
+    [createdUser] = await db
+      .insert(usersTable)
+      .values({
+        name,
+        email,
+        passwordHash: hashPassword(password),
+        status: "active",
+      })
+      .returning({ id: usersTable.id });
+  } catch {
+    res.status(409).json({ error: "Este e-mail já está cadastrado." });
+    return;
+  }
+
+  const context = await buildAuthenticatedContext(createdUser.id, null);
+  if (!context) {
+    res
+      .status(500)
+      .json({ error: "Conta criada, mas não foi possível iniciar sessão." });
+    return;
+  }
+
+  await touchLastLogin(createdUser.id);
+  setSessionCookie(res, context.user.id, null);
+  res.status(201).json(serializeContext(context));
+});
 
 router.post("/auth/login", async (req, res) => {
   const email = typeof req.body?.email === "string" ? req.body.email : "";

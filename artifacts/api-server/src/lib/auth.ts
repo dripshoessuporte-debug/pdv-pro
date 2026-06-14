@@ -151,8 +151,24 @@ export function clearSessionCookie(res: Response): void {
   });
 }
 
-function normalizeEmail(email: string): string {
+export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+export function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(email));
+}
+
+export function hashPassword(password: string): string {
+  const N = 16384;
+  const r = 8;
+  const p = 1;
+  const salt = crypto.randomBytes(16).toString("base64url");
+  const hash = crypto
+    .scryptSync(password, salt, 64, { N, r, p })
+    .toString("base64url");
+
+  return `scrypt$${N}$${r}$${p}$${salt}$${hash}`;
 }
 
 export async function verifyPassword(
