@@ -20,9 +20,10 @@ import TeamPage from "@/pages/team";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import CreateStorePage from "@/pages/create-store";
+import PlansPage from "@/pages/plans";
 import OnboardingPage from "@/pages/onboarding";
 import AdminMaxLoginPage from "@/pages/admin-max-login";
-import { AdminMaxDashboardPage, AdminMaxStoresPage } from "@/pages/admin-max";
+import { AdminMaxBillingPage, AdminMaxDashboardPage, AdminMaxStoresPage } from "@/pages/admin-max";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ProtectedRoute } from "@/components/protected-route";
 import { ProtectedPlatformRoute } from "@/components/protected-platform-route";
@@ -43,7 +44,7 @@ function HomeRedirect() {
 
   if (!isAuthenticated) return <Redirect to="/login" />;
   if (platformRole && !actor) return <Redirect to="/admin-max" />;
-  if (!actor) return <Redirect to="/create-store" />;
+  if (!actor) return <Redirect to="/plans" />;
 
   return <Redirect to={defaultPathForRole(actor.role)} />;
 }
@@ -54,12 +55,20 @@ function Router() {
       <Route path="/login" component={LoginPage} />
       <Route path="/register" component={RegisterPage} />
       <Route path="/admin-max/login" component={AdminMaxLoginPage} />
+      <Route path="/plans" component={PlansPage} />
       <Route path="/create-store" component={CreateStorePage} />
       <Route path="/onboarding">
         {() => (
           <ProtectedRoute path="/onboarding">
             <OnboardingPage />
           </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/admin-max/billing">
+        {() => (
+          <ProtectedPlatformRoute>
+            <AdminMaxBillingPage />
+          </ProtectedPlatformRoute>
         )}
       </Route>
       <Route path="/admin-max/stores">

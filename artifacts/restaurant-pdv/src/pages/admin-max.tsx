@@ -72,7 +72,7 @@ const menuItems = [
     href: "/admin-max/billing",
     label: "Cobrança",
     icon: CreditCard,
-    disabled: true,
+    disabled: false,
   },
   {
     href: "/admin-max/support",
@@ -622,6 +622,119 @@ export function AdminMaxStoresPage() {
             Nenhuma loja cadastrada.
           </div>
         )}
+      </div>
+    </AdminShell>
+  );
+}
+
+
+type PlatformEntitlement = {
+  userId: number;
+  name: string;
+  email: string;
+  plan: string | null;
+  status: string;
+  source: string;
+  trialEndsAt: string | null;
+  activatedAt: string | null;
+  createdAt: string;
+};
+
+async function postPlatformAction(path: string): Promise<void> {
+  const response = await fetch(path, {
+    method: "POST",
+    credentials: "include",
+    headers: { accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+}
+
+export function AdminMaxBillingPage() {
+  const [entitlements, setEntitlements] = useState<PlatformEntitlement[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [busyUserId, setBusyUserId] = useState<number | null>(null);
+
+  const loadEntitlements = useCallback(async (refreshing = false) => {
+    if (refreshing) setIsRefreshing(true);
+    else setIsLoading(true);
+    setError(null);
+    try {
+      const data = await fetchPlatformJson<{ entitlements: PlatformEntitlement[] }>("/api/platform/entitlements");
+      setEntitlements(data.entitlements);
+    } catch {
+      setError("Não foi possível carregar as liberações de planos.");
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadEntitlements();
+  }, [loadEntitlements]);
+
+  async function runAction(userId: number, action: "grant-trial" | "activate" | "block") {
+    setBusyUserId(userId);
+    setError(null);
+    try {
+      await postPlatformAction(`/api/platform/entitlements/${userId}/${action}`);
+      await loadEntitlements(true);
+    } catch {
+      setError("Não foi possível atualizar a liberação do usuário.");
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  return (
+    <AdminShell
+      title="Cobrança e liberações"
+      description="Liberação manual de planos, testes e bloqueios antes da criação de loja."
+      onRefresh={() => void loadEntitlements(true)}
+      isRefreshing={isRefreshing}
+    >
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+          {error}
+        </div>
+      )}
+      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-xl shadow-black/10">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[920px] text-left text-sm">
+            <thead className="bg-white/10 text-xs uppercase tracking-wide text-slate-300">
+              <tr>
+                <th className="px-4 py-3">Nome</th>
+                <th className="px-4 py-3">E-mail</th>
+                <th className="px-4 py-3">Plano solicitado</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Criado em</th>
+                <th className="px-4 py-3">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/10">
+              {entitlements.map((item) => (
+                <tr key={item.userId} className="text-slate-100">
+                  <td className="px-4 py-3 font-medium">{item.name}</td>
+                  <td className="px-4 py-3 text-slate-300">{item.email}</td>
+                  <td className="px-4 py-3 capitalize">{item.plan ?? "—"}</td>
+                  <td className="px-4 py-3"><span className={`rounded-full border px-2 py-1 text-xs ${statusClasses(item.status)}`}>{item.status}</span></td>
+                  <td className="px-4 py-3 text-slate-300">{formatDate(item.createdAt)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="secondary" disabled={busyUserId === item.userId} onClick={() => void runAction(item.userId, "grant-trial")}>Liberar teste</Button>
+                      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" disabled={busyUserId === item.userId} onClick={() => void runAction(item.userId, "activate")}>Ativar manualmente</Button>
+                      <Button size="sm" variant="destructive" disabled={busyUserId === item.userId} onClick={() => void runAction(item.userId, "block")}>Bloquear</Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {isLoading && <div className="flex items-center justify-center gap-2 p-6 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> Carregando liberações...</div>}
+        {!isLoading && entitlements.length === 0 && !error && <div className="p-6 text-center text-sm text-slate-400">Nenhuma solicitação encontrada.</div>}
       </div>
     </AdminShell>
   );

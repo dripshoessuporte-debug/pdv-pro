@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { sql } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { db, userEntitlementsTable, usersTable } from "@workspace/db";
 import {
   buildAuthenticatedContext,
   clearSessionCookie,
@@ -70,15 +70,24 @@ router.post("/auth/register", async (req, res) => {
 
   let createdUser: { id: number };
   try {
-    [createdUser] = await db
-      .insert(usersTable)
-      .values({
-        name,
-        email,
-        passwordHash: hashPassword(password),
-        status: "active",
-      })
-      .returning({ id: usersTable.id });
+    [createdUser] = await db.transaction(async (tx) => {
+      const [user] = await tx
+        .insert(usersTable)
+        .values({
+          name,
+          email,
+          passwordHash: hashPassword(password),
+          status: "active",
+        })
+        .returning({ id: usersTable.id });
+      await tx.insert(userEntitlementsTable).values({
+        userId: user.id,
+        plan: null,
+        status: "pending",
+        source: "system",
+      });
+      return [user];
+    });
   } catch {
     res.status(409).json({ error: "Este e-mail já está cadastrado." });
     return;

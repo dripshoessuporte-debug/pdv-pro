@@ -60,7 +60,7 @@ export function ProtectedRoute({
   }
 
   if (!actor) {
-    return <Redirect to="/create-store" />;
+    return <Redirect to="/plans" />;
   }
 
   if (!canAccessPath(actor.role, path)) {

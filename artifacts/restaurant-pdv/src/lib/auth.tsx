@@ -212,7 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (nextSession.platformRole && !nextSession.currentStore) {
           navigate("/admin-max");
         } else if (!nextSession.currentStore) {
-          navigate("/create-store");
+          navigate("/plans");
         } else {
           navigate(defaultPathForRole(nextSession.currentStore.role));
         }
@@ -231,7 +231,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       clearDevRbacStorage();
       updateSession(nextSession);
-      navigate("/create-store");
+      navigate("/plans");
       return nextSession;
     },
     [navigate, updateSession],

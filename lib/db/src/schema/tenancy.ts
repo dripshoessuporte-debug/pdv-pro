@@ -6,6 +6,7 @@ import {
   integer,
   boolean,
   uniqueIndex,
+  index,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -96,6 +97,53 @@ export const platformAdminsTable = pgTable(
   (table) => [uniqueIndex("platform_admins_user_unique").on(table.userId)],
 );
 
+export const entitlementPlans = ["basico", "medio", "pro"] as const;
+export const entitlementStatuses = [
+  "pending",
+  "trialing",
+  "active",
+  "cancelled",
+  "blocked",
+] as const;
+export const entitlementSources = [
+  "manual",
+  "checkout",
+  "webhook",
+  "system",
+] as const;
+
+export const userEntitlementsTable = pgTable(
+  "user_entitlements",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id),
+    plan: text("plan", { enum: entitlementPlans }),
+    status: text("status", { enum: entitlementStatuses })
+      .notNull()
+      .default("pending"),
+    source: text("source", { enum: entitlementSources })
+      .notNull()
+      .default("system"),
+    trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("user_entitlements_user_unique").on(table.userId),
+    index("user_entitlements_status_idx").on(table.status),
+    index("user_entitlements_plan_idx").on(table.plan),
+  ],
+);
+
 export const insertStoreSchema = createInsertSchema(storesTable).omit({
   id: true,
   createdAt: true,
@@ -124,3 +172,12 @@ export const insertPlatformAdminSchema = createInsertSchema(
 export type PlatformAdminRole = (typeof platformAdminRoles)[number];
 export type InsertPlatformAdmin = z.infer<typeof insertPlatformAdminSchema>;
 export type PlatformAdmin = typeof platformAdminsTable.$inferSelect;
+
+export const insertUserEntitlementSchema = createInsertSchema(
+  userEntitlementsTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export type EntitlementPlan = (typeof entitlementPlans)[number];
+export type EntitlementStatus = (typeof entitlementStatuses)[number];
+export type EntitlementSource = (typeof entitlementSources)[number];
+export type InsertUserEntitlement = z.infer<typeof insertUserEntitlementSchema>;
+export type UserEntitlement = typeof userEntitlementsTable.$inferSelect;
