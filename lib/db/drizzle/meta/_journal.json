@@ -120,6 +120,13 @@
       "when": 1781481600000,
       "tag": "0016_store_onboarding",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1781483400000,
+      "tag": "0017_users_email_lower_unique",
+      "breakpoints": true
     }
   ]
 }
