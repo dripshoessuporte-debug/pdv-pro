@@ -5,6 +5,7 @@ import {
   ordersTable,
   storeMembersTable,
   storesTable,
+  userEntitlementsTable,
   usersTable,
 } from "@workspace/db";
 import { requirePlatformRole } from "../middleware/platform-rbac";
@@ -81,6 +82,73 @@ router.get(
       .orderBy(storesTable.id);
 
     res.json({ stores });
+  },
+);
+
+const canManageEntitlements = requirePlatformRole("platform_owner", "platform_admin");
+
+router.get(
+  "/platform/entitlements",
+  canManageEntitlements,
+  async (_req, res): Promise<void> => {
+    const rows = await db
+      .select({
+        userId: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+        plan: userEntitlementsTable.plan,
+        status: userEntitlementsTable.status,
+        source: userEntitlementsTable.source,
+        trialEndsAt: userEntitlementsTable.trialEndsAt,
+        createdAt: userEntitlementsTable.createdAt,
+      })
+      .from(userEntitlementsTable)
+      .innerJoin(usersTable, eq(userEntitlementsTable.userId, usersTable.id))
+      .orderBy(userEntitlementsTable.createdAt);
+    res.json({ entitlements: rows });
+  },
+);
+
+router.post(
+  "/platform/entitlements/:userId/grant-trial",
+  canManageEntitlements,
+  async (req, res): Promise<void> => {
+    const userId = Number(req.params.userId);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      res.status(400).json({ error: "Usuário inválido." });
+      return;
+    }
+    const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    const [entitlement] = await db.update(userEntitlementsTable).set({ status: "trialing", source: "manual", trialEndsAt, updatedAt: new Date() }).where(eq(userEntitlementsTable.userId, userId)).returning();
+    res.json({ entitlement });
+  },
+);
+
+router.post(
+  "/platform/entitlements/:userId/activate",
+  canManageEntitlements,
+  async (req, res): Promise<void> => {
+    const userId = Number(req.params.userId);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      res.status(400).json({ error: "Usuário inválido." });
+      return;
+    }
+    const [entitlement] = await db.update(userEntitlementsTable).set({ status: "active", source: "manual", activatedAt: new Date(), updatedAt: new Date() }).where(eq(userEntitlementsTable.userId, userId)).returning();
+    res.json({ entitlement });
+  },
+);
+
+router.post(
+  "/platform/entitlements/:userId/block",
+  canManageEntitlements,
+  async (req, res): Promise<void> => {
+    const userId = Number(req.params.userId);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      res.status(400).json({ error: "Usuário inválido." });
+      return;
+    }
+    const [entitlement] = await db.update(userEntitlementsTable).set({ status: "blocked", source: "manual", updatedAt: new Date() }).where(eq(userEntitlementsTable.userId, userId)).returning();
+    res.json({ entitlement });
   },
 );
 

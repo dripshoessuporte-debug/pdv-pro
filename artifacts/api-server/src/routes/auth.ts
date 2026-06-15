@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { sql } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { db, userEntitlementsTable, usersTable } from "@workspace/db";
 import {
   buildAuthenticatedContext,
   clearSessionCookie,
@@ -13,6 +13,7 @@ import {
   touchLastLogin,
   verifyPassword,
 } from "../lib/auth";
+import { ensurePendingEntitlement, serializeEntitlement } from "../lib/entitlements";
 
 const router: IRouter = Router();
 
@@ -26,6 +27,7 @@ function serializeContext(
     platformRole: context.platformRole,
     stores: context.stores,
     currentStore: context.currentStore,
+    entitlement: serializeEntitlement(context.entitlement ?? null),
   };
 }
 
@@ -83,6 +85,8 @@ router.post("/auth/register", async (req, res) => {
     res.status(409).json({ error: "Este e-mail já está cadastrado." });
     return;
   }
+
+  await ensurePendingEntitlement(createdUser.id);
 
   const context = await buildAuthenticatedContext(createdUser.id, null);
   if (!context) {

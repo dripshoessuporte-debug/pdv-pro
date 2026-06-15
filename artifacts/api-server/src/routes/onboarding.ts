@@ -8,6 +8,7 @@ import {
   storeSettingsTable,
   storesTable,
   tablesTable,
+  userEntitlementsTable,
 } from "@workspace/db";
 import {
   buildAuthenticatedContext,
@@ -15,6 +16,7 @@ import {
   setSessionCookie,
 } from "../lib/auth";
 import { getOrCreateSettings } from "./settings";
+import { isEntitledToCreateStore, storeCreationBlockedMessage } from "../lib/entitlements";
 
 const router: IRouter = Router();
 
@@ -161,6 +163,16 @@ async function createOwnStoreHandler(req: Request, res: Response) {
     res.status(409).json({
       error: "Este usuário já possui uma loja vinculada.",
     });
+    return;
+  }
+
+  const [entitlement] = await db
+    .select({ status: userEntitlementsTable.status })
+    .from(userEntitlementsTable)
+    .where(eq(userEntitlementsTable.userId, context.user.id))
+    .limit(1);
+  if (!isEntitledToCreateStore(entitlement?.status)) {
+    res.status(403).json({ error: storeCreationBlockedMessage });
     return;
   }
 

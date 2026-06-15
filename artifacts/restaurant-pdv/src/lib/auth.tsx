@@ -57,11 +57,14 @@ export type CreateOwnStorePayload = {
   tradeName?: string;
 };
 
+export type AuthEntitlement = { plan: "basico" | "medio" | "pro" | null; status: string; trialEndsAt: string | null } | null;
+
 export type AuthSession = {
   user: AuthUser;
   platformRole: PlatformRole | null;
   stores: AuthStore[];
   currentStore: AuthStore | null;
+  entitlement?: AuthEntitlement;
 };
 
 type AuthContextValue = {
@@ -69,6 +72,7 @@ type AuthContextValue = {
   stores: AuthStore[];
   currentStore: AuthStore | null;
   platformRole: PlatformRole | null;
+  entitlement: AuthEntitlement;
   actor: Actor | null;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -212,7 +216,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (nextSession.platformRole && !nextSession.currentStore) {
           navigate("/admin-max");
         } else if (!nextSession.currentStore) {
-          navigate("/create-store");
+          navigate(nextSession.entitlement?.status === "active" || nextSession.entitlement?.status === "trialing" ? "/create-store" : "/plans");
         } else {
           navigate(defaultPathForRole(nextSession.currentStore.role));
         }
@@ -231,7 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       clearDevRbacStorage();
       updateSession(nextSession);
-      navigate("/create-store");
+      navigate(nextSession.entitlement?.status === "active" || nextSession.entitlement?.status === "trialing" ? "/create-store" : "/plans");
       return nextSession;
     },
     [navigate, updateSession],
@@ -267,6 +271,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       stores: session?.stores ?? [],
       currentStore: session?.currentStore ?? null,
       platformRole: session?.platformRole ?? null,
+      entitlement: session?.entitlement ?? null,
       actor,
       isAuthenticated: Boolean(session),
       isLoading,

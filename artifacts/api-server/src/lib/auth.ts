@@ -7,6 +7,7 @@ import {
   platformAdminsTable,
   storeMembersTable,
   storesTable,
+  userEntitlementsTable,
   usersTable,
 } from "@workspace/db";
 import type { ActorRole } from "../middleware/rbac";
@@ -42,6 +43,7 @@ export type AuthenticatedContext = {
   platformRole: PlatformRole | null;
   stores: AuthenticatedStore[];
   currentStore: AuthenticatedStore | null;
+  entitlement: { plan: string | null; status: string; trialEndsAt: Date | null } | null;
 };
 
 type SessionPayload = {
@@ -290,16 +292,17 @@ export async function buildAuthenticatedContext(
 
   if (!user) return null;
 
-  const [stores, platformRole] = await Promise.all([
+  const [stores, platformRole, entitlement] = await Promise.all([
     getActiveStoresForUser(user.id),
     getActivePlatformRole(user.id),
+    db.select({ plan: userEntitlementsTable.plan, status: userEntitlementsTable.status, trialEndsAt: userEntitlementsTable.trialEndsAt }).from(userEntitlementsTable).where(eq(userEntitlementsTable.userId, user.id)).limit(1).then((rows) => rows[0] ?? null),
   ]);
   const currentStore =
     stores.find((store: AuthenticatedStore) => store.id === currentStoreId) ??
     stores[0] ??
     null;
 
-  return { user, platformRole, stores, currentStore };
+  return { user, platformRole, stores, currentStore, entitlement };
 }
 
 export async function resolveAuthenticatedContext(

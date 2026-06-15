@@ -13,7 +13,7 @@ export function ProtectedRoute({
   path: string;
   children: ReactNode;
 }) {
-  const { actor, isAuthenticated, isLoading, platformRole } = useAuth();
+  const { actor, entitlement, isAuthenticated, isLoading, platformRole } = useAuth();
   const [location] = useLocation();
   const [mustOnboard, setMustOnboard] = useState(false);
   const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(false);
@@ -60,7 +60,7 @@ export function ProtectedRoute({
   }
 
   if (!actor) {
-    return <Redirect to="/create-store" />;
+    return <Redirect to={entitlement?.status === "active" || entitlement?.status === "trialing" ? "/create-store" : "/plans"} />;
   }
 
   if (!canAccessPath(actor.role, path)) {
