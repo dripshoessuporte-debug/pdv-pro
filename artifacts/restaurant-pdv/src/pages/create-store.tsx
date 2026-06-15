@@ -41,6 +41,7 @@ export default function CreateStorePage() {
     actor,
     createOwnStore,
     currentStore,
+    entitlement,
     isAuthenticated,
     isLoading,
     platformRole,
@@ -93,6 +94,7 @@ export default function CreateStorePage() {
 
   if (!isAuthenticated) return <Redirect to="/login?next=%2Fcreate-store" />;
   if (platformRole) return <Redirect to="/admin-max" />;
+  if (entitlement?.status !== "active" && entitlement?.status !== "trialing") return <Redirect to="/plans" />;
   if (currentStore && actor) {
     return <Redirect to={defaultPathForRole(actor.role)} />;
   }

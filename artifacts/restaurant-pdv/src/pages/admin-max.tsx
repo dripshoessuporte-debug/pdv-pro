@@ -49,10 +49,11 @@ type PlatformStore = {
   membersCount: number;
 };
 
-async function fetchPlatformJson<T>(path: string): Promise<T> {
+async function fetchPlatformJson<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     credentials: "include",
-    headers: { accept: "application/json" },
+    headers: { accept: "application/json", ...(options.body ? { "content-type": "application/json" } : {}), ...options.headers },
+    ...options,
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return (await response.json()) as T;
@@ -625,4 +626,36 @@ export function AdminMaxStoresPage() {
       </div>
     </AdminShell>
   );
+}
+
+type PlatformEntitlement = {
+  userId: number;
+  name: string;
+  email: string;
+  plan: string | null;
+  status: string;
+  createdAt: string;
+};
+
+export function AdminMaxBillingPage() {
+  const [rows, setRows] = useState<PlatformEntitlement[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setIsLoading(true);
+    fetchPlatformJson<{ entitlements: PlatformEntitlement[] }>("/api/platform/entitlements")
+      .then((data) => setRows(data.entitlements))
+      .catch((caught) => setError(caught instanceof Error ? caught.message : "Não foi possível carregar liberações."))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  useEffect(() => load(), [load]);
+
+  async function action(userId: number, actionName: "grant-trial" | "activate" | "block") {
+    await fetchPlatformJson(`/api/platform/entitlements/${userId}/${actionName}`, { method: "POST" });
+    load();
+  }
+
+  return <AdminShell title="Billing" description="Liberação manual de planos e testes."><Card><CardHeader><CardTitle>Usuários pendentes e liberações</CardTitle></CardHeader><CardContent>{isLoading && <p className="text-sm text-muted-foreground">Carregando...</p>}{error && <p className="text-sm text-destructive">{error}</p>}<div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="py-2">Nome</th><th>E-mail</th><th>Plano solicitado</th><th>Status</th><th>Criado em</th><th>Ações</th></tr></thead><tbody>{rows.map((row) => <tr key={row.userId} className="border-b"><td className="py-2 font-medium">{row.name}</td><td>{row.email}</td><td>{row.plan ?? "—"}</td><td>{row.status}</td><td>{new Date(row.createdAt).toLocaleString("pt-BR")}</td><td className="flex flex-wrap gap-2 py-2"><Button size="sm" variant="outline" onClick={() => void action(row.userId, "grant-trial")}>Liberar teste</Button><Button size="sm" variant="outline" onClick={() => void action(row.userId, "activate")}>Ativar manualmente</Button><Button size="sm" variant="destructive" onClick={() => void action(row.userId, "block")}>Bloquear</Button></td></tr>)}</tbody></table></div></CardContent></Card></AdminShell>;
 }
