@@ -51,6 +51,7 @@ export default function CreateStorePage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFetchingCep, setIsFetchingCep] = useState(false);
+  const [canCreateStore, setCanCreateStore] = useState<boolean | null>(null);
 
   const cleanCep = form.cep.replace(/\D/g, "");
 
@@ -83,7 +84,32 @@ export default function CreateStorePage() {
     return () => controller.abort();
   }, [cleanCep]);
 
-  if (isLoading) {
+  useEffect(() => {
+    let cancelled = false;
+    if (!isAuthenticated || platformRole || currentStore) {
+      setCanCreateStore(null);
+      return;
+    }
+    fetch("/api/billing/entitlement", {
+      credentials: "include",
+      headers: { accept: "application/json" },
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("HTTP");
+        return (await response.json()) as { canCreateStore: boolean };
+      })
+      .then((data) => {
+        if (!cancelled) setCanCreateStore(data.canCreateStore);
+      })
+      .catch(() => {
+        if (!cancelled) setCanCreateStore(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentStore, isAuthenticated, platformRole]);
+
+  if (isLoading || (isAuthenticated && !platformRole && !currentStore && canCreateStore === null)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">
         Carregando sessão...
@@ -96,6 +122,7 @@ export default function CreateStorePage() {
   if (currentStore && actor) {
     return <Redirect to={defaultPathForRole(actor.role)} />;
   }
+  if (canCreateStore === false) return <Redirect to="/plans" />;
 
   function updateField(field: keyof CreateOwnStorePayload, value: string) {
     setForm((current) => ({ ...current, [field]: value }));

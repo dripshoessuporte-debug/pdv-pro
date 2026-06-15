@@ -14,6 +14,7 @@ import {
   resolveAuthenticatedContext,
   setSessionCookie,
 } from "../lib/auth";
+import { canCreateStore } from "../lib/entitlements";
 import { getOrCreateSettings } from "./settings";
 
 const router: IRouter = Router();
@@ -160,6 +161,13 @@ async function createOwnStoreHandler(req: Request, res: Response) {
   if (existingMembership.length > 0) {
     res.status(409).json({
       error: "Este usuário já possui uma loja vinculada.",
+    });
+    return;
+  }
+
+  if (!(await canCreateStore(context.user.id))) {
+    res.status(403).json({
+      error: "Para criar sua loja, escolha um plano ou solicite liberação de teste.",
     });
     return;
   }

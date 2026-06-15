@@ -18,6 +18,7 @@ import devRouter from "./dev";
 import adminRouter from "./admin";
 import authRouter from "./auth";
 import platformRouter from "./platform";
+import billingRouter from "./billing";
 import onboardingRouter from "./onboarding";
 import teamRouter from "./team";
 import { attachCurrentActor, rbacRouteGuard } from "../middleware/rbac";
@@ -27,6 +28,7 @@ const router: IRouter = Router();
 router.use(healthRouter);
 router.use(authRouter);
 router.use(platformRouter);
+router.use(billingRouter);
 router.use(onboardingRouter);
 
 router.use(attachCurrentActor);
