@@ -23,7 +23,12 @@ import CreateStorePage from "@/pages/create-store";
 import PlansPage from "@/pages/plans";
 import OnboardingPage from "@/pages/onboarding";
 import AdminMaxLoginPage from "@/pages/admin-max-login";
-import { AdminMaxBillingPage, AdminMaxDashboardPage, AdminMaxStoresPage } from "@/pages/admin-max";
+import {
+  AdminMaxBillingPage,
+  AdminMaxDashboardPage,
+  AdminMaxStoresPage,
+  AdminMaxUsersPage,
+} from "@/pages/admin-max";
 import { AuthProvider, hasStoreCreationAccess, useAuth } from "@/lib/auth";
 import { ProtectedRoute } from "@/components/protected-route";
 import { ProtectedPlatformRoute } from "@/components/protected-platform-route";
@@ -32,7 +37,8 @@ import { defaultPathForRole } from "@/lib/rbac";
 const queryClient = new QueryClient();
 
 function HomeRedirect() {
-  const { actor, entitlement, isAuthenticated, isLoading, platformRole } = useAuth();
+  const { actor, entitlement, isAuthenticated, isLoading, platformRole } =
+    useAuth();
 
   if (isLoading) {
     return (
@@ -44,7 +50,12 @@ function HomeRedirect() {
 
   if (!isAuthenticated) return <Redirect to="/login" />;
   if (platformRole && !actor) return <Redirect to="/admin-max" />;
-  if (!actor) return <Redirect to={hasStoreCreationAccess(entitlement) ? "/create-store" : "/plans"} />;
+  if (!actor)
+    return (
+      <Redirect
+        to={hasStoreCreationAccess(entitlement) ? "/create-store" : "/plans"}
+      />
+    );
 
   return <Redirect to={defaultPathForRole(actor.role)} />;
 }
@@ -75,6 +86,13 @@ function Router() {
         {() => (
           <ProtectedPlatformRoute>
             <AdminMaxStoresPage />
+          </ProtectedPlatformRoute>
+        )}
+      </Route>
+      <Route path="/admin-max/users">
+        {() => (
+          <ProtectedPlatformRoute>
+            <AdminMaxUsersPage />
           </ProtectedPlatformRoute>
         )}
       </Route>

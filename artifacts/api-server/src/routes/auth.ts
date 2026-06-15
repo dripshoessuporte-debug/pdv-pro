@@ -17,6 +17,32 @@ import {
 const router: IRouter = Router();
 
 const invalidCredentialsMessage = "E-mail ou senha inválidos.";
+const duplicatedEmailMessage = "Este e-mail já está cadastrado.";
+
+function isDuplicateEmailError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as {
+    code?: unknown;
+    constraint?: unknown;
+    detail?: unknown;
+    message?: unknown;
+  };
+  if (candidate.code !== "23505") return false;
+  const constraint =
+    typeof candidate.constraint === "string" ? candidate.constraint : "";
+  const detail = typeof candidate.detail === "string" ? candidate.detail : "";
+  const message =
+    typeof candidate.message === "string" ? candidate.message : "";
+  return [constraint, detail, message].some((value) =>
+    value.toLowerCase().includes("email"),
+  );
+}
+
+function logRegisterError(error: unknown) {
+  if (process.env.NODE_ENV === "development") {
+    console.error("[auth/register] Falha ao criar conta", error);
+  }
+}
 
 async function getSerializedEntitlement(userId: number) {
   const [entitlement] = await db
@@ -44,7 +70,9 @@ async function serializeContext(
     platformRole: context.platformRole,
     stores: context.stores,
     currentStore: context.currentStore,
-    entitlement: context.platformRole ? null : await getSerializedEntitlement(context.user.id),
+    entitlement: context.platformRole
+      ? null
+      : await getSerializedEntitlement(context.user.id),
   };
 }
 
@@ -83,7 +111,7 @@ router.post("/auth/register", async (req, res) => {
     .where(sql`lower(${usersTable.email}) = ${email}`)
     .limit(1);
   if (existingUser) {
-    res.status(409).json({ error: "Este e-mail já está cadastrado." });
+    res.status(409).json({ error: duplicatedEmailMessage });
     return;
   }
 
@@ -109,8 +137,14 @@ router.post("/auth/register", async (req, res) => {
 
       return [user];
     });
-  } catch {
-    res.status(409).json({ error: "Este e-mail já está cadastrado." });
+  } catch (error) {
+    if (isDuplicateEmailError(error)) {
+      res.status(409).json({ error: duplicatedEmailMessage });
+      return;
+    }
+
+    logRegisterError(error);
+    res.status(500).json({ error: "Não foi possível criar a conta agora." });
     return;
   }
 
