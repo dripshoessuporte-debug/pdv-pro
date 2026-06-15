@@ -57,11 +57,18 @@ export type CreateOwnStorePayload = {
   tradeName?: string;
 };
 
+export type Entitlement = { plan: "basico" | "medio" | "pro" | null; status: string; trialEndsAt: string | null };
+
+export function hasStoreCreationAccess(entitlement: Entitlement | null | undefined): boolean {
+  return entitlement?.status === "active" || entitlement?.status === "trialing";
+}
+
 export type AuthSession = {
   user: AuthUser;
   platformRole: PlatformRole | null;
   stores: AuthStore[];
   currentStore: AuthStore | null;
+  entitlement: Entitlement | null;
 };
 
 type AuthContextValue = {
@@ -69,6 +76,7 @@ type AuthContextValue = {
   stores: AuthStore[];
   currentStore: AuthStore | null;
   platformRole: PlatformRole | null;
+  entitlement: Entitlement | null;
   actor: Actor | null;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -212,7 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (nextSession.platformRole && !nextSession.currentStore) {
           navigate("/admin-max");
         } else if (!nextSession.currentStore) {
-          navigate("/create-store");
+          navigate(hasStoreCreationAccess(nextSession.entitlement) ? "/create-store" : "/plans");
         } else {
           navigate(defaultPathForRole(nextSession.currentStore.role));
         }
@@ -231,7 +239,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       clearDevRbacStorage();
       updateSession(nextSession);
-      navigate("/create-store");
+      navigate(hasStoreCreationAccess(nextSession.entitlement) ? "/create-store" : "/plans");
       return nextSession;
     },
     [navigate, updateSession],
@@ -267,6 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       stores: session?.stores ?? [],
       currentStore: session?.currentStore ?? null,
       platformRole: session?.platformRole ?? null,
+      entitlement: session?.entitlement ?? null,
       actor,
       isAuthenticated: Boolean(session),
       isLoading,

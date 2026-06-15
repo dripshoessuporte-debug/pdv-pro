@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { sql } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { db, userEntitlementsTable, usersTable } from "@workspace/db";
 import {
   buildAuthenticatedContext,
   clearSessionCookie,
@@ -18,7 +18,25 @@ const router: IRouter = Router();
 
 const invalidCredentialsMessage = "E-mail ou senha inválidos.";
 
-function serializeContext(
+async function getSerializedEntitlement(userId: number) {
+  const [entitlement] = await db
+    .select({
+      plan: userEntitlementsTable.plan,
+      status: userEntitlementsTable.status,
+      trialEndsAt: userEntitlementsTable.trialEndsAt,
+    })
+    .from(userEntitlementsTable)
+    .where(sql`${userEntitlementsTable.userId} = ${userId}`)
+    .limit(1);
+
+  return {
+    plan: entitlement?.plan ?? null,
+    status: entitlement?.status ?? "pending",
+    trialEndsAt: entitlement?.trialEndsAt ?? null,
+  };
+}
+
+async function serializeContext(
   context: NonNullable<Awaited<ReturnType<typeof buildAuthenticatedContext>>>,
 ) {
   return {
@@ -26,6 +44,7 @@ function serializeContext(
     platformRole: context.platformRole,
     stores: context.stores,
     currentStore: context.currentStore,
+    entitlement: context.platformRole ? null : await getSerializedEntitlement(context.user.id),
   };
 }
 
@@ -70,15 +89,26 @@ router.post("/auth/register", async (req, res) => {
 
   let createdUser: { id: number };
   try {
-    [createdUser] = await db
-      .insert(usersTable)
-      .values({
-        name,
-        email,
-        passwordHash: hashPassword(password),
-        status: "active",
-      })
-      .returning({ id: usersTable.id });
+    [createdUser] = await db.transaction(async (tx) => {
+      const [user] = await tx
+        .insert(usersTable)
+        .values({
+          name,
+          email,
+          passwordHash: hashPassword(password),
+          status: "active",
+        })
+        .returning({ id: usersTable.id });
+
+      await tx.insert(userEntitlementsTable).values({
+        userId: user.id,
+        plan: null,
+        status: "pending",
+        source: "system",
+      });
+
+      return [user];
+    });
   } catch {
     res.status(409).json({ error: "Este e-mail já está cadastrado." });
     return;
@@ -94,7 +124,7 @@ router.post("/auth/register", async (req, res) => {
 
   await touchLastLogin(createdUser.id);
   setSessionCookie(res, context.user.id, null);
-  res.status(201).json(serializeContext(context));
+  res.status(201).json(await serializeContext(context));
 });
 
 router.post("/auth/login", async (req, res) => {
@@ -129,7 +159,7 @@ router.post("/auth/login", async (req, res) => {
 
   await touchLastLogin(user.id);
   setSessionCookie(res, context.user.id, context.currentStore?.id ?? null);
-  res.json(serializeContext(context));
+  res.json(await serializeContext(context));
 });
 
 router.post("/auth/logout", (_req, res) => {
@@ -144,7 +174,7 @@ router.get("/auth/me", async (req, res) => {
     return;
   }
 
-  res.json(serializeContext(context));
+  res.json(await serializeContext(context));
 });
 
 export default router;

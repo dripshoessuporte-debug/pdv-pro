@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { Redirect, useLocation } from "wouter";
-import { useAuth } from "@/lib/auth";
+import { hasStoreCreationAccess, useAuth } from "@/lib/auth";
 import { canAccessPath, defaultPathForRole } from "@/lib/rbac";
 import { getOnboardingStatus } from "@/pages/onboarding";
 
@@ -13,7 +13,7 @@ export function ProtectedRoute({
   path: string;
   children: ReactNode;
 }) {
-  const { actor, isAuthenticated, isLoading, platformRole } = useAuth();
+  const { actor, entitlement, isAuthenticated, isLoading, platformRole } = useAuth();
   const [location] = useLocation();
   const [mustOnboard, setMustOnboard] = useState(false);
   const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(false);
@@ -60,7 +60,7 @@ export function ProtectedRoute({
   }
 
   if (!actor) {
-    return <Redirect to="/create-store" />;
+    return <Redirect to={hasStoreCreationAccess(entitlement) ? "/create-store" : "/plans"} />;
   }
 
   if (!canAccessPath(actor.role, path)) {
