@@ -19,6 +19,7 @@ import adminRouter from "./admin";
 import authRouter from "./auth";
 import platformRouter from "./platform";
 import onboardingRouter from "./onboarding";
+import billingRouter from "./billing";
 import teamRouter from "./team";
 import { attachCurrentActor, rbacRouteGuard } from "../middleware/rbac";
 
@@ -28,6 +29,7 @@ router.use(healthRouter);
 router.use(authRouter);
 router.use(platformRouter);
 router.use(onboardingRouter);
+router.use(billingRouter);
 
 router.use(attachCurrentActor);
 router.use(rbacRouteGuard);

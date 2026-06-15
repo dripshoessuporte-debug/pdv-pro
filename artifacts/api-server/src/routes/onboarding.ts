@@ -8,6 +8,7 @@ import {
   storeSettingsTable,
   storesTable,
   tablesTable,
+  userEntitlementsTable,
 } from "@workspace/db";
 import {
   buildAuthenticatedContext,
@@ -160,6 +161,19 @@ async function createOwnStoreHandler(req: Request, res: Response) {
   if (existingMembership.length > 0) {
     res.status(409).json({
       error: "Este usuário já possui uma loja vinculada.",
+    });
+    return;
+  }
+
+  const [entitlement] = await db
+    .select({ status: userEntitlementsTable.status })
+    .from(userEntitlementsTable)
+    .where(eq(userEntitlementsTable.userId, context.user.id))
+    .limit(1);
+
+  if (!entitlement || !["active", "trialing"].includes(entitlement.status)) {
+    res.status(403).json({
+      error: "Para criar sua loja, escolha um plano ou solicite liberação de teste.",
     });
     return;
   }

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   getAuthErrorMessage,
+  hasStoreCreationAccess,
   useAuth,
   type CreateOwnStorePayload,
 } from "@/lib/auth";
@@ -41,6 +42,7 @@ export default function CreateStorePage() {
     actor,
     createOwnStore,
     currentStore,
+    entitlement,
     isAuthenticated,
     isLoading,
     platformRole,
@@ -93,6 +95,7 @@ export default function CreateStorePage() {
 
   if (!isAuthenticated) return <Redirect to="/login?next=%2Fcreate-store" />;
   if (platformRole) return <Redirect to="/admin-max" />;
+  if (!hasStoreCreationAccess(entitlement)) return <Redirect to="/plans" />;
   if (currentStore && actor) {
     return <Redirect to={defaultPathForRole(actor.role)} />;
   }

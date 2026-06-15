@@ -42,6 +42,7 @@ type Overview = {
 type PlatformStore = {
   id: number;
   name: string;
+  slug?: string;
   status: string;
   city: string | null;
   state: string | null;
@@ -72,7 +73,7 @@ const menuItems = [
     href: "/admin-max/billing",
     label: "Cobrança",
     icon: CreditCard,
-    disabled: true,
+    disabled: false,
   },
   {
     href: "/admin-max/support",
@@ -240,7 +241,7 @@ function formatDate(date: string) {
 function statusClasses(status: string) {
   if (["active", "ativo"].includes(status.toLowerCase()))
     return "bg-emerald-500/10 text-emerald-200 border-emerald-400/20";
-  if (["trial", "teste"].includes(status.toLowerCase()))
+  if (["trial", "teste", "trialing"].includes(status.toLowerCase()))
     return "bg-amber-500/10 text-amber-200 border-amber-400/20";
   if (["blocked", "bloqueado"].includes(status.toLowerCase()))
     return "bg-red-500/10 text-red-200 border-red-400/20";
@@ -546,16 +547,35 @@ export function AdminMaxDashboardPage() {
 }
 
 export function AdminMaxStoresPage() {
+  const { platformRole } = useAuth();
   const [stores, setStores] = useState<PlatformStore[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
+  const loadStores = useCallback(() => {
+    setIsLoading(true);
     fetchPlatformJson<{ stores: PlatformStore[] }>("/api/platform/stores")
       .then((data) => setStores(data.stores))
       .catch(() => setError("Não foi possível carregar as lojas."))
       .finally(() => setIsLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadStores();
+  }, [loadStores]);
+
+  async function updateStoreStatus(storeId: number, status: string) {
+    await fetch(`/api/platform/stores/${storeId}/status`, { method: "PATCH", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
+    loadStores();
+  }
+
+  async function deleteStore(storeId: number) {
+    const confirmation = window.prompt('Digite EXCLUIR para confirmar a exclusão definitiva.');
+    if (confirmation !== 'EXCLUIR') return;
+    const response = await fetch(`/api/platform/stores/${storeId}`, { method: "DELETE", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirmation }) });
+    if (!response.ok) { setError("Não foi possível excluir a loja."); return; }
+    loadStores();
+  }
 
   return (
     <AdminShell
@@ -603,9 +623,17 @@ export function AdminMaxStoresPage() {
                   </td>
                   <td className="px-4 py-3">{store.membersCount}</td>
                   <td className="px-4 py-3">
-                    <Button variant="secondary" size="sm" disabled>
-                      Ver detalhes
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="secondary" size="sm" disabled>Ver detalhes</Button>
+                      <Button variant="secondary" size="sm" onClick={() => void updateStoreStatus(store.id, "blocked")}>Bloquear loja</Button>
+                      <Button variant="secondary" size="sm" onClick={() => void updateStoreStatus(store.id, "active")}>Reativar loja</Button>
+                      <Button variant="secondary" size="sm" onClick={() => void updateStoreStatus(store.id, "archived")}>Arquivar loja</Button>
+                      {platformRole === "platform_owner" ? (
+                        <Button className="bg-red-700 hover:bg-red-800" size="sm" onClick={() => void deleteStore(store.id)}>Excluir definitivamente</Button>
+                      ) : (
+                        <span className="text-xs text-slate-400">Somente o dono da plataforma pode excluir lojas definitivamente.</span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -622,6 +650,45 @@ export function AdminMaxStoresPage() {
             Nenhuma loja cadastrada.
           </div>
         )}
+      </div>
+    </AdminShell>
+  );
+}
+
+
+type PlatformEntitlement = { userId: number; name: string; email: string; plan: string | null; status: string; createdAt: string; trialEndsAt: string | null };
+
+export function AdminMaxBillingPage() {
+  const [entitlements, setEntitlements] = useState<PlatformEntitlement[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const load = useCallback(() => {
+    setIsLoading(true);
+    fetchPlatformJson<{ entitlements: PlatformEntitlement[] }>("/api/platform/entitlements")
+      .then((data) => setEntitlements(data.entitlements))
+      .catch(() => setError("Não foi possível carregar solicitações."))
+      .finally(() => setIsLoading(false));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  async function action(userId: number, kind: "grant-trial" | "activate" | "block") {
+    await fetch(`/api/platform/entitlements/${userId}/${kind}`, { method: "POST", credentials: "include" });
+    load();
+  }
+  return (
+    <AdminShell title="Cobrança" description="Liberação manual de testes, ativações e bloqueios de acesso.">
+      {error && <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>}
+      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-xl shadow-black/10">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-left text-sm">
+            <thead className="bg-white/10 text-xs uppercase tracking-wide text-slate-300"><tr><th className="px-4 py-3">Nome</th><th className="px-4 py-3">E-mail</th><th className="px-4 py-3">Plano</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Criado em</th><th className="px-4 py-3">Trial ends at</th><th className="px-4 py-3">Ações</th></tr></thead>
+            <tbody className="divide-y divide-white/10">
+              {entitlements.map((item) => (
+                <tr key={item.userId} className="text-slate-100"><td className="px-4 py-3 font-medium">{item.name}</td><td className="px-4 py-3">{item.email}</td><td className="px-4 py-3">{item.plan ?? "—"}</td><td className="px-4 py-3"><span className={`rounded-full border px-2 py-1 text-xs ${statusClasses(item.status)}`}>{item.status}</span></td><td className="px-4 py-3">{formatDate(item.createdAt)}</td><td className="px-4 py-3">{item.trialEndsAt ? formatDate(item.trialEndsAt) : "—"}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-2"><Button size="sm" variant="secondary" onClick={() => void action(item.userId, "grant-trial")}>Liberar teste</Button><Button size="sm" variant="secondary" onClick={() => void action(item.userId, "activate")}>Ativar manualmente</Button><Button size="sm" variant="secondary" onClick={() => void action(item.userId, "block")}>Bloquear</Button></div></td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {isLoading && <div className="flex items-center justify-center gap-2 p-6 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> Carregando cobranças...</div>}
       </div>
     </AdminShell>
   );
