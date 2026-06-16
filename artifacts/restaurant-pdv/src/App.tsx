@@ -21,6 +21,7 @@ import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import CreateStorePage from "@/pages/create-store";
 import PlansPage from "@/pages/plans";
+import ActivatePage from "@/pages/activate";
 import OnboardingPage from "@/pages/onboarding";
 import AdminMaxLoginPage from "@/pages/admin-max-login";
 import {
@@ -67,6 +68,8 @@ function Router() {
       <Route path="/register" component={RegisterPage} />
       <Route path="/admin-max/login" component={AdminMaxLoginPage} />
       <Route path="/plans" component={PlansPage} />
+      <Route path="/request-access" component={RegisterPage} />
+      <Route path="/activate/:token" component={ActivatePage} />
       <Route path="/create-store" component={CreateStorePage} />
       <Route path="/onboarding">
         {() => (

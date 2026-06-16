@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 import { usersTable } from "./tenancy";
 
 export const entitlementPlans = ["basico", "medio", "pro"] as const;
-export const entitlementStatuses = ["pending", "trialing", "active", "cancelled", "blocked"] as const;
+export const entitlementStatuses = ["pending", "trialing", "active", "past_due", "cancelled", "blocked"] as const;
 export const entitlementSources = ["system", "manual", "checkout", "webhook"] as const;
 
 export const userEntitlementsTable = pgTable(
@@ -15,9 +15,17 @@ export const userEntitlementsTable = pgTable(
     plan: text("plan"),
     status: text("status").notNull().default("pending"),
     source: text("source").notNull().default("system"),
+    provider: text("provider"),
+    externalCustomerId: text("external_customer_id"),
+    externalOrderId: text("external_order_id"),
+    externalRefId: text("external_ref_id"),
+    externalSubscriptionId: text("external_subscription_id"),
+    currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
+    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
     trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
     activatedAt: timestamp("activated_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    blockedAt: timestamp("blocked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },

@@ -50,6 +50,8 @@ async function getSerializedEntitlement(userId: number) {
       plan: userEntitlementsTable.plan,
       status: userEntitlementsTable.status,
       trialEndsAt: userEntitlementsTable.trialEndsAt,
+      provider: userEntitlementsTable.provider,
+      currentPeriodEnd: userEntitlementsTable.currentPeriodEnd,
     })
     .from(userEntitlementsTable)
     .where(sql`${userEntitlementsTable.userId} = ${userId}`)
@@ -59,6 +61,8 @@ async function getSerializedEntitlement(userId: number) {
     plan: entitlement?.plan ?? null,
     status: entitlement?.status ?? "pending",
     trialEndsAt: entitlement?.trialEndsAt ?? null,
+    provider: entitlement?.provider ?? null,
+    currentPeriodEnd: entitlement?.currentPeriodEnd ?? null,
   };
 }
 
@@ -83,6 +87,10 @@ function asTrimmedString(value: unknown): string {
 }
 
 router.post("/auth/register", async (req, res) => {
+  if (process.env.DEV_ALLOW_PUBLIC_REGISTER !== "true") {
+    res.status(403).json({ error: "Cadastro direto desativado. Assine um plano ou solicite acesso." });
+    return;
+  }
   const name = asTrimmedString(req.body?.name);
   const email = normalizeEmail(asTrimmedString(req.body?.email));
   const password =

@@ -20,6 +20,7 @@ import authRouter from "./auth";
 import platformRouter from "./platform";
 import onboardingRouter from "./onboarding";
 import billingRouter from "./billing";
+import caktoRouter from "./cakto";
 import teamRouter from "./team";
 import { attachCurrentActor, rbacRouteGuard } from "../middleware/rbac";
 
@@ -30,6 +31,7 @@ router.use(authRouter);
 router.use(platformRouter);
 router.use(onboardingRouter);
 router.use(billingRouter);
+router.use(caktoRouter);
 
 router.use(attachCurrentActor);
 router.use(rbacRouteGuard);

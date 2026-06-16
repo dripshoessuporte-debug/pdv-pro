@@ -856,10 +856,18 @@ type PlatformEntitlement = {
   status: string;
   createdAt: string;
   trialEndsAt: string | null;
+  provider?: string | null;
+  externalOrderId?: string | null;
+  externalSubscriptionId?: string | null;
+  currentPeriodEnd?: string | null;
 };
+type BillingWebhook = { id: number; createdAt: string; eventType: string | null; processingStatus: string; email: string | null; plan: string | null; externalOrderId: string | null; externalSubscriptionId: string | null; rawPayload: unknown; errorMessage: string | null };
+type AccessRequest = { id: number; name: string; email: string; phone: string; restaurantName: string; requestedPlan: string; status: string; createdAt: string };
 
 export function AdminMaxBillingPage() {
   const [entitlements, setEntitlements] = useState<PlatformEntitlement[]>([]);
+  const [webhooks, setWebhooks] = useState<BillingWebhook[]>([]);
+  const [requests, setRequests] = useState<AccessRequest[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const load = useCallback(() => {
@@ -870,13 +878,15 @@ export function AdminMaxBillingPage() {
       .then((data) => setEntitlements(data.entitlements))
       .catch(() => setError("Não foi possível carregar solicitações."))
       .finally(() => setIsLoading(false));
+    fetchPlatformJson<{ webhooks: BillingWebhook[] }>("/api/platform/billing/webhooks").then((data) => setWebhooks(data.webhooks)).catch(() => undefined);
+    fetchPlatformJson<{ requests: AccessRequest[] }>("/api/platform/access-requests").then((data) => setRequests(data.requests)).catch(() => undefined);
   }, []);
   useEffect(() => {
     load();
   }, [load]);
   async function action(
     userId: number,
-    kind: "grant-trial" | "activate" | "block",
+    kind: "grant-trial" | "activate" | "block" | "cancel",
   ) {
     await fetch(`/api/platform/entitlements/${userId}/${kind}`, {
       method: "POST",
@@ -904,7 +914,7 @@ export function AdminMaxBillingPage() {
                 <th className="px-4 py-3">Plano</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Criado em</th>
-                <th className="px-4 py-3">Trial ends at</th>
+                <th className="px-4 py-3">Provider</th><th className="px-4 py-3">Pedido/Assinatura</th><th className="px-4 py-3">Período</th>
                 <th className="px-4 py-3">Ações</th>
               </tr>
             </thead>
@@ -922,9 +932,7 @@ export function AdminMaxBillingPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">{formatDate(item.createdAt)}</td>
-                  <td className="px-4 py-3">
-                    {item.trialEndsAt ? formatDate(item.trialEndsAt) : "—"}
-                  </td>
+                  <td className="px-4 py-3">{item.provider ?? "—"}</td><td className="px-4 py-3">{item.externalOrderId ?? "—"}<br />{item.externalSubscriptionId ?? "—"}</td><td className="px-4 py-3">{item.currentPeriodEnd ? formatDate(item.currentPeriodEnd) : item.trialEndsAt ? formatDate(item.trialEndsAt) : "—"}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-2">
                       <Button
@@ -948,6 +956,7 @@ export function AdminMaxBillingPage() {
                       >
                         Bloquear
                       </Button>
+                      <Button size="sm" variant="secondary" onClick={() => void action(item.userId, "cancel")}>Cancelar</Button>
                     </div>
                   </td>
                 </tr>
@@ -960,6 +969,23 @@ export function AdminMaxBillingPage() {
             <Loader2 className="h-4 w-4 animate-spin" /> Carregando cobranças...
           </div>
         )}
+      </div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <Card className="border-white/10 bg-white/5 text-white">
+          <CardHeader><CardTitle>Webhooks Cakto</CardTitle></CardHeader>
+          <CardContent>
+            <div className="max-h-96 overflow-auto text-sm">
+              <table className="w-full min-w-[760px] text-left">
+                <thead className="text-xs uppercase text-slate-400"><tr><th className="p-2">Data</th><th className="p-2">Evento</th><th className="p-2">Status</th><th className="p-2">E-mail</th><th className="p-2">Plano</th><th className="p-2">Order</th><th className="p-2">Payload</th></tr></thead>
+                <tbody>{webhooks.map((item) => <tr key={item.id} className="border-t border-white/10"><td className="p-2">{formatDate(item.createdAt)}</td><td className="p-2">{item.eventType ?? "—"}</td><td className="p-2">{item.processingStatus}</td><td className="p-2">{item.email ?? "—"}</td><td className="p-2">{item.plan ?? "—"}</td><td className="p-2">{item.externalOrderId ?? "—"}</td><td className="p-2"><details><summary className="cursor-pointer">Ver payload</summary><pre className="mt-2 max-w-md overflow-auto rounded bg-slate-950 p-2 text-xs">{JSON.stringify(item.rawPayload, null, 2)}</pre></details>{item.errorMessage && <p className="mt-1 text-xs text-amber-300">{item.errorMessage}</p>}</td></tr>)}</tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-white/10 bg-white/5 text-white">
+          <CardHeader><CardTitle>Solicitações de acesso</CardTitle></CardHeader>
+          <CardContent><div className="space-y-3">{requests.map((request) => <div key={request.id} className="rounded-xl border border-white/10 p-3"><div className="font-medium">{request.name} · {request.restaurantName}</div><div className="text-sm text-slate-300">{request.email} · {request.phone} · {request.requestedPlan} · {request.status}</div><div className="mt-2 flex gap-2"><Button size="sm" variant="secondary" onClick={() => fetch(`/api/platform/access-requests/${request.id}/grant-trial`, { method: "POST", credentials: "include" }).then(load)}>Liberar teste</Button><Button size="sm" variant="secondary" onClick={() => fetch(`/api/platform/access-requests/${request.id}/activate`, { method: "POST", credentials: "include" }).then(load)}>Ativar</Button><Button size="sm" variant="secondary" onClick={() => fetch(`/api/platform/access-requests/${request.id}/reject`, { method: "POST", credentials: "include" }).then(load)}>Rejeitar</Button></div></div>)}</div></CardContent>
+        </Card>
       </div>
     </AdminShell>
   );
