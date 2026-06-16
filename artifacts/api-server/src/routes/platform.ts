@@ -1,6 +1,9 @@
 import { Router, type IRouter } from "express";
-import { count, eq, sql } from "drizzle-orm";
+import { count, desc, eq, sql } from "drizzle-orm";
 import {
+  accessRequestsTable,
+  billingProviderProductsTable,
+  billingWebhookEventsTable,
   cashRegistersTable,
   db,
   ordersTable,
@@ -10,6 +13,7 @@ import {
   userEntitlementsTable,
   usersTable,
 } from "@workspace/db";
+import { handleAccessRequestAction } from "./billing";
 import { requirePlatformRole } from "../middleware/platform-rbac";
 import { resolveAuthenticatedContext } from "../lib/auth";
 
@@ -232,6 +236,10 @@ router.get(
         status: userEntitlementsTable.status,
         createdAt: userEntitlementsTable.createdAt,
         trialEndsAt: userEntitlementsTable.trialEndsAt,
+        provider: userEntitlementsTable.provider,
+        externalOrderId: userEntitlementsTable.externalOrderId,
+        externalSubscriptionId: userEntitlementsTable.externalSubscriptionId,
+        currentPeriodEnd: userEntitlementsTable.currentPeriodEnd,
       })
       .from(userEntitlementsTable)
       .innerJoin(usersTable, eq(userEntitlementsTable.userId, usersTable.id))
@@ -239,6 +247,52 @@ router.get(
     res.json({ entitlements });
   },
 );
+
+
+router.get(
+  "/platform/billing/webhooks",
+  canManageBilling,
+  async (_req, res): Promise<void> => {
+    const webhooks = await db
+      .select({ id: billingWebhookEventsTable.id, createdAt: billingWebhookEventsTable.createdAt, eventType: billingWebhookEventsTable.eventType, paymentStatus: billingWebhookEventsTable.paymentStatus, processingStatus: billingWebhookEventsTable.processingStatus, email: billingWebhookEventsTable.email, plan: billingWebhookEventsTable.plan, externalOrderId: billingWebhookEventsTable.externalOrderId, externalSubscriptionId: billingWebhookEventsTable.externalSubscriptionId, rawPayload: billingWebhookEventsTable.rawPayload, errorMessage: billingWebhookEventsTable.errorMessage })
+      .from(billingWebhookEventsTable)
+      .orderBy(desc(billingWebhookEventsTable.createdAt))
+      .limit(100);
+    res.json({ webhooks });
+  },
+);
+
+router.get(
+  "/platform/billing/products",
+  canManageBilling,
+  async (_req, res): Promise<void> => {
+    const products = await db.select().from(billingProviderProductsTable).orderBy(billingProviderProductsTable.id);
+    res.json({ products });
+  },
+);
+
+router.post(
+  "/platform/billing/products",
+  canManageBilling,
+  async (req, res): Promise<void> => {
+    const plan = typeof req.body?.plan === "string" ? req.body.plan : "";
+    if (!["basico", "medio", "pro"].includes(plan)) { res.status(400).json({ error: "Plano inválido." }); return; }
+    const [product] = await db.insert(billingProviderProductsTable).values({ provider: "cakto", externalProductId: req.body?.externalProductId || null, externalProductShortId: req.body?.externalProductShortId || null, externalOfferId: req.body?.externalOfferId || null, productName: req.body?.productName || null, offerName: req.body?.offerName || null, checkoutUrl: req.body?.checkoutUrl || null, active: req.body?.active !== false, plan }).returning();
+    res.status(201).json({ product });
+  },
+);
+
+router.get(
+  "/platform/access-requests",
+  canManageBilling,
+  async (_req, res): Promise<void> => {
+    const requests = await db.select().from(accessRequestsTable).orderBy(desc(accessRequestsTable.createdAt));
+    res.json({ requests });
+  },
+);
+router.post("/platform/access-requests/:id/grant-trial", canManageBilling, (req, res) => handleAccessRequestAction(req, res, "grant-trial"));
+router.post("/platform/access-requests/:id/activate", canManageBilling, (req, res) => handleAccessRequestAction(req, res, "activate"));
+router.post("/platform/access-requests/:id/reject", canManageBilling, (req, res) => handleAccessRequestAction(req, res, "reject"));
 
 async function updateEntitlement(userId: number, set: Record<string, unknown>) {
   await db
@@ -294,7 +348,20 @@ router.post(
       res.status(400).json({ error: "Usuário inválido." });
       return;
     }
-    await updateEntitlement(userId, { status: "blocked", source: "manual" });
+    await updateEntitlement(userId, { status: "blocked", source: "manual", blockedAt: new Date() });
+    res.json({ ok: true });
+  },
+);
+router.post(
+  "/platform/entitlements/:userId/cancel",
+  canManageBilling,
+  async (req, res): Promise<void> => {
+    const userId = Number(req.params.userId);
+    if (!Number.isInteger(userId)) {
+      res.status(400).json({ error: "Usuário inválido." });
+      return;
+    }
+    await updateEntitlement(userId, { status: "cancelled", source: "manual", cancelledAt: new Date() });
     res.json({ ok: true });
   },
 );
