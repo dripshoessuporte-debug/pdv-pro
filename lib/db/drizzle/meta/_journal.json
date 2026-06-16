@@ -127,6 +127,20 @@
       "when": 1781483400000,
       "tag": "0017_users_email_lower_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1781740800000,
+      "tag": "0018_cakto_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1781742600000,
+      "tag": "0019_cakto_billing_hotfix",
+      "breakpoints": true
     }
   ]
 }
