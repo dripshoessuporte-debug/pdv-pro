@@ -16,16 +16,75 @@ const clean = (v: unknown) => typeof v === "string" ? v.trim() : "";
 const sha = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
 async function createActivationToken(userId: number) { const token = crypto.randomBytes(32).toString("base64url"); await db.insert(userActivationTokensTable).values({ userId, tokenHash: sha(token), expiresAt: new Date(Date.now() + 14 * 86400000) }); return `${(process.env.APP_PUBLIC_URL || "").replace(/\/$/, "")}/activate/${token}`; }
 
+type PublicPlan = (typeof planDefs)[number] & { checkoutUrl: string | null; enabled: boolean };
+
+type PublicPlansResult = {
+  plans: PublicPlan[];
+  query: { ok: boolean; productCount: number; error: string | null };
+};
+
+function logDev(message: string, error: unknown) {
+  if (process.env.NODE_ENV === "development") console.error(message, error);
+}
+
+async function buildPublicPlans(): Promise<PublicPlansResult> {
+  let rows: { plan: string; checkoutUrl: string | null }[] = [];
+  const query = { ok: true, productCount: 0, error: null as string | null };
+
+  try {
+    rows = await db.select({ plan: billingProviderProductsTable.plan, checkoutUrl: billingProviderProductsTable.checkoutUrl }).from(billingProviderProductsTable).where(sql`${billingProviderProductsTable.provider} = 'cakto' and ${billingProviderProductsTable.active} = true and ${billingProviderProductsTable.checkoutUrl} is not null`);
+    query.productCount = rows.length;
+  } catch (error) {
+    query.ok = false;
+    query.error = error instanceof Error ? error.message : "Erro desconhecido ao consultar produtos Cakto.";
+    logDev("[billing/public-plans] Falha ao consultar billing_provider_products; usando fallback seguro.", error);
+  }
+
+  return {
+    plans: planDefs.map((p) => {
+      const row = rows.find((r) => r.plan === p.plan);
+      const checkoutUrl = row?.checkoutUrl ?? checkoutEnv[p.plan] ?? null;
+      return { ...p, checkoutUrl, enabled: Boolean(checkoutUrl) };
+    }),
+    query,
+  };
+}
+
 router.get("/billing/public-plans", async (_req, res) => {
-  const rows = await db.select({ plan: billingProviderProductsTable.plan, checkoutUrl: billingProviderProductsTable.checkoutUrl }).from(billingProviderProductsTable).where(sql`${billingProviderProductsTable.provider} = 'cakto' and ${billingProviderProductsTable.active} = true and ${billingProviderProductsTable.checkoutUrl} is not null`);
-  res.json({ plans: planDefs.map((p) => { const row = rows.find((r) => r.plan === p.plan); const checkoutUrl = row?.checkoutUrl ?? checkoutEnv[p.plan] ?? null; return { ...p, checkoutUrl, enabled: Boolean(checkoutUrl) }; }) });
+  const { plans } = await buildPublicPlans();
+  res.json({ plans });
+});
+
+router.get("/billing/debug", async (_req, res): Promise<void> => {
+  if (process.env.NODE_ENV === "production") {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  const result = await buildPublicPlans();
+  res.json({
+    env: {
+      CAKTO_CHECKOUT_START_URL: Boolean(process.env.CAKTO_CHECKOUT_START_URL),
+      CAKTO_CHECKOUT_DELIVERY_URL: Boolean(process.env.CAKTO_CHECKOUT_DELIVERY_URL),
+      CAKTO_CHECKOUT_PRO_URL: Boolean(process.env.CAKTO_CHECKOUT_PRO_URL),
+      CAKTO_WEBHOOK_SECRET: Boolean(process.env.CAKTO_WEBHOOK_SECRET),
+    },
+    billingProviderProducts: result.query,
+    plans: result.plans,
+  });
 });
 
 router.post("/access-requests", async (req, res): Promise<void> => {
   const name = clean(req.body?.name), email = normalizeEmail(clean(req.body?.email)), phone = clean(req.body?.phone), restaurantName = clean(req.body?.restaurantName), requestedPlan = clean(req.body?.requestedPlan || req.body?.plan), message = clean(req.body?.message) || null;
   if (!name || !isValidEmail(email) || !phone || !restaurantName || !planSet.has(requestedPlan)) { res.status(400).json({ error: "Preencha nome, e-mail, telefone, restaurante e plano desejado." }); return; }
-  const [request] = await db.insert(accessRequestsTable).values({ name, email, phone, restaurantName, requestedPlan, message, status: "pending" }).returning();
-  res.status(201).json({ ok: true, request: { id: request.id, status: request.status } });
+
+  try {
+    const [request] = await db.insert(accessRequestsTable).values({ name, email, phone, restaurantName, requestedPlan, message, status: "pending" }).returning();
+    res.status(201).json({ ok: true, request: { id: request.id, status: request.status } });
+  } catch (error) {
+    logDev("[access-requests] Falha ao salvar solicitação de acesso.", error);
+    res.status(500).json({ error: "Não foi possível salvar a solicitação agora." });
+  }
 });
 
 router.post("/billing/request-access", async (req, res): Promise<void> => {

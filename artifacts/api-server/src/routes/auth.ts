@@ -44,26 +44,42 @@ function logRegisterError(error: unknown) {
   }
 }
 
-async function getSerializedEntitlement(userId: number) {
-  const [entitlement] = await db
-    .select({
-      plan: userEntitlementsTable.plan,
-      status: userEntitlementsTable.status,
-      trialEndsAt: userEntitlementsTable.trialEndsAt,
-      provider: userEntitlementsTable.provider,
-      currentPeriodEnd: userEntitlementsTable.currentPeriodEnd,
-    })
-    .from(userEntitlementsTable)
-    .where(sql`${userEntitlementsTable.userId} = ${userId}`)
-    .limit(1);
+const safePendingEntitlement = {
+  plan: null,
+  status: "pending",
+  trialEndsAt: null,
+  provider: null,
+  currentPeriodEnd: null,
+};
 
-  return {
-    plan: entitlement?.plan ?? null,
-    status: entitlement?.status ?? "pending",
-    trialEndsAt: entitlement?.trialEndsAt ?? null,
-    provider: entitlement?.provider ?? null,
-    currentPeriodEnd: entitlement?.currentPeriodEnd ?? null,
-  };
+async function getSerializedEntitlement(userId: number) {
+  try {
+    const [entitlement] = await db
+      .select({
+        plan: userEntitlementsTable.plan,
+        status: userEntitlementsTable.status,
+        trialEndsAt: userEntitlementsTable.trialEndsAt,
+        provider: userEntitlementsTable.provider,
+        currentPeriodEnd: userEntitlementsTable.currentPeriodEnd,
+      })
+      .from(userEntitlementsTable)
+      .where(sql`${userEntitlementsTable.userId} = ${userId}`)
+      .limit(1);
+
+    return {
+      plan: entitlement?.plan ?? null,
+      status: entitlement?.status ?? "pending",
+      trialEndsAt: entitlement?.trialEndsAt ?? null,
+      provider: entitlement?.provider ?? null,
+      currentPeriodEnd: entitlement?.currentPeriodEnd ?? null,
+    };
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[auth/entitlement] Falha ao serializar entitlement; usando fallback seguro.", error);
+    }
+
+    return safePendingEntitlement;
+  }
 }
 
 async function serializeContext(
