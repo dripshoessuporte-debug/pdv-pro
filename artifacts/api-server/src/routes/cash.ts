@@ -16,6 +16,135 @@ import { getCurrentActor, requireOpenShift } from "../middleware/rbac";
 
 const router: IRouter = Router();
 
+type NormalizedDeliveryPaymentMethod =
+  | "cash"
+  | "pix"
+  | "credit_card"
+  | "debit_card"
+  | "voucher"
+  | "platform";
+
+function normalizeDeliveryPaymentMethod(
+  value: unknown,
+): NormalizedDeliveryPaymentMethod {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (normalized === "dinheiro" || normalized === "cash") return "cash";
+  if (normalized === "pix") return "pix";
+  if (
+    normalized === "cartao" ||
+    normalized === "cartão" ||
+    normalized === "credito" ||
+    normalized === "crédito" ||
+    normalized === "credit_card"
+  ) {
+    return "credit_card";
+  }
+  if (
+    normalized === "debito" ||
+    normalized === "débito" ||
+    normalized === "debit_card"
+  ) {
+    return "debit_card";
+  }
+  if (normalized === "voucher") return "voucher";
+
+  return "platform";
+}
+
+function isRestaurantReceivedPaymentMethod(method: string): boolean {
+  return ["cash", "pix", "credit_card", "debit_card", "voucher"].includes(
+    method,
+  );
+}
+
+async function buildReconciliationSummary(
+  register: typeof cashRegistersTable.$inferSelect,
+) {
+  const closedPaidOrders = await db
+    .select({ id: ordersTable.id })
+    .from(ordersTable)
+    .where(
+      and(
+        eq(ordersTable.storeId, register.storeId),
+        eq(ordersTable.status, "closed"),
+        sql`(${ordersTable.paidAt} >= ${register.openedAt} or ${ordersTable.closedAt} >= ${register.openedAt})`,
+        register.closedAt
+          ? sql`(${ordersTable.paidAt} <= ${register.closedAt} or ${ordersTable.closedAt} <= ${register.closedAt})`
+          : sql`true`,
+      ),
+    );
+
+  const missingPaymentRows = await db
+    .select({ id: ordersTable.id })
+    .from(ordersTable)
+    .leftJoin(paymentsTable, eq(paymentsTable.orderId, ordersTable.id))
+    .where(
+      and(
+        eq(ordersTable.storeId, register.storeId),
+        eq(ordersTable.status, "closed"),
+        sql`(${ordersTable.paidAt} >= ${register.openedAt} or ${ordersTable.closedAt} >= ${register.openedAt})`,
+        sql`${paymentsTable.id} is null`,
+      ),
+    );
+
+  const paymentRows = await db
+    .select({ id: paymentsTable.id })
+    .from(paymentsTable)
+    .innerJoin(ordersTable, eq(paymentsTable.orderId, ordersTable.id))
+    .where(
+      and(
+        eq(ordersTable.storeId, register.storeId),
+        eq(paymentsTable.status, "approved"),
+        sql`${paymentsTable.createdAt} >= ${register.openedAt}`,
+        register.closedAt
+          ? sql`${paymentsTable.createdAt} <= ${register.closedAt}`
+          : sql`true`,
+      ),
+    );
+
+  const movementRows = await db
+    .select({ orderId: cashMovementsTable.orderId })
+    .from(cashMovementsTable)
+    .where(
+      and(
+        eq(cashMovementsTable.cashRegisterId, register.id),
+        eq(cashMovementsTable.type, "payment"),
+      ),
+    );
+
+  const missingCashMovementRows = await db
+    .select({ id: ordersTable.id })
+    .from(paymentsTable)
+    .innerJoin(ordersTable, eq(paymentsTable.orderId, ordersTable.id))
+    .leftJoin(
+      cashMovementsTable,
+      and(
+        eq(cashMovementsTable.orderId, ordersTable.id),
+        eq(cashMovementsTable.type, "payment"),
+      ),
+    )
+    .where(
+      and(
+        eq(ordersTable.storeId, register.storeId),
+        eq(paymentsTable.status, "approved"),
+        sql`${paymentsTable.method} in ('cash', 'pix', 'credit_card', 'debit_card', 'voucher')`,
+        sql`${paymentsTable.createdAt} >= ${register.openedAt}`,
+        sql`${cashMovementsTable.id} is null`,
+      ),
+    );
+
+  return {
+    paidOrdersCount: closedPaidOrders.length,
+    paymentRecordsCount: paymentRows.length,
+    cashPaymentMovementCount: movementRows.length,
+    missingPaymentOrderIds: missingPaymentRows.map((row) => row.id),
+    missingCashMovementOrderIds: missingCashMovementRows.map((row) => row.id),
+  };
+}
+
 async function buildRegisterDetail(
   register: typeof cashRegistersTable.$inferSelect,
 ) {
@@ -81,8 +210,9 @@ async function buildRegisterDetail(
       ),
     );
   const totalPlatform = parseFloat(String(platformPaymentsSummary?.total ?? "0"));
-  const totalSales =
+  const totalRestaurantReceived =
     totalCash + totalPix + totalCredit + totalDebit + totalVoucher;
+  const totalSales = totalRestaurantReceived + totalPlatform;
   const totalWithdrawals = parsed
     .filter((m) => m.type === "withdrawal")
     .reduce((s, m) => s + m.amount, 0);
@@ -99,6 +229,13 @@ async function buildRegisterDetail(
     totalSupplies +
     totalManualIn -
     totalWithdrawals;
+
+  let reconciliation: Awaited<ReturnType<typeof buildReconciliationSummary>> | undefined;
+  try {
+    reconciliation = await buildReconciliationSummary(register);
+  } catch (error) {
+    console.warn("Failed to build cash reconciliation summary", error);
+  }
 
   return {
     ...register,
@@ -117,11 +254,13 @@ async function buildRegisterDetail(
       totalDebit,
       totalVoucher,
       totalPlatform,
+      totalRestaurantReceived,
       totalSales,
       totalWithdrawals,
       totalSupplies,
       totalManualIn,
       expectedCash,
+      reconciliation,
     },
   };
 }
@@ -213,6 +352,106 @@ router.get("/cash/history", async (req, res): Promise<void> => {
 
   const details = await Promise.all(registers.map(buildRegisterDetail));
   res.json(details);
+});
+
+
+router.post("/cash/reconcile/current", async (req, res): Promise<void> => {
+  const actor = await getCurrentActor(req);
+  if (actor.role !== "max_control" && !actor.isDevelopmentFallback) {
+    res.status(403).json({ error: "Você não tem permissão para reconciliar o caixa." });
+    return;
+  }
+
+  const [register] = await db
+    .select()
+    .from(cashRegistersTable)
+    .where(
+      and(
+        eq(cashRegistersTable.storeId, actor.storeId),
+        eq(cashRegistersTable.status, "open"),
+      ),
+    )
+    .orderBy(sql`${cashRegistersTable.openedAt} DESC`)
+    .limit(1);
+
+  if (!register) {
+    res.status(404).json({ error: "No open cash register" });
+    return;
+  }
+
+  const result = await db.transaction(async (tx) => {
+    const candidates = await tx
+      .select({
+        id: ordersTable.id,
+        totalAmount: ordersTable.totalAmount,
+        deliveryPaymentMethod: ordersTable.deliveryPaymentMethod,
+        paidAt: ordersTable.paidAt,
+      })
+      .from(ordersTable)
+      .leftJoin(paymentsTable, eq(paymentsTable.orderId, ordersTable.id))
+      .where(
+        and(
+          eq(ordersTable.storeId, actor.storeId),
+          eq(ordersTable.status, "closed"),
+          eq(ordersTable.type, "delivery"),
+          sql`${ordersTable.paymentTiming} <> 'on_delivery'`,
+          sql`${ordersTable.closedAt} >= ${register.openedAt}`,
+          sql`${paymentsTable.id} is null`,
+        ),
+      );
+
+    const createdPayments: number[] = [];
+    const createdMovements: number[] = [];
+    const skippedOrders: number[] = [];
+
+    for (const order of candidates) {
+      const method = normalizeDeliveryPaymentMethod(order.deliveryPaymentMethod);
+      const amount = String(order.totalAmount ?? "0");
+      const [payment] = await tx
+        .insert(paymentsTable)
+        .values({
+          orderId: order.id,
+          amount,
+          method,
+          status: "approved",
+          change: null,
+          paidAt: order.paidAt ?? new Date(),
+        })
+        .returning({ id: paymentsTable.id });
+
+      if (payment) createdPayments.push(order.id);
+      else skippedOrders.push(order.id);
+
+      if (isRestaurantReceivedPaymentMethod(method)) {
+        const [existingMovement] = await tx
+          .select({ id: cashMovementsTable.id })
+          .from(cashMovementsTable)
+          .where(
+            and(
+              eq(cashMovementsTable.orderId, order.id),
+              eq(cashMovementsTable.type, "payment"),
+            ),
+          )
+          .limit(1);
+
+        if (!existingMovement) {
+          await tx.insert(cashMovementsTable).values({
+            cashRegisterId: register.id,
+            type: "payment",
+            amount,
+            paymentMethod: method,
+            reason: `Pagamento Pedido #${order.id}`,
+            orderId: order.id,
+          });
+          createdMovements.push(order.id);
+        }
+      }
+    }
+
+    return { createdPayments, createdMovements, skippedOrders };
+  });
+
+  res.json(result);
 });
 
 router.get("/cash/:id", async (req, res): Promise<void> => {

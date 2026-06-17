@@ -42,6 +42,47 @@ const ROUTE_COLORS = [
   "#475569",
 ] as const;
 
+
+type NormalizedDeliveryPaymentMethod =
+  | "cash"
+  | "pix"
+  | "credit_card"
+  | "debit_card"
+  | "voucher"
+  | "platform";
+
+function normalizeDeliveryPaymentMethod(
+  value: unknown,
+): NormalizedDeliveryPaymentMethod {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (normalized === "dinheiro" || normalized === "cash") return "cash";
+  if (normalized === "pix") return "pix";
+  if (
+    normalized === "cartao" ||
+    normalized === "cartão" ||
+    normalized === "credito" ||
+    normalized === "crédito" ||
+    normalized === "credit_card"
+  ) {
+    return "credit_card";
+  }
+  if (normalized === "debito" || normalized === "débito" || normalized === "debit_card") {
+    return "debit_card";
+  }
+  if (normalized === "voucher") return "voucher";
+
+  return "platform";
+}
+
+function isRestaurantReceivedPaymentMethod(method: string): boolean {
+  return ["cash", "pix", "credit_card", "debit_card", "voucher"].includes(
+    method,
+  );
+}
+
 // ─── Eligible delivery statuses for routing ───────────────────────────────────
 
 const LOGISTICALLY_ELIGIBLE_DELIVERY_STATUSES = [
@@ -1489,51 +1530,131 @@ router.post(
 
     const now = new Date();
 
-    await db
-      .update(deliveryRoutesTable)
-      .set({ status: "completed", completedAt: now })
-      .where(eq(deliveryRoutesTable.id, routeId));
+    await db.transaction(async (tx) => {
+      await tx
+        .update(deliveryRoutesTable)
+        .set({ status: "completed", completedAt: now })
+        .where(eq(deliveryRoutesTable.id, routeId));
 
-    const routeOrders = await db
-      .select({
-        orderId: deliveryRouteOrdersTable.orderId,
-        paymentTiming: ordersTable.paymentTiming,
-      })
-      .from(deliveryRouteOrdersTable)
-      .leftJoin(
-        ordersTable,
-        eq(deliveryRouteOrdersTable.orderId, ordersTable.id),
-      )
-      .where(eq(deliveryRouteOrdersTable.routeId, routeId));
+      const routeOrders = await tx
+        .select({
+          orderId: deliveryRouteOrdersTable.orderId,
+          paymentTiming: ordersTable.paymentTiming,
+          totalAmount: ordersTable.totalAmount,
+          deliveryPaymentMethod: ordersTable.deliveryPaymentMethod,
+          status: ordersTable.status,
+          storeId: ordersTable.storeId,
+          paidAt: ordersTable.paidAt,
+          closedAt: ordersTable.closedAt,
+        })
+        .from(deliveryRouteOrdersTable)
+        .leftJoin(
+          ordersTable,
+          eq(deliveryRouteOrdersTable.orderId, ordersTable.id),
+        )
+        .where(eq(deliveryRouteOrdersTable.routeId, routeId));
 
-    // Orders already paid (paymentTiming=now): close them out immediately
-    const nowOrderIds = routeOrders
-      .filter((o) => o.paymentTiming !== "on_delivery")
-      .map((o) => o.orderId);
+      const [openRegister] = await tx
+        .select({ id: cashRegistersTable.id })
+        .from(cashRegistersTable)
+        .where(
+          and(
+            eq(cashRegistersTable.storeId, actor.storeId),
+            eq(cashRegistersTable.status, "open"),
+          ),
+        )
+        .orderBy(sql`${cashRegistersTable.openedAt} DESC`)
+        .limit(1);
 
-    // Orders to be paid on delivery: move to awaiting_settlement — do NOT close
-    const onDeliveryOrderIds = routeOrders
-      .filter((o) => o.paymentTiming === "on_delivery")
-      .map((o) => o.orderId);
+      const deliveredOrderIds: number[] = [];
+      const onDeliveryOrderIds: number[] = [];
 
-    if (nowOrderIds.length > 0) {
-      await db
-        .update(ordersTable)
-        .set({ deliveryStatus: "delivered", status: "closed", closedAt: now })
-        .where(inArray(ordersTable.id, nowOrderIds));
+      for (const order of routeOrders) {
+        if (!order.storeId || order.storeId !== actor.storeId) continue;
+
+        if (order.paymentTiming === "on_delivery") {
+          onDeliveryOrderIds.push(order.orderId);
+          continue;
+        }
+
+        if (order.status === "cancelled") continue;
+
+        const method = normalizeDeliveryPaymentMethod(
+          order.deliveryPaymentMethod,
+        );
+        const amount = String(order.totalAmount ?? "0");
+
+        const [existingPayment] = await tx
+          .select({ id: paymentsTable.id })
+          .from(paymentsTable)
+          .where(eq(paymentsTable.orderId, order.orderId))
+          .limit(1);
+
+        if (!existingPayment) {
+          await tx.insert(paymentsTable).values({
+            orderId: order.orderId,
+            amount,
+            method,
+            status: "approved",
+            change: null,
+            paidAt: order.paidAt ?? now,
+          });
+        }
+
+        if (openRegister && isRestaurantReceivedPaymentMethod(method)) {
+          const [existingMovement] = await tx
+            .select({ id: cashMovementsTable.id })
+            .from(cashMovementsTable)
+            .where(
+              and(
+                eq(cashMovementsTable.orderId, order.orderId),
+                eq(cashMovementsTable.type, "payment"),
+              ),
+            )
+            .limit(1);
+
+          if (!existingMovement) {
+            await tx.insert(cashMovementsTable).values({
+              cashRegisterId: openRegister.id,
+              type: "payment",
+              amount,
+              paymentMethod: method,
+              reason: `Pagamento Pedido #${order.orderId}`,
+              orderId: order.orderId,
+            });
+          }
+        }
+
+        await tx
+          .update(ordersTable)
+          .set({
+            deliveryStatus: "delivered",
+            status: "closed",
+            paidAt: order.paidAt ?? now,
+            closedAt: now,
+          })
+          .where(
+            and(
+              eq(ordersTable.id, order.orderId),
+              eq(ordersTable.storeId, actor.storeId),
+            ),
+          );
+        deliveredOrderIds.push(order.orderId);
+      }
+
+      if (onDeliveryOrderIds.length > 0) {
+        await tx
+          .update(ordersTable)
+          .set({ deliveryStatus: "awaiting_settlement", paidAt: null })
+          .where(inArray(ordersTable.id, onDeliveryOrderIds));
+      }
+
       await Promise.all(
-        nowOrderIds.map((closedOrderId) =>
-          releaseTableIfOrderClosed(closedOrderId),
+        deliveredOrderIds.map((closedOrderId) =>
+          releaseTableIfOrderClosed(closedOrderId, tx as unknown as typeof db),
         ),
       );
-    }
-
-    if (onDeliveryOrderIds.length > 0) {
-      await db
-        .update(ordersTable)
-        .set({ deliveryStatus: "awaiting_settlement", paidAt: null })
-        .where(inArray(ordersTable.id, onDeliveryOrderIds));
-    }
+    });
 
     res.json(await getRouteWithOrders(routeId, actor.storeId));
   },
