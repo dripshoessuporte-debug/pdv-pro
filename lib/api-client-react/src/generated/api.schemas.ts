@@ -876,6 +876,8 @@ export interface CashSummary {
   totalCredit: number;
   totalDebit: number;
   totalVoucher: number;
+  totalPlatform?: number;
+  totalRestaurantReceived?: number;
   totalSales: number;
   totalWithdrawals: number;
   totalSupplies: number;

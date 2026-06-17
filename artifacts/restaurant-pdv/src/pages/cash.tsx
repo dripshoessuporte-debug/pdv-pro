@@ -444,12 +444,15 @@ function OpenRegisterView({
       </Card>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         <SummaryCard label="Dinheiro" value={s.totalCash} icon={Banknote} color="green" />
         <SummaryCard label="PIX" value={s.totalPix} icon={QrCode} color="blue" />
         <SummaryCard label="Crédito" value={s.totalCredit} icon={CreditCard} color="purple" />
         <SummaryCard label="Débito" value={s.totalDebit} icon={CreditCard} color="indigo" />
         <SummaryCard label="Voucher" value={s.totalVoucher} icon={Banknote} color="orange" />
+        {(s.totalPlatform ?? 0) > 0 && (
+          <SummaryCard label="Online/Plataforma" value={s.totalPlatform ?? 0} icon={CreditCard} color="slate" />
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -457,7 +460,13 @@ function OpenRegisterView({
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">Total Vendido</p>
             <p className="text-3xl font-bold text-primary">{fmt(s.totalSales)}</p>
-            <p className="text-xs text-muted-foreground mt-1">{register.movements?.filter((m) => m.type === "payment").length ?? 0} pagamentos</p>
+            <p className="text-xs text-muted-foreground mt-1">Inclui recebido no caixa e online/plataforma</p>
+            {s.totalRestaurantReceived !== undefined && (
+              <p className="text-xs text-muted-foreground">Recebido no caixa: {fmt(s.totalRestaurantReceived)}</p>
+            )}
+            {(s.totalPlatform ?? 0) > 0 && (
+              <p className="text-xs text-muted-foreground">Online/Plataforma: {fmt(s.totalPlatform ?? 0)}</p>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -874,6 +883,7 @@ function SummaryCard({
     purple: "text-purple-600 bg-purple-100 dark:bg-purple-900/30",
     indigo: "text-indigo-600 bg-indigo-100 dark:bg-indigo-900/30",
     orange: "text-[#D91F16] bg-red-100 dark:bg-red-900/30",
+    slate: "text-slate-600 bg-slate-100 dark:bg-slate-900/30",
   };
   return (
     <Card>
@@ -970,6 +980,8 @@ function HistoryView({
                     { label: "Crédito", value: selectedRegister.summary.totalCredit },
                     { label: "Débito", value: selectedRegister.summary.totalDebit },
                     { label: "Voucher", value: selectedRegister.summary.totalVoucher },
+                    { label: "Online/Plataforma", value: selectedRegister.summary.totalPlatform ?? 0 },
+                    { label: "Recebido no caixa", value: selectedRegister.summary.totalRestaurantReceived ?? 0 },
                   ].filter((x) => x.value > 0).map((x) => (
                     <div key={x.label} className="flex justify-between">
                       <span className="text-muted-foreground">{x.label}</span>
