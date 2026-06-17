@@ -16,6 +16,7 @@ import {
 import { handleAccessRequestAction } from "./billing";
 import { requirePlatformRole } from "../middleware/platform-rbac";
 import { resolveAuthenticatedContext } from "../lib/auth";
+import { ensureAccessRequestsTable } from "../lib/ensure-billing-schema";
 
 const router: IRouter = Router();
 
@@ -286,6 +287,7 @@ router.get(
   "/platform/access-requests",
   canManageBilling,
   async (_req, res): Promise<void> => {
+    await ensureAccessRequestsTable();
     const requests = await db.select().from(accessRequestsTable).orderBy(desc(accessRequestsTable.createdAt));
     res.json({ requests });
   },

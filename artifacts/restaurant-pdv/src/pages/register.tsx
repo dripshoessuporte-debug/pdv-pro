@@ -21,7 +21,12 @@ export default function RegisterPage() {
       const response = await fetch("/api/access-requests", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(form) });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setError(data.error || "Não foi possível enviar sua solicitação agora. Tente novamente em instantes.");
+        const fallback = "Não foi possível enviar sua solicitação agora. Tente novamente em instantes.";
+        if (response.status === 500 && data.debugId) {
+          setError(`Não foi possível salvar a solicitação agora. Código: ${data.debugId}`);
+        } else {
+          setError(data.error || fallback);
+        }
         return;
       }
       setSent(true);
