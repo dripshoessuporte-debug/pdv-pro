@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import { Router, type IRouter } from "express";
 import { eq, sql } from "drizzle-orm";
 import { accessRequestsTable, billingProviderProductsTable, db, entitlementPlans, storeMembersTable, storesTable, userActivationTokensTable, userEntitlementsTable, usersTable } from "@workspace/db";
-import { hashPassword, isValidEmail, normalizeEmail, resolveAuthenticatedContext } from "../lib/auth";
+import { isValidEmail, normalizeEmail, resolveAuthenticatedContext } from "../lib/auth";
+import { ensureAccessRequestsTable, isRuntimeSchemaRepairEnabled } from "../lib/ensure-billing-schema";
 
 const router: IRouter = Router();
 const planSet = new Set<string>(entitlementPlans);
@@ -13,6 +14,14 @@ const planDefs = [
 ];
 const checkoutEnv: Record<string, string | undefined> = { basico: process.env.CAKTO_CHECKOUT_START_URL, medio: process.env.CAKTO_CHECKOUT_DELIVERY_URL, pro: process.env.CAKTO_CHECKOUT_PRO_URL };
 const clean = (v: unknown) => typeof v === "string" ? v.trim() : "";
+const normalizeAccessPlan = (value: unknown) => {
+  const plan = clean(value).toLowerCase();
+  const normalized = plan.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (["basico", "start", "gestor max start"].includes(normalized)) return "basico";
+  if (["medio", "delivery", "gestor max delivery"].includes(normalized)) return "medio";
+  if (["pro", "gestor max pro"].includes(normalized)) return "pro";
+  return plan;
+};
 const sha = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
 async function createActivationToken(userId: number) { const token = crypto.randomBytes(32).toString("base64url"); await db.insert(userActivationTokensTable).values({ userId, tokenHash: sha(token), expiresAt: new Date(Date.now() + 14 * 86400000) }); return `${(process.env.APP_PUBLIC_URL || "").replace(/\/$/, "")}/activate/${token}`; }
 
@@ -75,15 +84,56 @@ router.get("/billing/debug", async (_req, res): Promise<void> => {
 });
 
 router.post("/access-requests", async (req, res): Promise<void> => {
-  const name = clean(req.body?.name), email = normalizeEmail(clean(req.body?.email)), phone = clean(req.body?.phone), restaurantName = clean(req.body?.restaurantName), requestedPlan = clean(req.body?.requestedPlan || req.body?.plan), message = clean(req.body?.message) || null;
+  const name = clean(req.body?.name), email = normalizeEmail(clean(req.body?.email)), phone = clean(req.body?.phone), restaurantName = clean(req.body?.restaurantName || req.body?.restaurant_name), requestedPlan = normalizeAccessPlan(req.body?.requestedPlan || req.body?.requested_plan || req.body?.plan), message = clean(req.body?.message) || null;
+  const normalizedPayload = { name, email, phone, restaurantName, requestedPlan, message };
+
+  if (process.env.NODE_ENV === "development") {
+    console.info("[access-requests] Payload recebido.", req.body);
+    console.info("[access-requests] Payload normalizado.", normalizedPayload);
+  }
+
   if (!name || !isValidEmail(email) || !phone || !restaurantName || !planSet.has(requestedPlan)) { res.status(400).json({ error: "Preencha nome, e-mail, telefone, restaurante e plano desejado." }); return; }
 
   try {
-    const [request] = await db.insert(accessRequestsTable).values({ name, email, phone, restaurantName, requestedPlan, message, status: "pending" }).returning();
+    await ensureAccessRequestsTable();
+    const [request] = await db.insert(accessRequestsTable).values({ name, email, phone, restaurantName, requestedPlan, message, status: "pending" }).returning({ id: accessRequestsTable.id, status: accessRequestsTable.status });
     res.status(201).json({ ok: true, request: { id: request.id, status: request.status } });
   } catch (error) {
-    logDev("[access-requests] Falha ao salvar solicitação de acesso.", error);
-    res.status(500).json({ error: "Não foi possível salvar a solicitação agora." });
+    const debugId = crypto.randomUUID();
+    if (process.env.NODE_ENV === "development") console.error("[access-requests] Falha ao salvar solicitação de acesso.", { debugId, error });
+    else logDev("[access-requests] Falha ao salvar solicitação de acesso.", error);
+    res.status(500).json({ error: "Não foi possível salvar a solicitação agora.", debugId });
+  }
+});
+
+router.get("/access-requests/debug", async (_req, res): Promise<void> => {
+  if (process.env.NODE_ENV === "production") {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  try {
+    await ensureAccessRequestsTable();
+    const columnsResult = await db.execute(sql`
+      select column_name from information_schema.columns
+      where table_schema = 'public' and table_name = 'access_requests'
+      order by ordinal_position
+    `);
+    const countResult = await db.execute(sql`select count(*)::int as count from access_requests`);
+    const columns = columnsResult.rows.map((row: { column_name: unknown }) => String(row.column_name));
+    const count = Number(countResult.rows[0]?.count ?? 0);
+    res.json({
+      ok: true,
+      databaseUrlConfigured: Boolean(process.env.DATABASE_URL),
+      runtimeSchemaRepairEnabled: isRuntimeSchemaRepairEnabled(),
+      table: { exists: columns.length > 0, columns, count },
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+      databaseUrlConfigured: Boolean(process.env.DATABASE_URL),
+    });
   }
 });
 
@@ -99,6 +149,7 @@ router.post("/billing/request-access", async (req, res): Promise<void> => {
 });
 
 async function convertRequest(id: number, reviewerId: number, status: "trialing" | "active") {
+  await ensureAccessRequestsTable();
   return db.transaction(async (tx) => {
     const [request] = await tx.select().from(accessRequestsTable).where(eq(accessRequestsTable.id, id)).limit(1);
     if (!request) return null;
@@ -115,7 +166,7 @@ export async function handleAccessRequestAction(req: any, res: any, action: "gra
   if (!context || !context.platformRole) { res.status(401).json({ error: "Autenticação necessária." }); return; }
   if (!["platform_owner", "platform_admin"].includes(context.platformRole)) { res.status(403).json({ error: "Acesso negado." }); return; }
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Solicitação inválida." }); return; }
-  if (action === "reject") { await db.update(accessRequestsTable).set({ status: "rejected", reviewedBy: context.user.id, reviewedAt: new Date(), updatedAt: new Date() }).where(eq(accessRequestsTable.id, id)); res.json({ ok: true }); return; }
+  if (action === "reject") { await ensureAccessRequestsTable(); await db.update(accessRequestsTable).set({ status: "rejected", reviewedBy: context.user.id, reviewedAt: new Date(), updatedAt: new Date() }).where(eq(accessRequestsTable.id, id)); res.json({ ok: true }); return; }
   const user = await convertRequest(id, context.user.id, action === "grant-trial" ? "trialing" : "active");
   if (!user) { res.status(404).json({ error: "Solicitação não encontrada." }); return; }
   res.json({ ok: true, userId: user.id, activationUrl: await createActivationToken(user.id) });
