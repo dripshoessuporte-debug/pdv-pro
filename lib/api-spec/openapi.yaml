@@ -385,6 +385,70 @@ paths:
         "204":
           description: Deleted
 
+
+  /menu/import-template:
+    get:
+      operationId: getMenuImportTemplate
+      tags: [menu]
+      summary: Download menu import CSV template
+      responses:
+        "200":
+          description: CSV template with examples
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  /menu/import-preview:
+    post:
+      operationId: previewMenuImport
+      tags: [menu]
+      summary: Validate a menu import CSV before importing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MenuImportRequest"
+      responses:
+        "200":
+          description: Valid preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuImportPreviewResponse"
+        "400":
+          description: Preview with critical validation errors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuImportPreviewResponse"
+
+  /menu/import:
+    post:
+      operationId: importMenu
+      tags: [menu]
+      summary: Import products from a menu CSV
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MenuImportRequest"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuImportResponse"
+        "400":
+          description: Critical errors blocked the import
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuImportResponse"
+
   # Menu Products
   /menu/products:
     get:
@@ -1779,7 +1843,100 @@ components:
         sortOrder:
           type: integer
 
-    # Menu Products
+
+
+    MenuImportRequest:
+      type: object
+      required: [csv]
+      properties:
+        csv:
+          type: string
+          maxLength: 1048576
+        mode:
+          type: string
+          enum: [upsert, skip, create_only]
+          default: upsert
+
+    MenuImportValidationIssue:
+      type: object
+      required: [rowNumber, message]
+      properties:
+        rowNumber:
+          type: integer
+        field:
+          type: string
+        message:
+          type: string
+
+    MenuImportPreviewResponse:
+      type: object
+      required: [ok, summary, rows, errors]
+      properties:
+        ok:
+          type: boolean
+        summary:
+          type: object
+          properties:
+            totalRows: { type: integer }
+            validRows: { type: integer }
+            errorRows: { type: integer }
+            newCategories: { type: integer }
+            newProducts: { type: integer }
+            updateProducts: { type: integer }
+            variantsToCreate: { type: integer }
+            addonGroupsToCreate: { type: integer }
+            addonOptionsToCreate: { type: integer }
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              rowNumber: { type: integer }
+              status: { type: string, enum: [valid, error] }
+              action: { type: string, enum: [create_product, update_product, skip_duplicate] }
+              category: { type: string }
+              product: { type: string }
+              price: { type: [number, "null"] }
+              warnings:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MenuImportValidationIssue"
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/MenuImportValidationIssue"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/MenuImportValidationIssue"
+
+    MenuImportResponse:
+      type: object
+      required: [ok, errors, warnings]
+      properties:
+        ok:
+          type: boolean
+        summary:
+          type: object
+          properties:
+            createdCategories: { type: integer }
+            createdProducts: { type: integer }
+            updatedProducts: { type: integer }
+            skippedProducts: { type: integer }
+            createdVariants: { type: integer }
+            updatedVariants: { type: integer }
+            createdAddonGroups: { type: integer }
+            createdAddonOptions: { type: integer }
+            linkedAddonGroups: { type: integer }
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/MenuImportValidationIssue"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/MenuImportValidationIssue"
+
     Product:
       type: object
       required: [id, name, price, available, active, categoryId]

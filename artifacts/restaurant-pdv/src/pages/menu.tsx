@@ -60,8 +60,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Search, Pencil, Trash2, Tag, Eye, EyeOff, ToggleLeft, ToggleRight } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Tag, Eye, EyeOff, ToggleLeft, ToggleRight, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { ImportMenuDialog } from "@/components/import-menu-dialog";
 
 type ProductForm = {
   name: string;
@@ -148,6 +149,7 @@ export default function Menu() {
   const [showInactive, setShowInactive] = useState(false);
   const [productDialog, setProductDialog] = useState(false);
   const [categoryDialog, setCategoryDialog] = useState(false);
+  const [importDialog, setImportDialog] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyProduct);
@@ -712,6 +714,9 @@ export default function Menu() {
             <Button variant="outline" onClick={() => { setEditingCategoryId(null); setCategoryForm({ name: "", description: "" }); setCategoryDialog(true); }} data-testid="button-new-category">
               <Tag className="w-4 h-4 mr-2" /> Categorias
             </Button>
+            <Button variant="outline" onClick={() => setImportDialog(true)} data-testid="button-import-menu">
+              <Upload className="w-4 h-4 mr-2" /> Importar planilha
+            </Button>
             <Button variant="outline" onClick={() => setVariantTemplatesDialog(true)}>
               Variações gerais
             </Button>
@@ -867,6 +872,8 @@ export default function Menu() {
           <p className="text-xs text-muted-foreground text-right">Atualizando lista...</p>
         ) : null}
       </div>
+
+      <ImportMenuDialog open={importDialog} onOpenChange={setImportDialog} />
 
       {/* Product Dialog */}
       <Dialog open={productDialog} onOpenChange={(o) => { setProductDialog(o); if (!o) { setEditingId(null); setForm(emptyProduct); } }}>
