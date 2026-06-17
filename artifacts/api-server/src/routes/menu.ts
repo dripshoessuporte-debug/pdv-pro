@@ -33,6 +33,122 @@ import {
 
 const router: IRouter = Router();
 
+type ImportMode = "upsert" | "skip" | "create_only";
+type ImportError = { rowNumber: number; field: string; message: string };
+type ImportWarning = { rowNumber: number; field?: string; message: string };
+type ParsedVariant = { name: string; price: number };
+type ParsedAddonGroup = { name: string; required: boolean; minSelected: number; maxSelected: number | null; options: { name: string; price: number }[] };
+type ParsedImportRow = {
+  rowNumber: number; category: string; product: string; description: string | null; price: number; sku: string | null; barcode: string | null;
+  costPrice: number | null; unit: string; preparationTimeMinutes: number | null; trackStock: boolean; stockQty: number | null; stockMinQty: number | null;
+  allowSaleWithoutStock: boolean; available: boolean; active: boolean; imageUrl: string | null; imageAlt: string | null; variants: ParsedVariant[]; addons: ParsedAddonGroup[];
+};
+
+const IMPORT_MAX_BYTES = 1024 * 1024;
+const IMPORT_MAX_ROWS = 1000;
+const IMPORT_TEMPLATE_HEADERS = ["categoria","produto","descricao","preco","sku","codigo_barras","preco_custo","unidade","tempo_preparo_min","controlar_estoque","estoque_atual","estoque_minimo","vender_sem_estoque","disponivel","ativo","imagem_url","imagem_alt","variacoes","adicionais"];
+const IMPORT_TEMPLATE_ROWS = [
+  ["Pizzas","Pizza Calabresa","Calabresa com cebola","49.90","PIZ-CAL","","25.00","unidade","25","false","","","false","true","true","","","Tamanho P:29.90|Tamanho M:39.90|Tamanho G:49.90","Bordas|obrigatorio:false|min:0|max:1|Catupiry:8.00|Cheddar:7.00"],
+  ["Bebidas","Coca-Cola 2L","Refrigerante 2 litros","12.00","COCA2L","7890000000000","7.00","unidade","0","true","20","5","false","true","true","","","", ""],
+  ["Lanches","X-Burger","Pão, hambúrguer e queijo","24.90","XBURGER","","12.00","unidade","15","false","","","false","true","true","https://exemplo.com/xburger.jpg","X-Burger no prato","", "Bebidas|obrigatorio:false|min:0|max:2|Coca lata:6.00|Suco:8.00"],
+];
+const HEADER_ALIASES: Record<string, string[]> = {
+  categoria: ["categoria", "category", "categoria_nome"], produto: ["produto", "product", "nome", "name"], preco: ["preco", "preço", "price", "valor"], descricao: ["descricao", "descrição", "description"], sku: ["sku"], codigo_barras: ["codigo_barras", "código_barras", "barcode", "ean"], preco_custo: ["preco_custo", "preço_custo", "cost_price", "custo"], unidade: ["unidade", "unit"], tempo_preparo_min: ["tempo_preparo_min", "tempo_preparo", "preparation_time_minutes"], controlar_estoque: ["controlar_estoque", "track_stock"], estoque_atual: ["estoque_atual", "stock_qty"], estoque_minimo: ["estoque_minimo", "stock_min_qty"], vender_sem_estoque: ["vender_sem_estoque", "allow_sale_without_stock"], disponivel: ["disponivel", "disponível", "available"], ativo: ["ativo", "active"], imagem_url: ["imagem_url", "image_url"], imagem_alt: ["imagem_alt", "image_alt"], variacoes: ["variacoes", "variações", "variants"], adicionais: ["adicionais", "addons"],
+};
+
+function normalizeHeader(value: string) { return value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
+function csvEscape(value: string) { return /[",;\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value; }
+function toCsv(rows: string[][]) { return rows.map((r) => r.map(csvEscape).join(",")).join("\n") + "\n"; }
+function parseNumberValue(value: string, field: string, rowNumber: number, errors: ImportError[], required = false): number | null { const trimmed = value.trim(); const raw = trimmed.includes(",") ? trimmed.replace(/\./g, "").replace(",", ".") : trimmed; if (!raw) { if (required) errors.push({ rowNumber, field, message: `${field === "preco" ? "Preço" : field} inválido.` }); return null; } const n = Number(raw); if (!Number.isFinite(n) || n < 0) { errors.push({ rowNumber, field, message: `${field === "preco" ? "Preço" : field} inválido.` }); return null; } return n; }
+function parseIntegerValue(value: string, field: string, rowNumber: number, errors: ImportError[]): number | null { if (!value.trim()) return null; const n = Number(value.trim()); if (!Number.isInteger(n) || n < 0) { errors.push({ rowNumber, field, message: `${field} inválido.` }); return null; } return n; }
+function parseBooleanValue(value: string, fallback: boolean): boolean { const v = normalizeHeader(value); if (!v) return fallback; if (["true","sim","s","1","ativo"].includes(v)) return true; if (["false","nao","não","n","0","inativo"].includes(v)) return false; return fallback; }
+function parseCsv(text: string): string[][] { const input = text.replace(/^\uFEFF/, ""); const rows: string[][] = []; let row: string[] = [], field = "", quoted = false; for (let i=0;i<input.length;i++){ const c=input[i], next=input[i+1]; if (quoted){ if(c==='"'&&next==='"'){field+='"';i++;} else if(c==='"'){quoted=false;} else field+=c; } else if(c==='"'){ quoted=true; } else if(c===','||c===';'){ row.push(field); field=""; } else if(c==='\n'){ row.push(field); rows.push(row); row=[]; field=""; } else if(c==='\r'){} else field+=c; } row.push(field); if (row.some((v)=>v.trim())) rows.push(row); return rows; }
+function mapHeaders(headers: string[], errors: ImportError[]) { const normalized = headers.map(normalizeHeader); const map: Record<string, number> = {}; for (const [canonical, aliases] of Object.entries(HEADER_ALIASES)) { const idx = normalized.findIndex((h) => aliases.map(normalizeHeader).includes(h)); if (idx >= 0) map[canonical] = idx; } for (const required of ["categoria", "produto", "preco"]) if (map[required] === undefined) errors.push({ rowNumber: 1, field: required, message: `Coluna obrigatória ausente: ${required}.` }); return map; }
+const cell = (row: string[], map: Record<string, number>, key: string) => map[key] === undefined ? "" : (row[map[key]] ?? "").trim();
+function parseVariants(value: string, rowNumber: number, errors: ImportError[]) { if (!value.trim()) return []; const variants = value.split("|").map((part) => { const [name, ...priceParts] = part.split(":"); const price = parseNumberValue(priceParts.join(":"), "variacoes", rowNumber, errors, true); if (!name.trim()) errors.push({ rowNumber, field: "variacoes", message: "Variação sem nome." }); return { name: name.trim(), price: price ?? 0 }; }); if (variants.length > 50) errors.push({ rowNumber, field: "variacoes", message: "Máximo de 50 variações por produto." }); return variants; }
+function parseAddons(value: string, rowNumber: number, errors: ImportError[]) { if (!value.trim()) return []; const groups = value.split(";").map((raw) => { const parts = raw.split("|").map((p) => p.trim()).filter(Boolean); const name = parts.shift() ?? ""; const group: ParsedAddonGroup = { name, required: false, minSelected: 0, maxSelected: null, options: [] }; if (!name) errors.push({ rowNumber, field: "adicionais", message: "Grupo de adicional sem nome." }); for (const part of parts) { const [key, ...rest] = part.split(":"); const val = rest.join(":"); const k = normalizeHeader(key); if (["obrigatorio","required"].includes(k)) group.required = parseBooleanValue(val, false); else if (k === "min") group.minSelected = parseIntegerValue(val, "adicionais", rowNumber, errors) ?? 0; else if (k === "max") group.maxSelected = parseIntegerValue(val, "adicionais", rowNumber, errors); else { const price = parseNumberValue(val, "adicionais", rowNumber, errors, true); if (!key.trim()) errors.push({ rowNumber, field: "adicionais", message: "Opção de adicional sem nome." }); group.options.push({ name: key.trim(), price: price ?? 0 }); } } if (!group.options.length) errors.push({ rowNumber, field: "adicionais", message: "Grupo de adicional sem opções." }); if (group.options.length > 100) errors.push({ rowNumber, field: "adicionais", message: "Máximo de 100 opções por grupo." }); return group; }); if (groups.length > 30) errors.push({ rowNumber, field: "adicionais", message: "Máximo de 30 grupos de adicionais por produto." }); return groups; }
+async function buildImportPreview(csv: string, storeId: number, mode: ImportMode = "upsert") { const errors: ImportError[] = []; const warnings: ImportWarning[] = []; if (Buffer.byteLength(csv || "", "utf8") > IMPORT_MAX_BYTES) errors.push({ rowNumber: 0, field: "csv", message: "Arquivo muito grande." }); const parsed = parseCsv(csv || ""); if (parsed.length <= 1) errors.push({ rowNumber: 0, field: "csv", message: "A planilha está vazia." }); const map = parsed[0] ? mapHeaders(parsed[0], errors) : {}; const dataRows = parsed.slice(1); if (dataRows.length > IMPORT_MAX_ROWS) errors.push({ rowNumber: 0, field: "csv", message: `Máximo de ${IMPORT_MAX_ROWS} linhas por importação.` }); const categories = await db.select().from(categoriesTable).where(eq(categoriesTable.storeId, storeId)); const products = await db.select({ id: productsTable.id, name: productsTable.name, categoryId: productsTable.categoryId }).from(productsTable).where(eq(productsTable.storeId, storeId)); const categoryByName = new Map(categories.map((c) => [normalizeHeader(c.name), c])); const seen = new Set<string>(); const rows: any[] = []; const validRows: ParsedImportRow[] = []; const newCat = new Set<string>(); let newProducts = 0, updateProducts = 0, variantsToCreate = 0, addonGroupsToCreate = 0, addonOptionsToCreate = 0; for (let i=0;i<dataRows.length;i++){ const rowNumber=i+2, row=dataRows[i]; const before=errors.length; const category=cell(row,map,"categoria"), product=cell(row,map,"produto"); if(!category) errors.push({rowNumber,field:"categoria",message:`Linha ${rowNumber}: categoria obrigatória.`}); if(!product) errors.push({rowNumber,field:"produto",message:`Linha ${rowNumber}: produto sem nome.`}); const price=parseNumberValue(cell(row,map,"preco"),"preco",rowNumber,errors,true); const costPrice=parseNumberValue(cell(row,map,"preco_custo"),"preco_custo",rowNumber,errors); const preparationTimeMinutes=parseIntegerValue(cell(row,map,"tempo_preparo_min"),"tempo_preparo_min",rowNumber,errors); const stockQty=parseNumberValue(cell(row,map,"estoque_atual"),"estoque_atual",rowNumber,errors); const stockMinQty=parseNumberValue(cell(row,map,"estoque_minimo"),"estoque_minimo",rowNumber,errors); const variants=parseVariants(cell(row,map,"variacoes"),rowNumber,errors); const addons=parseAddons(cell(row,map,"adicionais"),rowNumber,errors); const key=`${normalizeHeader(category)}::${normalizeHeader(product)}`; if(seen.has(key)) errors.push({rowNumber,field:"produto",message:"Produto duplicado na mesma categoria dentro da planilha."}); seen.add(key); const cat=categoryByName.get(normalizeHeader(category)); if(category && !cat) newCat.add(normalizeHeader(category)); const existing = cat ? products.find((p)=>p.categoryId===cat.id && normalizeHeader(p.name)===normalizeHeader(product)) : undefined; let action: "create_product"|"update_product"|"skip_duplicate" = "create_product"; if(existing){ if(mode==="create_only") errors.push({rowNumber,field:"produto",message:"Produto já existe nesta categoria."}); else if(mode==="skip") action="skip_duplicate"; else action="update_product"; } if(errors.length===before){ validRows.push({rowNumber,category,product,description:cell(row,map,"descricao")||null,price:price!,sku:cell(row,map,"sku")||null,barcode:cell(row,map,"codigo_barras")||null,costPrice,unit:cell(row,map,"unidade")||"unidade",preparationTimeMinutes,trackStock:parseBooleanValue(cell(row,map,"controlar_estoque"),false),stockQty,stockMinQty,allowSaleWithoutStock:parseBooleanValue(cell(row,map,"vender_sem_estoque"),false),available:parseBooleanValue(cell(row,map,"disponivel"),true),active:parseBooleanValue(cell(row,map,"ativo"),true),imageUrl:cell(row,map,"imagem_url")||null,imageAlt:cell(row,map,"imagem_alt")||null,variants,addons}); if(action==="create_product") newProducts++; if(action==="update_product") updateProducts++; variantsToCreate += variants.length; for (const g of addons){ addonGroupsToCreate++; addonOptionsToCreate += g.options.length; } } rows.push({rowNumber,status:errors.length===before?"valid":"error",action,category,product,price:price ?? null,warnings:warnings.filter((w)=>w.rowNumber===rowNumber)}); } return { ok: errors.length === 0, summary: { totalRows: dataRows.length, validRows: validRows.length, errorRows: dataRows.length - validRows.length, newCategories: newCat.size, newProducts, updateProducts, variantsToCreate, addonGroupsToCreate, addonOptionsToCreate }, rows, errors, warnings, validRows }; }
+
+
+
+router.get("/menu/import-template", async (_req, res): Promise<void> => {
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", 'attachment; filename="modelo-importacao-cardapio.csv"');
+  res.send(toCsv([IMPORT_TEMPLATE_HEADERS, ...IMPORT_TEMPLATE_ROWS]));
+});
+
+router.post("/menu/import-preview", async (req, res): Promise<void> => {
+  const { storeId } = await getCurrentActor(req);
+  const body = req.body as { csv?: unknown; mode?: ImportMode };
+  const csv = typeof body.csv === "string" ? body.csv : "";
+  const mode: ImportMode = ["upsert", "skip", "create_only"].includes(String(body.mode)) ? body.mode! : "upsert";
+  const preview = await buildImportPreview(csv, storeId, mode);
+  res.status(preview.ok ? 200 : 400).json({ ...preview, validRows: undefined });
+});
+
+router.post("/menu/import", async (req, res): Promise<void> => {
+  const { storeId } = await getCurrentActor(req);
+  const body = req.body as { csv?: unknown; mode?: ImportMode };
+  const csv = typeof body.csv === "string" ? body.csv : "";
+  const mode: ImportMode = ["upsert", "skip", "create_only"].includes(String(body.mode)) ? body.mode! : "upsert";
+  const preview = await buildImportPreview(csv, storeId, mode);
+  if (!preview.ok) {
+    res.status(400).json({ ok: false, errors: preview.errors, warnings: preview.warnings });
+    return;
+  }
+  const summary = { createdCategories: 0, createdProducts: 0, updatedProducts: 0, skippedProducts: 0, createdVariants: 0, updatedVariants: 0, createdAddonGroups: 0, createdAddonOptions: 0, linkedAddonGroups: 0 };
+  await db.transaction(async (tx) => {
+    const categories = await tx.select().from(categoriesTable).where(eq(categoriesTable.storeId, storeId));
+    const categoryByName = new Map(categories.map((c) => [normalizeHeader(c.name), c]));
+    for (const row of preview.validRows) {
+      let category = categoryByName.get(normalizeHeader(row.category));
+      if (!category) {
+        [category] = await tx.insert(categoriesTable).values({ storeId, name: row.category }).returning();
+        categoryByName.set(normalizeHeader(category.name), category);
+        summary.createdCategories++;
+      }
+      const [existingProduct] = await tx.select().from(productsTable).where(and(eq(productsTable.storeId, storeId), eq(productsTable.categoryId, category.id), ilike(productsTable.name, row.product))).limit(1);
+      if (existingProduct && mode === "skip") { summary.skippedProducts++; continue; }
+      const productData = { storeId, categoryId: category.id, name: row.product, description: row.description, price: String(row.price), sku: row.sku, barcode: row.barcode, costPrice: row.costPrice === null ? null : String(row.costPrice), unit: row.unit, preparationTimeMinutes: row.preparationTimeMinutes, trackStock: row.trackStock, stockQty: row.stockQty === null ? null : String(row.stockQty), stockMinQty: row.stockMinQty === null ? null : String(row.stockMinQty), allowSaleWithoutStock: row.allowSaleWithoutStock, available: row.available, active: row.active, imageUrl: row.imageUrl, imageAlt: row.imageAlt };
+      let product = existingProduct;
+      if (product) {
+        [product] = await tx.update(productsTable).set(productData).where(and(eq(productsTable.id, product.id), eq(productsTable.storeId, storeId))).returning();
+        summary.updatedProducts++;
+      } else {
+        [product] = await tx.insert(productsTable).values(productData).returning();
+        summary.createdProducts++;
+      }
+      for (const [index, variant] of row.variants.entries()) {
+        const [existing] = await tx.select().from(productVariantsTable).where(and(eq(productVariantsTable.storeId, storeId), eq(productVariantsTable.productId, product.id), ilike(productVariantsTable.name, variant.name))).limit(1);
+        if (existing) {
+          await tx.update(productVariantsTable).set({ price: String(variant.price), available: true, active: true, updatedAt: new Date() }).where(eq(productVariantsTable.id, existing.id));
+          summary.updatedVariants++;
+        } else {
+          await tx.insert(productVariantsTable).values({ storeId, productId: product.id, name: variant.name, price: String(variant.price), active: true, available: true, sortOrder: index });
+          summary.createdVariants++;
+        }
+      }
+      for (const [groupIndex, group] of row.addons.entries()) {
+        let [addonGroup] = await tx.select().from(addonGroupsTable).where(and(eq(addonGroupsTable.storeId, storeId), ilike(addonGroupsTable.name, group.name))).limit(1);
+        if (addonGroup) {
+          [addonGroup] = await tx.update(addonGroupsTable).set({ required: group.required, minSelected: group.minSelected, maxSelected: group.maxSelected, active: true, updatedAt: new Date() }).where(eq(addonGroupsTable.id, addonGroup.id)).returning();
+        } else {
+          [addonGroup] = await tx.insert(addonGroupsTable).values({ storeId, name: group.name, required: group.required, minSelected: group.minSelected, maxSelected: group.maxSelected, active: true, sortOrder: groupIndex }).returning();
+          summary.createdAddonGroups++;
+        }
+        for (const [optionIndex, option] of group.options.entries()) {
+          const [existingOption] = await tx.select().from(addonOptionsTable).where(and(eq(addonOptionsTable.storeId, storeId), eq(addonOptionsTable.groupId, addonGroup.id), ilike(addonOptionsTable.name, option.name))).limit(1);
+          if (existingOption) await tx.update(addonOptionsTable).set({ price: String(option.price), available: true, updatedAt: new Date() }).where(eq(addonOptionsTable.id, existingOption.id));
+          else { await tx.insert(addonOptionsTable).values({ storeId, groupId: addonGroup.id, name: option.name, price: String(option.price), available: true, sortOrder: optionIndex }); summary.createdAddonOptions++; }
+        }
+        const [existingLink] = await tx.select({ id: productAddonGroupsTable.id }).from(productAddonGroupsTable).where(and(eq(productAddonGroupsTable.storeId, storeId), eq(productAddonGroupsTable.productId, product.id), eq(productAddonGroupsTable.addonGroupId, addonGroup.id))).limit(1);
+        if (!existingLink) { await tx.insert(productAddonGroupsTable).values({ storeId, productId: product.id, addonGroupId: addonGroup.id, sortOrder: groupIndex }); summary.linkedAddonGroups++; }
+      }
+    }
+  });
+  res.json({ ok: true, summary, errors: [], warnings: preview.warnings });
+});
+
 // ─── Categories ───────────────────────────────────────────────────────────────
 
 router.get("/menu/categories", async (req, res): Promise<void> => {
