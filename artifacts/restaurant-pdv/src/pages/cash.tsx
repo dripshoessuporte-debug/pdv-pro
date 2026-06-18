@@ -84,8 +84,11 @@ function fmt(v: number) {
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
@@ -114,10 +117,14 @@ export default function Cash() {
   });
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: getGetCurrentCashRegisterQueryKey() });
+    queryClient.invalidateQueries({
+      queryKey: getGetCurrentCashRegisterQueryKey(),
+    });
     queryClient.invalidateQueries({ queryKey: getListCashRegistersQueryKey() });
     queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() });
-    queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+    queryClient.invalidateQueries({
+      queryKey: getGetDashboardSummaryQueryKey(),
+    });
   };
 
   return (
@@ -126,13 +133,21 @@ export default function Cash() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Caixa</h1>
-            <p className="text-muted-foreground mt-1">Controle de abertura, movimentações e fechamento</p>
+            <p className="text-muted-foreground mt-1">
+              Controle de abertura, movimentações e fechamento
+            </p>
           </div>
           <div className="flex gap-2">
-            <Button variant={tab === "current" ? "default" : "outline"} onClick={() => setTab("current")}>
+            <Button
+              variant={tab === "current" ? "default" : "outline"}
+              onClick={() => setTab("current")}
+            >
               <Banknote className="w-4 h-4 mr-2" /> Caixa Atual
             </Button>
-            <Button variant={tab === "history" ? "default" : "outline"} onClick={() => setTab("history")}>
+            <Button
+              variant={tab === "history" ? "default" : "outline"}
+              onClick={() => setTab("history")}
+            >
               <History className="w-4 h-4 mr-2" /> Histórico
             </Button>
           </div>
@@ -142,15 +157,23 @@ export default function Cash() {
           <>
             {loadingCurrent ? (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-28" />)}
+                {[1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-28" />
+                ))}
               </div>
             ) : noCashOpen ? (
               <div className="space-y-5">
-                <ClosedCashOverview registers={history} loading={loadingHistory} />
+                <ClosedCashOverview
+                  registers={history}
+                  loading={loadingHistory}
+                />
                 <OpenCashForm onSuccess={invalidate} />
               </div>
             ) : currentRegister ? (
-              <OpenRegisterView register={currentRegister} onSuccess={invalidate} />
+              <OpenRegisterView
+                register={currentRegister}
+                onSuccess={invalidate}
+              />
             ) : null}
           </>
         )}
@@ -163,10 +186,21 @@ export default function Cash() {
   );
 }
 
-function ClosedCashOverview({ registers, loading }: { registers?: CashRegisterDetail[]; loading: boolean }) {
+function ClosedCashOverview({
+  registers,
+  loading,
+}: {
+  registers?: CashRegisterDetail[];
+  loading: boolean;
+}) {
   const recent = registers?.slice(0, 5) ?? [];
-  const totalSales = recent.reduce((sum, register) => sum + (register.summary?.totalSales ?? 0), 0);
-  const lastClosed = registers?.find((register) => register.status === "closed");
+  const totalSales = recent.reduce(
+    (sum, register) => sum + (register.summary?.totalSales ?? 0),
+    0,
+  );
+  const lastClosed = registers?.find(
+    (register) => register.status === "closed",
+  );
 
   return (
     <Card className="border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40">
@@ -176,28 +210,43 @@ function ClosedCashOverview({ registers, loading }: { registers?: CashRegisterDe
           Visão geral administrativa
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Nenhum caixa aberto agora. Exibindo histórico recente sem misturar com uma sessão ativa.
+          Nenhum caixa aberto agora. Exibindo histórico recente sem misturar com
+          uma sessão ativa.
         </p>
       </CardHeader>
       <CardContent>
         {loading ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20" />)}
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-20" />
+            ))}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-xl border bg-white p-4 dark:bg-background">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sessões recentes</p>
-              <p className="mt-1 text-2xl font-black text-slate-900 dark:text-slate-100">{recent.length}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Sessões recentes
+              </p>
+              <p className="mt-1 text-2xl font-black text-slate-900 dark:text-slate-100">
+                {recent.length}
+              </p>
             </div>
             <div className="rounded-xl border bg-white p-4 dark:bg-background">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vendas recentes</p>
-              <p className="mt-1 text-2xl font-black text-emerald-700 dark:text-emerald-400">{fmt(totalSales)}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Vendas recentes
+              </p>
+              <p className="mt-1 text-2xl font-black text-emerald-700 dark:text-emerald-400">
+                {fmt(totalSales)}
+              </p>
             </div>
             <div className="rounded-xl border bg-white p-4 dark:bg-background">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Último fechamento</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Último fechamento
+              </p>
               <p className="mt-1 text-sm font-bold text-slate-900 dark:text-slate-100">
-                {lastClosed ? fmtDate(lastClosed.closedAt ?? lastClosed.openedAt) : "Sem fechamento"}
+                {lastClosed
+                  ? fmtDate(lastClosed.closedAt ?? lastClosed.openedAt)
+                  : "Sem fechamento"}
               </p>
             </div>
           </div>
@@ -274,7 +323,9 @@ function OpenCashForm({ onSuccess }: { onSuccess: () => void }) {
               onChange={(e) => setOpeningAmount(e.target.value)}
               data-testid="input-opening-amount"
             />
-            <p className="text-xs text-muted-foreground mt-1">Dinheiro em espécie já disponível no caixa</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Dinheiro em espécie já disponível no caixa
+            </p>
           </div>
           <div>
             <Label htmlFor="open-notes">Observação (opcional)</Label>
@@ -323,7 +374,9 @@ function OpenRegisterView({
         onSuccess();
       },
       onError: (err) => {
-        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Erro ao fechar caixa";
+        const msg =
+          (err as { response?: { data?: { error?: string } } })?.response?.data
+            ?.error ?? "Erro ao fechar caixa";
         toast({ title: msg, variant: "destructive" });
       },
     },
@@ -332,17 +385,24 @@ function OpenRegisterView({
   const addMovement = useAddCashMovement({
     mutation: {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetCurrentCashRegisterQueryKey() });
+        queryClient.invalidateQueries({
+          queryKey: getGetCurrentCashRegisterQueryKey(),
+        });
         toast({ title: "Movimentação registrada" });
       },
       onError: () => {
-        toast({ title: "Erro ao registrar movimentação", variant: "destructive" });
+        toast({
+          title: "Erro ao registrar movimentação",
+          variant: "destructive",
+        });
       },
     },
   });
 
   const s = register.summary!;
-  const diff = closingAmount ? parseFloat(closingAmount) - s.expectedCash : null;
+  const diff = closingAmount
+    ? parseFloat(closingAmount) - s.expectedCash
+    : null;
 
   return (
     <div className="space-y-6">
@@ -352,20 +412,32 @@ function OpenRegisterView({
           <div className="flex items-center gap-3">
             <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
             <div>
-              <p className="font-bold text-green-800 dark:text-green-300">Caixa Aberto</p>
+              <p className="font-bold text-green-800 dark:text-green-300">
+                Caixa Aberto
+              </p>
               <p className="text-xs text-green-700 dark:text-green-400">
-                Operador: <strong>{register.operator}</strong> · Abertura: {fmtDate(register.openedAt)}
+                Caixa aberto por <strong>{register.operator}</strong>,
+                compartilhado na loja · Abertura: {fmtDate(register.openedAt)}
               </p>
               {register.notes && (
-                <p className="text-xs text-green-600 dark:text-green-500 italic">💬 {register.notes}</p>
+                <p className="text-xs text-green-600 dark:text-green-500 italic">
+                  💬 {register.notes}
+                </p>
               )}
             </div>
           </div>
           <div className="flex gap-2">
-            <AddMovementDialog cashRegisterId={register.id} onAdd={addMovement} />
+            <AddMovementDialog
+              cashRegisterId={register.id}
+              onAdd={addMovement}
+            />
             <Dialog open={closeOpen} onOpenChange={setCloseOpen}>
               <DialogTrigger asChild>
-                <Button variant="outline" className="border-red-300 text-red-700 hover:bg-red-50" data-testid="button-close-cash">
+                <Button
+                  variant="outline"
+                  className="border-red-300 text-red-700 hover:bg-red-50"
+                  data-testid="button-close-cash"
+                >
                   <LockKeyhole className="w-4 h-4 mr-2" /> Fechar Caixa
                 </Button>
               </DialogTrigger>
@@ -376,15 +448,31 @@ function OpenRegisterView({
                 <div className="space-y-4">
                   {/* Resumo para fechamento */}
                   <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
-                    <div className="flex justify-between"><span>Dinheiro em vendas</span><span>{fmt(s.totalCash)}</span></div>
-                    <div className="flex justify-between"><span>Sangrias</span><span className="text-red-600">- {fmt(s.totalWithdrawals)}</span></div>
-                    <div className="flex justify-between"><span>Suprimentos</span><span className="text-green-600">+ {fmt(s.totalSupplies)}</span></div>
+                    <div className="flex justify-between">
+                      <span>Dinheiro em vendas</span>
+                      <span>{fmt(s.totalCash)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Sangrias</span>
+                      <span className="text-red-600">
+                        - {fmt(s.totalWithdrawals)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Suprimentos</span>
+                      <span className="text-green-600">
+                        + {fmt(s.totalSupplies)}
+                      </span>
+                    </div>
                     <div className="flex justify-between font-bold border-t pt-2">
-                      <span>Esperado em caixa</span><span>{fmt(s.expectedCash)}</span>
+                      <span>Esperado em caixa</span>
+                      <span>{fmt(s.expectedCash)}</span>
                     </div>
                   </div>
                   <div>
-                    <Label htmlFor="closing-amount">Valor Contado em Caixa (R$) *</Label>
+                    <Label htmlFor="closing-amount">
+                      Valor Contado em Caixa (R$) *
+                    </Label>
                     <Input
                       id="closing-amount"
                       type="number"
@@ -396,12 +484,20 @@ function OpenRegisterView({
                       data-testid="input-closing-amount"
                     />
                     {diff !== null && (
-                      <div className={`mt-2 p-2 rounded text-sm font-semibold ${
-                        Math.abs(diff) < 0.01 ? "bg-green-100 text-green-700" :
-                        diff > 0 ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"
-                      }`}>
-                        {Math.abs(diff) < 0.01 ? "✅ Caixa conferido — sem diferença" :
-                         diff > 0 ? `↑ Sobra de ${fmt(diff)}` : `↓ Falta de ${fmt(Math.abs(diff))}`}
+                      <div
+                        className={`mt-2 p-2 rounded text-sm font-semibold ${
+                          Math.abs(diff) < 0.01
+                            ? "bg-green-100 text-green-700"
+                            : diff > 0
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {Math.abs(diff) < 0.01
+                          ? "✅ Caixa conferido — sem diferença"
+                          : diff > 0
+                            ? `↑ Sobra de ${fmt(diff)}`
+                            : `↓ Falta de ${fmt(Math.abs(diff))}`}
                       </div>
                     )}
                   </div>
@@ -420,21 +516,28 @@ function OpenRegisterView({
                     variant="destructive"
                     onClick={() => {
                       if (!closingAmount) {
-                        toast({ title: "Informe o valor contado em caixa", variant: "destructive" });
+                        toast({
+                          title: "Informe o valor contado em caixa",
+                          variant: "destructive",
+                        });
                         return;
                       }
                       closeRegister.mutate({
                         id: register.id,
                         data: {
                           closingAmount: parseFloat(closingAmount),
-                          ...(closingNotes.trim() ? { closingNotes: closingNotes.trim() } : {}),
+                          ...(closingNotes.trim()
+                            ? { closingNotes: closingNotes.trim() }
+                            : {}),
                         },
                       });
                     }}
                     disabled={closeRegister.isPending || !closingAmount}
                     data-testid="button-confirm-close"
                   >
-                    {closeRegister.isPending ? "Fechando..." : "Confirmar Fechamento"}
+                    {closeRegister.isPending
+                      ? "Fechando..."
+                      : "Confirmar Fechamento"}
                   </Button>
                 </div>
               </DialogContent>
@@ -445,13 +548,43 @@ function OpenRegisterView({
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-        <SummaryCard label="Dinheiro" value={s.totalCash} icon={Banknote} color="green" />
-        <SummaryCard label="PIX" value={s.totalPix} icon={QrCode} color="blue" />
-        <SummaryCard label="Crédito" value={s.totalCredit} icon={CreditCard} color="purple" />
-        <SummaryCard label="Débito" value={s.totalDebit} icon={CreditCard} color="indigo" />
-        <SummaryCard label="Voucher" value={s.totalVoucher} icon={Banknote} color="orange" />
+        <SummaryCard
+          label="Dinheiro"
+          value={s.totalCash}
+          icon={Banknote}
+          color="green"
+        />
+        <SummaryCard
+          label="PIX"
+          value={s.totalPix}
+          icon={QrCode}
+          color="blue"
+        />
+        <SummaryCard
+          label="Crédito"
+          value={s.totalCredit}
+          icon={CreditCard}
+          color="purple"
+        />
+        <SummaryCard
+          label="Débito"
+          value={s.totalDebit}
+          icon={CreditCard}
+          color="indigo"
+        />
+        <SummaryCard
+          label="Voucher"
+          value={s.totalVoucher}
+          icon={Banknote}
+          color="orange"
+        />
         {(s.totalPlatform ?? 0) > 0 && (
-          <SummaryCard label="Online/Plataforma" value={s.totalPlatform ?? 0} icon={CreditCard} color="slate" />
+          <SummaryCard
+            label="Online/Plataforma"
+            value={s.totalPlatform ?? 0}
+            icon={CreditCard}
+            color="slate"
+          />
         )}
       </div>
 
@@ -459,26 +592,42 @@ function OpenRegisterView({
         <Card className="border-primary/30">
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">Total Vendido</p>
-            <p className="text-3xl font-bold text-primary">{fmt(s.totalSales)}</p>
-            <p className="text-xs text-muted-foreground mt-1">Inclui recebido no caixa e online/plataforma</p>
+            <p className="text-3xl font-bold text-primary">
+              {fmt(s.totalSales)}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Inclui recebido no caixa e online/plataforma
+            </p>
             {s.totalRestaurantReceived !== undefined && (
-              <p className="text-xs text-muted-foreground">Recebido no caixa: {fmt(s.totalRestaurantReceived)}</p>
+              <p className="text-xs text-muted-foreground">
+                Recebido no caixa: {fmt(s.totalRestaurantReceived)}
+              </p>
             )}
             {(s.totalPlatform ?? 0) > 0 && (
-              <p className="text-xs text-muted-foreground">Online/Plataforma: {fmt(s.totalPlatform ?? 0)}</p>
+              <p className="text-xs text-muted-foreground">
+                Online/Plataforma: {fmt(s.totalPlatform ?? 0)}
+              </p>
             )}
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground flex items-center gap-1"><TrendingDown className="w-3.5 h-3.5 text-red-500" /> Sangrias</p>
-            <p className="text-2xl font-bold text-red-600">{fmt(s.totalWithdrawals)}</p>
+            <p className="text-sm text-muted-foreground flex items-center gap-1">
+              <TrendingDown className="w-3.5 h-3.5 text-red-500" /> Sangrias
+            </p>
+            <p className="text-2xl font-bold text-red-600">
+              {fmt(s.totalWithdrawals)}
+            </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground flex items-center gap-1"><TrendingUp className="w-3.5 h-3.5 text-green-500" /> Suprimentos</p>
-            <p className="text-2xl font-bold text-green-600">{fmt(s.totalSupplies)}</p>
+            <p className="text-sm text-muted-foreground flex items-center gap-1">
+              <TrendingUp className="w-3.5 h-3.5 text-green-500" /> Suprimentos
+            </p>
+            <p className="text-2xl font-bold text-green-600">
+              {fmt(s.totalSupplies)}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -487,8 +636,12 @@ function OpenRegisterView({
       <Card className="bg-muted/30">
         <CardContent className="p-4 flex items-center justify-between">
           <div>
-            <p className="text-sm text-muted-foreground">Fundo inicial: {fmt(register.openingAmount)}</p>
-            <p className="font-semibold text-lg">Saldo esperado em dinheiro no caixa</p>
+            <p className="text-sm text-muted-foreground">
+              Fundo inicial: {fmt(register.openingAmount)}
+            </p>
+            <p className="font-semibold text-lg">
+              Saldo esperado em dinheiro no caixa
+            </p>
           </div>
           <p className="text-2xl font-bold">{fmt(s.expectedCash)}</p>
         </CardContent>
@@ -500,42 +653,85 @@ function OpenRegisterView({
       {/* Movements List */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Movimentações ({register.movements?.length ?? 0})</CardTitle>
+          <CardTitle className="text-base">
+            Movimentações ({register.movements?.length ?? 0})
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {!register.movements || register.movements.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8 text-sm">Nenhuma movimentação registrada</p>
+            <p className="text-center text-muted-foreground py-8 text-sm">
+              Nenhuma movimentação registrada
+            </p>
           ) : (
             <div className="space-y-2">
-              {[...(register.movements ?? [])].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((m) => {
-                const Icon = MOVEMENT_TYPE_ICONS[m.type] ?? CreditCard;
-                const isOut = m.type === "withdrawal";
-                return (
-                  <div key={m.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-1.5 rounded-full ${isOut ? "bg-red-100 dark:bg-red-900/30" : "bg-green-100 dark:bg-green-900/30"}`}>
-                        <Icon className={`w-4 h-4 ${isOut ? "text-red-600" : "text-green-600"}`} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">
-                          {MOVEMENT_TYPE_LABELS[m.type]}
-                          {m.paymentMethod ? ` · ${METHOD_LABELS[m.paymentMethod] ?? m.paymentMethod}` : ""}
-                          {m.orderId ? ` · Pedido #${m.orderId}` : ""}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{m.reason}</p>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                          <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" /> Movimento às {formatOrderTime(m.createdAt)}</span>
-                          {m.orderCreatedAt && <OrderTimeBadge createdAt={m.orderCreatedAt} compact showIcon={false} />}
-                          {m.orderPaidAt && <span>Pago às {formatOrderTime(m.orderPaidAt)}</span>}
+              {[...(register.movements ?? [])]
+                .sort(
+                  (a, b) =>
+                    new Date(b.createdAt).getTime() -
+                    new Date(a.createdAt).getTime(),
+                )
+                .map((m) => {
+                  const Icon = MOVEMENT_TYPE_ICONS[m.type] ?? CreditCard;
+                  const isOut = m.type === "withdrawal";
+                  return (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`p-1.5 rounded-full ${isOut ? "bg-red-100 dark:bg-red-900/30" : "bg-green-100 dark:bg-green-900/30"}`}
+                        >
+                          <Icon
+                            className={`w-4 h-4 ${isOut ? "text-red-600" : "text-green-600"}`}
+                          />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">
+                            {MOVEMENT_TYPE_LABELS[m.type]}
+                            {m.paymentMethod
+                              ? ` · ${METHOD_LABELS[m.paymentMethod] ?? m.paymentMethod}`
+                              : ""}
+                            {m.orderId ? ` · Pedido #${m.orderId}` : ""}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {m.reason}
+                          </p>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                            <span className="inline-flex items-center gap-1">
+                              <Clock className="w-3 h-3" /> Movimento às{" "}
+                              {formatOrderTime(m.createdAt)}
+                            </span>
+                            {m.orderCreatedAt && (
+                              <OrderTimeBadge
+                                createdAt={m.orderCreatedAt}
+                                compact
+                                showIcon={false}
+                              />
+                            )}
+                            {m.orderPaidAt && (
+                              <span>
+                                Pago às {formatOrderTime(m.orderPaidAt)}
+                              </span>
+                            )}
+                            {(m as { actorName?: string | null }).actorName && (
+                              <span>
+                                Operado por{" "}
+                                {(m as { actorName?: string }).actorName}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
+                      <p
+                        className={`font-bold ${isOut ? "text-red-600" : "text-green-700 dark:text-green-400"}`}
+                      >
+                        {isOut ? "- " : "+ "}
+                        {fmt(m.amount)}
+                      </p>
                     </div>
-                    <p className={`font-bold ${isOut ? "text-red-600" : "text-green-700 dark:text-green-400"}`}>
-                      {isOut ? "- " : "+ "}{fmt(m.amount)}
-                    </p>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           )}
         </CardContent>
@@ -553,7 +749,10 @@ function PendingSettlementsPanel() {
   const [modalOpen, setModalOpen] = useState(false);
 
   const { data: pending, isLoading } = useListAwaitingSettlement({
-    query: { queryKey: getListAwaitingSettlementQueryKey(), refetchInterval: 15_000 },
+    query: {
+      queryKey: getListAwaitingSettlementQueryKey(),
+      refetchInterval: 15_000,
+    },
   });
 
   const settle = useSettleDeliveryOrder({
@@ -563,13 +762,21 @@ function PendingSettlementsPanel() {
         setModalOpen(false);
         setSettleOrderId(null);
         setSettleAmountReceived("");
-        queryClient.invalidateQueries({ queryKey: getListAwaitingSettlementQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetCurrentCashRegisterQueryKey() });
+        queryClient.invalidateQueries({
+          queryKey: getListAwaitingSettlementQueryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetCurrentCashRegisterQueryKey(),
+        });
         queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+        queryClient.invalidateQueries({
+          queryKey: getGetDashboardSummaryQueryKey(),
+        });
       },
       onError: (err) => {
-        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Erro ao registrar recebimento";
+        const msg =
+          (err as { response?: { data?: { error?: string } } })?.response?.data
+            ?.error ?? "Erro ao registrar recebimento";
         toast({ title: msg, variant: "destructive" });
       },
     },
@@ -577,20 +784,27 @@ function PendingSettlementsPanel() {
 
   if (isLoading || !pending || pending.length === 0) return null;
 
-  const selectedOrder: AwaitingSettlementOrder | undefined = pending.find((o) => o.id === settleOrderId);
+  const selectedOrder: AwaitingSettlementOrder | undefined = pending.find(
+    (o) => o.id === settleOrderId,
+  );
   const receivedNum = parseFloat(settleAmountReceived) || 0;
   const changePreview =
-    selectedOrder && settleMethod === "cash" && receivedNum > selectedOrder.totalAmount
+    selectedOrder &&
+    settleMethod === "cash" &&
+    receivedNum > selectedOrder.totalAmount
       ? receivedNum - selectedOrder.totalAmount
       : null;
 
   function openModal(order: AwaitingSettlementOrder) {
     setSettleOrderId(order.id);
     const autoMethod =
-      order.deliveryPaymentMethod === "dinheiro" ? "cash"
-      : order.deliveryPaymentMethod === "pix" ? "pix"
-      : order.deliveryPaymentMethod === "cartao" ? "credit_card"
-      : "cash";
+      order.deliveryPaymentMethod === "dinheiro"
+        ? "cash"
+        : order.deliveryPaymentMethod === "pix"
+          ? "pix"
+          : order.deliveryPaymentMethod === "cartao"
+            ? "credit_card"
+            : "cash";
     setSettleMethod(autoMethod);
     setSettleAmountReceived(order.changeFor ? String(order.changeFor) : "");
     setModalOpen(true);
@@ -601,7 +815,12 @@ function PendingSettlementsPanel() {
     settle.mutate({
       id: settleOrderId,
       data: {
-        method: settleMethod as "cash" | "pix" | "credit_card" | "debit_card" | "voucher",
+        method: settleMethod as
+          | "cash"
+          | "pix"
+          | "credit_card"
+          | "debit_card"
+          | "voucher",
         ...(settleMethod === "cash" && settleAmountReceived
           ? { amountReceived: receivedNum }
           : {}),
@@ -629,13 +848,19 @@ function PendingSettlementsPanel() {
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-sm">Pedido #{order.id}</span>
+                  <span className="font-semibold text-sm">
+                    Pedido #{order.id}
+                  </span>
                   {order.customerName && (
-                    <span className="text-sm text-muted-foreground">· {order.customerName}</span>
+                    <span className="text-sm text-muted-foreground">
+                      · {order.customerName}
+                    </span>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {order.deliveryNeighborhood ?? order.deliveryAddress ?? "Sem endereço"}
+                  {order.deliveryNeighborhood ??
+                    order.deliveryAddress ??
+                    "Sem endereço"}
                   {order.courierName && ` · Motoboy: ${order.courierName}`}
                 </p>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -647,15 +872,17 @@ function PendingSettlementsPanel() {
                       {order.deliveryPaymentMethod === "dinheiro"
                         ? "Dinheiro"
                         : order.deliveryPaymentMethod === "pix"
-                        ? "PIX"
-                        : "Cartão"}
+                          ? "PIX"
+                          : "Cartão"}
                     </span>
                   )}
-                  {order.needsChange && order.expectedChange != null && order.expectedChange > 0 && (
-                    <span className="text-xs text-amber-700 dark:text-amber-400">
-                      Troco: {fmt(order.expectedChange)}
-                    </span>
-                  )}
+                  {order.needsChange &&
+                    order.expectedChange != null &&
+                    order.expectedChange > 0 && (
+                      <span className="text-xs text-amber-700 dark:text-amber-400">
+                        Troco: {fmt(order.expectedChange)}
+                      </span>
+                    )}
                 </div>
               </div>
               <Button
@@ -745,11 +972,14 @@ function PendingSettlementsPanel() {
                   disabled={
                     settle.isPending ||
                     (settleMethod === "cash" &&
-                      (!settleAmountReceived || receivedNum < selectedOrder.totalAmount))
+                      (!settleAmountReceived ||
+                        receivedNum < selectedOrder.totalAmount))
                   }
                   data-testid="button-confirm-settle"
                 >
-                  {settle.isPending ? "Registrando..." : "Confirmar Recebimento"}
+                  {settle.isPending
+                    ? "Registrando..."
+                    : "Confirmar Recebimento"}
                 </Button>
               </div>
             )}
@@ -769,7 +999,9 @@ function AddMovementDialog({
 }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const [type, setType] = useState<"withdrawal" | "supply" | "manual_in">("withdrawal");
+  const [type, setType] = useState<"withdrawal" | "supply" | "manual_in">(
+    "withdrawal",
+  );
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
 
@@ -798,7 +1030,7 @@ function AddMovementDialog({
           setReason("");
           setType("withdrawal");
         },
-      }
+      },
     );
   };
 
@@ -816,7 +1048,10 @@ function AddMovementDialog({
         <div className="space-y-4">
           <div>
             <Label>Tipo</Label>
-            <Select value={type} onValueChange={(v) => setType(v as typeof type)}>
+            <Select
+              value={type}
+              onValueChange={(v) => setType(v as typeof type)}
+            >
               <SelectTrigger data-testid="select-movement-type">
                 <SelectValue />
               </SelectTrigger>
@@ -870,7 +1105,10 @@ function AddMovementDialog({
 }
 
 function SummaryCard({
-  label, value, icon: Icon, color,
+  label,
+  value,
+  icon: Icon,
+  color,
 }: {
   label: string;
   value: number;
@@ -888,7 +1126,9 @@ function SummaryCard({
   return (
     <Card>
       <CardContent className="p-4">
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-2 ${colors[color]}`}>
+        <div
+          className={`w-8 h-8 rounded-lg flex items-center justify-center mb-2 ${colors[color]}`}
+        >
           <Icon className="w-4 h-4" />
         </div>
         <p className="text-xs text-muted-foreground">{label}</p>
@@ -910,7 +1150,9 @@ function HistoryView({
   if (loading) {
     return (
       <div className="space-y-3">
-        {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-24 w-full" />
+        ))}
       </div>
     );
   }
@@ -925,7 +1167,8 @@ function HistoryView({
     );
   }
 
-  const selectedRegister = selected !== null ? registers.find((r) => r.id === selected) : null;
+  const selectedRegister =
+    selected !== null ? registers.find((r) => r.id === selected) : null;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -939,17 +1182,23 @@ function HistoryView({
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-1">
                 <p className="font-semibold">Caixa #{r.id}</p>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                  r.status === "open"
-                    ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                    : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
-                }`}>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    r.status === "open"
+                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                      : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                  }`}
+                >
                   {r.status === "open" ? "Aberto" : "Fechado"}
                 </span>
               </div>
               <p className="text-sm text-muted-foreground">👤 {r.operator}</p>
-              <p className="text-xs text-muted-foreground">{fmtDate(r.openedAt)}</p>
-              <p className="font-bold text-primary mt-1">{fmt(r.summary?.totalSales ?? 0)} vendidos</p>
+              <p className="text-xs text-muted-foreground">
+                {fmtDate(r.openedAt)}
+              </p>
+              <p className="font-bold text-primary mt-1">
+                {fmt(r.summary?.totalSales ?? 0)} vendidos
+              </p>
             </CardContent>
           </Card>
         ))}
@@ -960,53 +1209,123 @@ function HistoryView({
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">
-                Resumo do Caixa #{selectedRegister.id} — {selectedRegister.operator}
+                Resumo do Caixa #{selectedRegister.id} —{" "}
+                {selectedRegister.operator}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><p className="text-muted-foreground">Abertura</p><p className="font-medium">{fmtDate(selectedRegister.openedAt)}</p></div>
-                {selectedRegister.closedAt && <div><p className="text-muted-foreground">Fechamento</p><p className="font-medium">{fmtDate(selectedRegister.closedAt)}</p></div>}
-                <div><p className="text-muted-foreground">Fundo inicial</p><p className="font-medium">{fmt(selectedRegister.openingAmount)}</p></div>
-                {selectedRegister.closingAmount !== null && selectedRegister.closingAmount !== undefined && (
-                  <div><p className="text-muted-foreground">Valor contado</p><p className="font-medium">{fmt(selectedRegister.closingAmount)}</p></div>
+                <div>
+                  <p className="text-muted-foreground">Abertura</p>
+                  <p className="font-medium">
+                    {fmtDate(selectedRegister.openedAt)}
+                  </p>
+                </div>
+                {selectedRegister.closedAt && (
+                  <div>
+                    <p className="text-muted-foreground">Fechamento</p>
+                    <p className="font-medium">
+                      {fmtDate(selectedRegister.closedAt)}
+                    </p>
+                  </div>
                 )}
+                <div>
+                  <p className="text-muted-foreground">Fundo inicial</p>
+                  <p className="font-medium">
+                    {fmt(selectedRegister.openingAmount)}
+                  </p>
+                </div>
+                {selectedRegister.closingAmount !== null &&
+                  selectedRegister.closingAmount !== undefined && (
+                    <div>
+                      <p className="text-muted-foreground">Valor contado</p>
+                      <p className="font-medium">
+                        {fmt(selectedRegister.closingAmount)}
+                      </p>
+                    </div>
+                  )}
               </div>
               {selectedRegister.summary && (
                 <div className="space-y-1.5 text-sm border-t pt-3">
                   {[
-                    { label: "Dinheiro", value: selectedRegister.summary.totalCash },
+                    {
+                      label: "Dinheiro",
+                      value: selectedRegister.summary.totalCash,
+                    },
                     { label: "PIX", value: selectedRegister.summary.totalPix },
-                    { label: "Crédito", value: selectedRegister.summary.totalCredit },
-                    { label: "Débito", value: selectedRegister.summary.totalDebit },
-                    { label: "Voucher", value: selectedRegister.summary.totalVoucher },
-                    { label: "Online/Plataforma", value: selectedRegister.summary.totalPlatform ?? 0 },
-                    { label: "Recebido no caixa", value: selectedRegister.summary.totalRestaurantReceived ?? 0 },
-                  ].filter((x) => x.value > 0).map((x) => (
-                    <div key={x.label} className="flex justify-between">
-                      <span className="text-muted-foreground">{x.label}</span>
-                      <span>{fmt(x.value)}</span>
-                    </div>
-                  ))}
+                    {
+                      label: "Crédito",
+                      value: selectedRegister.summary.totalCredit,
+                    },
+                    {
+                      label: "Débito",
+                      value: selectedRegister.summary.totalDebit,
+                    },
+                    {
+                      label: "Voucher",
+                      value: selectedRegister.summary.totalVoucher,
+                    },
+                    {
+                      label: "Online/Plataforma",
+                      value: selectedRegister.summary.totalPlatform ?? 0,
+                    },
+                    {
+                      label: "Recebido no caixa",
+                      value:
+                        selectedRegister.summary.totalRestaurantReceived ?? 0,
+                    },
+                  ]
+                    .filter((x) => x.value > 0)
+                    .map((x) => (
+                      <div key={x.label} className="flex justify-between">
+                        <span className="text-muted-foreground">{x.label}</span>
+                        <span>{fmt(x.value)}</span>
+                      </div>
+                    ))}
                   <div className="flex justify-between font-bold border-t pt-1.5">
-                    <span>Total Vendido</span><span className="text-primary">{fmt(selectedRegister.summary.totalSales)}</span>
+                    <span>Total Vendido</span>
+                    <span className="text-primary">
+                      {fmt(selectedRegister.summary.totalSales)}
+                    </span>
                   </div>
                   {selectedRegister.summary.totalWithdrawals > 0 && (
-                    <div className="flex justify-between text-red-600"><span>Sangrias</span><span>- {fmt(selectedRegister.summary.totalWithdrawals)}</span></div>
-                  )}
-                  {selectedRegister.closingAmount !== null && selectedRegister.closingAmount !== undefined && (
-                    <div className={`flex justify-between font-semibold border-t pt-1.5 ${
-                      Math.abs(selectedRegister.closingAmount - selectedRegister.summary.expectedCash) < 0.01 ? "text-green-600" :
-                      selectedRegister.closingAmount > selectedRegister.summary.expectedCash ? "text-blue-600" : "text-red-600"
-                    }`}>
-                      <span>Diferença</span>
-                      <span>{fmt(selectedRegister.closingAmount - selectedRegister.summary.expectedCash)}</span>
+                    <div className="flex justify-between text-red-600">
+                      <span>Sangrias</span>
+                      <span>
+                        - {fmt(selectedRegister.summary.totalWithdrawals)}
+                      </span>
                     </div>
                   )}
+                  {selectedRegister.closingAmount !== null &&
+                    selectedRegister.closingAmount !== undefined && (
+                      <div
+                        className={`flex justify-between font-semibold border-t pt-1.5 ${
+                          Math.abs(
+                            selectedRegister.closingAmount -
+                              selectedRegister.summary.expectedCash,
+                          ) < 0.01
+                            ? "text-green-600"
+                            : selectedRegister.closingAmount >
+                                selectedRegister.summary.expectedCash
+                              ? "text-blue-600"
+                              : "text-red-600"
+                        }`}
+                      >
+                        <span>Diferença</span>
+                        <span>
+                          {fmt(
+                            selectedRegister.closingAmount -
+                              selectedRegister.summary.expectedCash,
+                          )}
+                        </span>
+                      </div>
+                    )}
                 </div>
               )}
               {selectedRegister.closingNotes && (
-                <p className="text-xs text-muted-foreground italic border-t pt-2">💬 {selectedRegister.closingNotes}</p>
+                <p className="text-xs text-muted-foreground italic border-t pt-2">
+                  💬 {selectedRegister.closingNotes}
+                </p>
               )}
             </CardContent>
           </Card>

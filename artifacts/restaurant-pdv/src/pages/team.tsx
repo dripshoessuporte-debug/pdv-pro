@@ -31,7 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { authFetchJson, getAuthErrorMessage } from "@/lib/auth";
+import { authFetchJson, getAuthErrorMessage, useAuth } from "@/lib/auth";
 import type { Role } from "@/lib/rbac";
 
 const roleLabels: Record<Role, string> = {
@@ -50,6 +50,8 @@ type TeamMember = {
   role: Role;
   active: boolean;
   createdAt: string;
+  storeName: string;
+  lastLoginAt: string | null;
 };
 type NewUserForm = {
   name: string;
@@ -83,6 +85,7 @@ export default function TeamPage() {
   const [newPassword, setNewPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const { currentStore } = useAuth();
 
   const sortedMembers = useMemo(
     () => [...members].sort((a, b) => a.name.localeCompare(b.name)),
@@ -208,6 +211,7 @@ export default function TeamPage() {
             <h1 className="text-3xl font-bold tracking-tight">Equipe</h1>
             <p className="mt-1 text-muted-foreground">
               Gerencie os acessos da sua loja
+              {currentStore ? `: ${currentStore.name}` : ""}
             </p>
           </div>
           <Button
@@ -241,6 +245,8 @@ export default function TeamPage() {
                     <TableHead>E-mail</TableHead>
                     <TableHead>Função</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Loja</TableHead>
+                    <TableHead>Último login</TableHead>
                     <TableHead>Criado em</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
@@ -259,6 +265,12 @@ export default function TeamPage() {
                         >
                           {member.active ? "Ativo" : "Inativo"}
                         </Badge>
+                      </TableCell>
+                      <TableCell>{member.storeName}</TableCell>
+                      <TableCell>
+                        {member.lastLoginAt
+                          ? new Date(member.lastLoginAt).toLocaleString("pt-BR")
+                          : "Nunca"}
                       </TableCell>
                       <TableCell>
                         {new Date(member.createdAt).toLocaleDateString("pt-BR")}
@@ -309,6 +321,11 @@ export default function TeamPage() {
               <DialogTitle>Novo usuário</DialogTitle>
               <DialogDescription>
                 Crie um acesso para a equipe desta loja.
+                {currentStore ? (
+                  <span className="mt-2 block font-medium text-foreground">
+                    Este usuário será vinculado à loja: {currentStore.name}
+                  </span>
+                ) : null}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-2">

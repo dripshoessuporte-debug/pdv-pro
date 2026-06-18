@@ -100,11 +100,9 @@ router.post("/payments", async (req, res): Promise<void> => {
     parsed.data.amount > financialBefore.outstandingAmount &&
     parsed.data.method !== "cash"
   ) {
-    res
-      .status(400)
-      .json({
-        error: `Valor maior que o saldo pendente de R$ ${financialBefore.outstandingAmount.toFixed(2)}.`,
-      });
+    res.status(400).json({
+      error: `Valor maior que o saldo pendente de R$ ${financialBefore.outstandingAmount.toFixed(2)}.`,
+    });
     return;
   }
 
@@ -159,9 +157,9 @@ router.post("/payments", async (req, res): Promise<void> => {
         financialNow.paidAmount >= financialNow.totalAmount &&
         financialNow.totalAmount > 0
       ) {
-        const err = new Error(
-          "Pedido já está totalmente pago.",
-        ) as Error & { fullyPaid?: boolean };
+        const err = new Error("Pedido já está totalmente pago.") as Error & {
+          fullyPaid?: boolean;
+        };
         err.fullyPaid = true;
         throw err;
       }
@@ -188,9 +186,7 @@ router.post("/payments", async (req, res): Promise<void> => {
           parsed.data.amount > financialNow.outstandingAmount)
       ) {
         const tendered = parsed.data.amountTendered ?? parsed.data.amount;
-        change = String(
-          Math.max(0, tendered - paymentAmount),
-        );
+        change = String(Math.max(0, tendered - paymentAmount));
       }
 
       // Step 1: create payment record
@@ -265,6 +261,9 @@ router.post("/payments", async (req, res): Promise<void> => {
               paymentMethod: parsed.data.method,
               reason: `Pagamento Pedido #${parsed.data.orderId}`,
               orderId: parsed.data.orderId,
+              actorUserId: scope.actor.id,
+              actorName: scope.actor.name,
+              actorRole: scope.actor.role,
             });
           }
         }
@@ -296,10 +295,8 @@ router.post("/payments", async (req, res): Promise<void> => {
       typeof err === "object" &&
       (err as { notReadyToFinalize?: boolean }).notReadyToFinalize
     ) {
-      res
-        .status(409)
-        .json({
-          error: "Pedido pago, mas ainda não está pronto para finalizar.",
+      res.status(409).json({
+        error: "Pedido pago, mas ainda não está pronto para finalizar.",
       });
       return;
     }
