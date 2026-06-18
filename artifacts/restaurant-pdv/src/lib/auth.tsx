@@ -69,6 +69,12 @@ export type AuthSession = {
   stores: AuthStore[];
   currentStore: AuthStore | null;
   entitlement: Entitlement | null;
+  supportMode?: boolean;
+  supportSessionId?: number | null;
+  supportModeType?: "read_only" | "full_access" | null;
+  supportActorEmail?: string | null;
+  supportReason?: string | null;
+  supportStoreName?: string | null;
 };
 
 type AuthContextValue = {

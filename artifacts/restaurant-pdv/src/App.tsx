@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -27,10 +28,14 @@ import AdminMaxLoginPage from "@/pages/admin-max-login";
 import {
   AdminMaxBillingPage,
   AdminMaxDashboardPage,
+  AdminMaxLogsPage,
   AdminMaxStoresPage,
+  AdminMaxSupportPage,
+  AdminMaxSystemsPage,
   AdminMaxUsersPage,
 } from "@/pages/admin-max";
 import { AuthProvider, hasStoreCreationAccess, useAuth } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
 import { ProtectedRoute } from "@/components/protected-route";
 import { ProtectedPlatformRoute } from "@/components/protected-platform-route";
 import { defaultPathForRole } from "@/lib/rbac";
@@ -61,6 +66,46 @@ function HomeRedirect() {
   return <Redirect to={defaultPathForRole(actor.role)} />;
 }
 
+function SupportModeBanner() {
+  const [session, setSession] = useState<any | null>(null);
+  useEffect(() => {
+    fetch("/api/platform/support/current", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setSession(data?.active ? data.session : null))
+      .catch(() => setSession(null));
+  }, []);
+  if (!session) return null;
+  async function endSupport() {
+    await fetch("/api/platform/support/end", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    window.location.href = "/admin-max/stores";
+  }
+  return (
+    <div className="sticky top-0 z-50 border-b border-amber-300/30 bg-amber-500 px-4 py-3 text-sm font-semibold text-slate-950 shadow-xl">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
+        <span>
+          SUPORTE · Modo Suporte ativo — Loja: {session.storeName}. Todas as
+          ações estão sendo registradas. Modo:{" "}
+          {session.mode === "read_only"
+            ? "Somente leitura"
+            : "Acesso com edição"}
+        </span>
+        <Button
+          size="sm"
+          className="bg-slate-950 text-white hover:bg-slate-800"
+          onClick={() => void endSupport()}
+        >
+          Encerrar suporte
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -76,6 +121,27 @@ function Router() {
           <ProtectedRoute path="/onboarding">
             <OnboardingPage />
           </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/admin-max/systems">
+        {() => (
+          <ProtectedPlatformRoute>
+            <AdminMaxSystemsPage />
+          </ProtectedPlatformRoute>
+        )}
+      </Route>
+      <Route path="/admin-max/support">
+        {() => (
+          <ProtectedPlatformRoute>
+            <AdminMaxSupportPage />
+          </ProtectedPlatformRoute>
+        )}
+      </Route>
+      <Route path="/admin-max/logs">
+        {() => (
+          <ProtectedPlatformRoute>
+            <AdminMaxLogsPage />
+          </ProtectedPlatformRoute>
         )}
       </Route>
       <Route path="/admin-max/billing">
@@ -216,6 +282,7 @@ function App() {
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <AuthProvider>
+            <SupportModeBanner />
             <Router />
           </AuthProvider>
         </WouterRouter>

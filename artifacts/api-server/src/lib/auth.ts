@@ -5,6 +5,7 @@ import {
   db,
   platformAdminRoles,
   platformAdminsTable,
+  platformSupportSessionsTable,
   storeMembersTable,
   storesTable,
   usersTable,
@@ -12,6 +13,7 @@ import {
 import type { ActorRole } from "../middleware/rbac";
 
 const SESSION_COOKIE_NAME = "gestor_max_session";
+export const SUPPORT_SESSION_COOKIE_NAME = "gestor_max_support_session";
 const SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 8;
 const SESSION_VERSION = 1;
 
@@ -42,12 +44,27 @@ export type AuthenticatedContext = {
   platformRole: PlatformRole | null;
   stores: AuthenticatedStore[];
   currentStore: AuthenticatedStore | null;
+  supportMode?: boolean;
+  supportSessionId?: number;
+  supportModeType?: "read_only" | "full_access";
+  supportActorEmail?: string;
+  supportReason?: string;
+  supportStoreName?: string | null;
 };
 
 type SessionPayload = {
   v: typeof SESSION_VERSION;
   userId: number;
   currentStoreId: number | null;
+  exp: number;
+};
+
+type SupportSessionPayload = {
+  v: typeof SESSION_VERSION;
+  supportSessionId: number;
+  actorUserId: number;
+  targetStoreId: number;
+  mode: "read_only" | "full_access";
   exp: number;
 };
 
@@ -77,47 +94,73 @@ function signPayload(payload: string): string {
     .digest("base64url");
 }
 
-function createSessionToken(payload: SessionPayload): string {
+function createSignedToken(payload: object): string {
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
   return `${encodedPayload}.${signPayload(encodedPayload)}`;
 }
 
-function parseSessionToken(token: string | undefined): SessionPayload | null {
-  if (!token) return null;
+function createSessionToken(payload: SessionPayload): string {
+  return createSignedToken(payload);
+}
 
+function parseSignedToken(
+  token: string | undefined,
+): Record<string, unknown> | null {
+  if (!token) return null;
   const [encodedPayload, signature] = token.split(".");
   if (!encodedPayload || !signature) return null;
-
   const expectedSignature = signPayload(encodedPayload);
   const signatureBuffer = Buffer.from(signature);
   const expectedBuffer = Buffer.from(expectedSignature);
   if (
     signatureBuffer.length !== expectedBuffer.length ||
     !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
-  ) {
+  )
     return null;
-  }
-
   try {
-    const parsed = JSON.parse(base64UrlDecode(encodedPayload).toString("utf8"));
-    const rawCurrentStoreId = parsed.currentStoreId;
-    const hasValidCurrentStoreId =
-      rawCurrentStoreId === null ||
-      (Number.isInteger(rawCurrentStoreId) && rawCurrentStoreId > 0);
-    if (
-      parsed?.v !== SESSION_VERSION ||
-      !Number.isInteger(parsed.userId) ||
-      parsed.userId <= 0 ||
-      !hasValidCurrentStoreId ||
-      !Number.isInteger(parsed.exp) ||
-      parsed.exp <= Date.now()
-    ) {
-      return null;
-    }
-    return parsed as SessionPayload;
+    return JSON.parse(base64UrlDecode(encodedPayload).toString("utf8"));
   } catch {
     return null;
   }
+}
+
+function parseSessionToken(token: string | undefined): SessionPayload | null {
+  const parsed = parseSignedToken(token) as Partial<SessionPayload> | null;
+  if (!parsed) return null;
+  const rawCurrentStoreId = parsed.currentStoreId;
+  const hasValidCurrentStoreId =
+    rawCurrentStoreId === null ||
+    (Number.isInteger(rawCurrentStoreId) && Number(rawCurrentStoreId) > 0);
+  if (
+    parsed?.v !== SESSION_VERSION ||
+    !Number.isInteger(parsed.userId) ||
+    Number(parsed.userId) <= 0 ||
+    !hasValidCurrentStoreId ||
+    !Number.isInteger(parsed.exp) ||
+    Number(parsed.exp) <= Date.now()
+  )
+    return null;
+  return parsed as SessionPayload;
+}
+
+function parseSupportSessionToken(
+  token: string | undefined,
+): SupportSessionPayload | null {
+  const parsed = parseSignedToken(
+    token,
+  ) as Partial<SupportSessionPayload> | null;
+  if (!parsed) return null;
+  if (
+    parsed.v !== SESSION_VERSION ||
+    !Number.isInteger(parsed.supportSessionId) ||
+    !Number.isInteger(parsed.actorUserId) ||
+    !Number.isInteger(parsed.targetStoreId) ||
+    !["read_only", "full_access"].includes(String(parsed.mode)) ||
+    !Number.isInteger(parsed.exp) ||
+    Number(parsed.exp) <= Date.now()
+  )
+    return null;
+  return parsed as SupportSessionPayload;
 }
 
 function getCookieOptions(): CookieOptions {
@@ -142,6 +185,24 @@ export function setSessionCookie(
     exp: Date.now() + SESSION_MAX_AGE_MS,
   });
   res.cookie(SESSION_COOKIE_NAME, token, getCookieOptions());
+}
+
+export function setSupportSessionCookie(
+  res: Response,
+  payload: Omit<SupportSessionPayload, "v">,
+): void {
+  const token = createSignedToken({ v: SESSION_VERSION, ...payload });
+  res.cookie(SUPPORT_SESSION_COOKIE_NAME, token, {
+    ...getCookieOptions(),
+    maxAge: Math.max(0, payload.exp - Date.now()),
+  });
+}
+
+export function clearSupportSessionCookie(res: Response): void {
+  res.clearCookie(SUPPORT_SESSION_COOKIE_NAME, {
+    ...getCookieOptions(),
+    maxAge: undefined,
+  });
 }
 
 export function clearSessionCookie(res: Response): void {
@@ -309,7 +370,58 @@ export async function resolveAuthenticatedContext(
   const session = parseSessionToken(token);
   if (!session) return null;
 
-  return buildAuthenticatedContext(session.userId, session.currentStoreId);
+  const context = await buildAuthenticatedContext(
+    session.userId,
+    session.currentStoreId,
+  );
+  if (!context) return null;
+
+  const support = await getActiveSupportSession(req, context.user.id);
+  if (!support) return context;
+
+  const supportStore = {
+    id: support.targetStoreId,
+    name: support.targetStoreName ?? `Loja ${support.targetStoreId}`,
+    role: "max_control" as ActorRole,
+  };
+  return {
+    ...context,
+    stores: context.stores.some((store) => store.id === supportStore.id)
+      ? context.stores
+      : [supportStore, ...context.stores],
+    currentStore: supportStore,
+    supportMode: true,
+    supportSessionId: support.id,
+    supportModeType: support.mode as "read_only" | "full_access",
+    supportActorEmail: support.actorEmail,
+    supportReason: support.reason,
+    supportStoreName: support.targetStoreName,
+  };
+}
+
+export async function getActiveSupportSession(
+  req: Request,
+  actorUserId?: number,
+) {
+  const token = req.cookies?.[SUPPORT_SESSION_COOKIE_NAME] as
+    | string
+    | undefined;
+  const payload = parseSupportSessionToken(token);
+  if (!payload) return null;
+  if (actorUserId && payload.actorUserId !== actorUserId) return null;
+  const [session] = await db
+    .select()
+    .from(platformSupportSessionsTable)
+    .where(
+      and(
+        eq(platformSupportSessionsTable.id, payload.supportSessionId),
+        eq(platformSupportSessionsTable.status, "active"),
+      ),
+    )
+    .limit(1);
+  if (!session) return null;
+  if (session.expiresAt.getTime() <= Date.now()) return null;
+  return session;
 }
 
 export async function touchLastLogin(userId: number): Promise<void> {

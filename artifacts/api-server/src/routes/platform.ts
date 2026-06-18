@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { Router, type IRouter } from "express";
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import {
@@ -8,14 +9,23 @@ import {
   db,
   ordersTable,
   platformAdminsTable,
+  platformAuditLogsTable,
+  platformSupportSessionsTable,
   storeMembersTable,
   storesTable,
   userEntitlementsTable,
   usersTable,
+  userActivationTokensTable,
 } from "@workspace/db";
 import { handleAccessRequestAction } from "./billing";
 import { requirePlatformRole } from "../middleware/platform-rbac";
-import { resolveAuthenticatedContext } from "../lib/auth";
+import {
+  clearSupportSessionCookie,
+  normalizeEmail,
+  resolveAuthenticatedContext,
+  setSupportSessionCookie,
+} from "../lib/auth";
+import { logPlatformAuditAction } from "../lib/platform-audit";
 import { ensureAccessRequestsTable } from "../lib/ensure-billing-schema";
 
 const router: IRouter = Router();
@@ -188,6 +198,11 @@ router.get(
             userId: owner.userId,
           }
         : null,
+      today: {
+        orders: totals?.todayOrders ?? 0,
+        revenue: Number(totals?.todayRevenue ?? 0),
+        openCashRegister: false,
+      },
       todayOrders: totals?.todayOrders ?? 0,
       todayRevenue: Number(totals?.todayRevenue ?? 0),
     });
@@ -303,6 +318,7 @@ router.delete(
       return;
     }
 
+    const actor = await platformActor(req);
     await db.transaction(async (tx) => {
       await tx
         .delete(userEntitlementsTable)
@@ -313,6 +329,7 @@ router.delete(
       await tx.delete(usersTable).where(eq(usersTable.id, userId));
     });
 
+    await logPlatformAuditAction(actor, "orphan_user_deleted", "user", userId);
     res.status(204).send();
   },
 );
@@ -403,6 +420,13 @@ router.post(
         plan,
       })
       .returning();
+    await logPlatformAuditAction(
+      await platformActor(req),
+      "cakto_product_created",
+      "billing_product",
+      product.id,
+      { plan },
+    );
     res.status(201).json({ product });
   },
 );
@@ -444,6 +468,13 @@ router.patch(
       res.status(404).json({ error: "Produto não encontrado." });
       return;
     }
+    await logPlatformAuditAction(
+      await platformActor(req),
+      "cakto_product_updated",
+      "billing_product",
+      product.id,
+      set,
+    );
     res.json({ product });
   },
 );
@@ -501,6 +532,12 @@ router.post(
       source: "manual",
       trialEndsAt,
     });
+    await logPlatformAuditAction(
+      await platformActor(req),
+      "entitlement_trial_granted",
+      "user",
+      userId,
+    );
     res.json({ ok: true });
   },
 );
@@ -518,6 +555,12 @@ router.post(
       source: "manual",
       activatedAt: new Date(),
     });
+    await logPlatformAuditAction(
+      await platformActor(req),
+      "entitlement_activated",
+      "user",
+      userId,
+    );
     res.json({ ok: true });
   },
 );
@@ -535,6 +578,12 @@ router.post(
       source: "manual",
       blockedAt: new Date(),
     });
+    await logPlatformAuditAction(
+      await platformActor(req),
+      "entitlement_blocked",
+      "user",
+      userId,
+    );
     res.json({ ok: true });
   },
 );
@@ -552,6 +601,12 @@ router.post(
       source: "manual",
       cancelledAt: new Date(),
     });
+    await logPlatformAuditAction(
+      await platformActor(req),
+      "entitlement_cancelled",
+      "user",
+      userId,
+    );
     res.json({ ok: true });
   },
 );
@@ -578,6 +633,19 @@ router.patch(
       res.status(404).json({ error: "Loja não encontrada." });
       return;
     }
+    const action =
+      status === "active"
+        ? "store_reactivated"
+        : status === "blocked"
+          ? "store_blocked"
+          : "store_archived";
+    await logPlatformAuditAction(
+      await platformActor(req),
+      action,
+      "store",
+      storeId,
+      { status },
+    );
     res.json({ store });
   },
 );
@@ -671,7 +739,507 @@ router.delete(
       }
       await tx.delete(storesTable).where(eq(storesTable.id, storeId));
     });
+    await logPlatformAuditAction(
+      context?.user ?? null,
+      "store_deleted",
+      "store",
+      storeId,
+      { slug: store.slug },
+    );
     res.status(204).send();
+  },
+);
+
+function envFlag(name: string): boolean {
+  return Boolean(process.env[name]);
+}
+function caktoStatus(mappedProducts = 0) {
+  const checkoutStartConfigured =
+    envFlag("CAKTO_CHECKOUT_START_URL") ||
+    envFlag("VITE_CAKTO_CHECKOUT_START_URL");
+  const checkoutDeliveryConfigured =
+    envFlag("CAKTO_CHECKOUT_DELIVERY_URL") ||
+    envFlag("VITE_CAKTO_CHECKOUT_DELIVERY_URL");
+  const checkoutProConfigured =
+    envFlag("CAKTO_CHECKOUT_PRO_URL") || envFlag("VITE_CAKTO_CHECKOUT_PRO_URL");
+  const webhookSecretConfigured = envFlag("CAKTO_WEBHOOK_SECRET");
+  const ok = [
+    checkoutStartConfigured,
+    checkoutDeliveryConfigured,
+    checkoutProConfigured,
+    webhookSecretConfigured,
+  ].filter(Boolean).length;
+  return {
+    status:
+      ok === 4
+        ? "configured"
+        : ok > 0 || mappedProducts > 0
+          ? "partial"
+          : "missing",
+    webhookSecretConfigured,
+    checkoutStartConfigured,
+    checkoutDeliveryConfigured,
+    checkoutProConfigured,
+    mappedProducts,
+    publicPlansOk:
+      checkoutStartConfigured &&
+      checkoutDeliveryConfigured &&
+      checkoutProConfigured,
+  };
+}
+function focusStatus() {
+  const tokenConfigured = envFlag("FOCUS_TOKEN") || envFlag("FOCUS_NFE_TOKEN");
+  const environmentConfigured =
+    envFlag("FOCUS_ENV") || envFlag("FOCUS_AMBIENTE");
+  return {
+    status:
+      tokenConfigured && environmentConfigured
+        ? "configured"
+        : tokenConfigured || environmentConfigured
+          ? "partial"
+          : "not_implemented",
+    tokenConfigured,
+    environmentConfigured,
+    message:
+      "Focus ainda não emite nota fiscal neste MVP, mas o diagnóstico está preparado.",
+  };
+}
+async function platformActor(req: import("express").Request) {
+  return (await resolveAuthenticatedContext(req))?.user ?? null;
+}
+async function statusCounts(
+  table: unknown,
+  column: unknown,
+  statuses: string[],
+) {
+  const rows = await db
+    .select({ status: column as never, total: count() })
+    .from(table as never)
+    .groupBy(column as never);
+  return Object.fromEntries(
+    rows.map((r: any) => [String(r.status), Number(r.total ?? 0)]),
+  );
+}
+
+router.get(
+  "/platform/control-center",
+  canReadStores,
+  async (_req, res): Promise<void> => {
+    const [storesTotal] = await db.select({ total: count() }).from(storesTable);
+    const [usersTotal] = await db.select({ total: count() }).from(usersTable);
+    const storeCounts = await statusCounts(storesTable, storesTable.status, []);
+    const entitlementCounts = await statusCounts(
+      userEntitlementsTable,
+      userEntitlementsTable.status,
+      [],
+    );
+    const [ordersToday] = await db
+      .select({ total: count() })
+      .from(ordersTable)
+      .where(sql`date(${ordersTable.createdAt}) = current_date`);
+    const [pendingAccessRequests] = await db
+      .select({ total: count() })
+      .from(accessRequestsTable)
+      .where(eq(accessRequestsTable.status, "pending"));
+    const [mappedProducts] = await db
+      .select({ total: count() })
+      .from(billingProviderProductsTable);
+    const [activeProducts] = await db
+      .select({ total: count() })
+      .from(billingProviderProductsTable)
+      .where(eq(billingProviderProductsTable.active, true));
+    const [webhooksToday] = await db
+      .select({ total: count() })
+      .from(billingWebhookEventsTable)
+      .where(sql`date(${billingWebhookEventsTable.createdAt}) = current_date`);
+    const [webhooksFailed] = await db
+      .select({ total: count() })
+      .from(billingWebhookEventsTable)
+      .where(
+        sql`lower(${billingWebhookEventsTable.processingStatus}) in ('failed','error')`,
+      );
+    const [webhooksUnrecognized] = await db
+      .select({ total: count() })
+      .from(billingWebhookEventsTable)
+      .where(
+        sql`lower(coalesce(${billingWebhookEventsTable.processingStatus}, '')) in ('unrecognized','ignored')`,
+      );
+    const recentStores = await db
+      .select({
+        id: storesTable.id,
+        name: storesTable.name,
+        slug: storesTable.slug,
+        status: storesTable.status,
+        createdAt: storesTable.createdAt,
+      })
+      .from(storesTable)
+      .orderBy(desc(storesTable.createdAt))
+      .limit(5);
+    const pending = await db
+      .select()
+      .from(accessRequestsTable)
+      .where(eq(accessRequestsTable.status, "pending"))
+      .orderBy(desc(accessRequestsTable.createdAt))
+      .limit(5);
+    const webhooks = await db
+      .select({
+        id: billingWebhookEventsTable.id,
+        createdAt: billingWebhookEventsTable.createdAt,
+        eventType: billingWebhookEventsTable.eventType,
+        processingStatus: billingWebhookEventsTable.processingStatus,
+        email: billingWebhookEventsTable.email,
+        plan: billingWebhookEventsTable.plan,
+        errorMessage: billingWebhookEventsTable.errorMessage,
+      })
+      .from(billingWebhookEventsTable)
+      .orderBy(desc(billingWebhookEventsTable.createdAt))
+      .limit(5);
+    const logs = await db
+      .select()
+      .from(platformAuditLogsTable)
+      .orderBy(desc(platformAuditLogsTable.createdAt))
+      .limit(5);
+    const sessions = await db
+      .select()
+      .from(platformSupportSessionsTable)
+      .where(eq(platformSupportSessionsTable.status, "active"))
+      .orderBy(desc(platformSupportSessionsTable.startedAt))
+      .limit(10);
+    res.json({
+      overview: {
+        totalStores: storesTotal?.total ?? 0,
+        activeStores: storeCounts.active ?? 0,
+        trialStores: (storeCounts.trial ?? 0) + (storeCounts.teste ?? 0),
+        blockedStores: storeCounts.blocked ?? 0,
+        archivedStores: storeCounts.archived ?? 0,
+        totalUsers: usersTotal?.total ?? 0,
+        ordersToday: ordersToday?.total ?? 0,
+      },
+      billing: {
+        activeEntitlements: entitlementCounts.active ?? 0,
+        trialingEntitlements: entitlementCounts.trialing ?? 0,
+        blockedEntitlements: entitlementCounts.blocked ?? 0,
+        cancelledEntitlements: entitlementCounts.cancelled ?? 0,
+        pastDueEntitlements: entitlementCounts.past_due ?? 0,
+        pendingAccessRequests: pendingAccessRequests?.total ?? 0,
+        caktoProductsMapped: mappedProducts?.total ?? 0,
+        caktoProductsActive: activeProducts?.total ?? 0,
+        webhooksToday: webhooksToday?.total ?? 0,
+        webhooksFailed: webhooksFailed?.total ?? 0,
+        webhooksUnrecognized: webhooksUnrecognized?.total ?? 0,
+      },
+      systems: {
+        api: { status: "online" },
+        database: { status: "connected" },
+        auth: { status: "online" },
+        multiStore: { status: "active" },
+        adminMax: { status: "active" },
+        cakto: caktoStatus(mappedProducts?.total ?? 0),
+        focus: focusStatus(),
+        app: {
+          publicUrlConfigured: envFlag("APP_PUBLIC_URL"),
+          nodeEnv: process.env.NODE_ENV ?? "development",
+        },
+      },
+      recentStores,
+      pendingAccessRequests: pending,
+      recentWebhooks: webhooks,
+      recentAuditLogs: logs,
+      activeSupportSessions: sessions,
+    });
+  },
+);
+
+router.get(
+  "/platform/system-status",
+  canReadStores,
+  async (_req, res): Promise<void> => {
+    const [mappedProducts] = await db
+      .select({ total: count() })
+      .from(billingProviderProductsTable);
+    const [lastWebhook] = await db
+      .select({
+        id: billingWebhookEventsTable.id,
+        createdAt: billingWebhookEventsTable.createdAt,
+        processingStatus: billingWebhookEventsTable.processingStatus,
+        errorMessage: billingWebhookEventsTable.errorMessage,
+      })
+      .from(billingWebhookEventsTable)
+      .orderBy(desc(billingWebhookEventsTable.createdAt))
+      .limit(1);
+    const [pendingAccessRequests] = await db
+      .select({ total: count() })
+      .from(accessRequestsTable)
+      .where(eq(accessRequestsTable.status, "pending"));
+    res.json({
+      api: {
+        status: "online",
+        nodeEnv: process.env.NODE_ENV ?? "development",
+        serverTime: new Date().toISOString(),
+        version: process.env.GIT_SHA ?? null,
+      },
+      database: {
+        databaseUrlConfigured: envFlag("DATABASE_URL"),
+        connection: "ok",
+        criticalTables: [
+          "stores",
+          "users",
+          "store_members",
+          "user_entitlements",
+          "access_requests",
+          "billing_provider_products",
+          "billing_webhook_events",
+          "platform_audit_logs",
+          "platform_support_sessions",
+        ].map((name) => ({ name, status: "expected" })),
+      },
+      cakto: {
+        ...caktoStatus(mappedProducts?.total ?? 0),
+        appPublicUrlConfigured: envFlag("APP_PUBLIC_URL"),
+        lastWebhook,
+      },
+      focus: focusStatus(),
+      publicPlans: {
+        ok: true,
+        startEnabled: true,
+        deliveryEnabled: true,
+        proEnabled: true,
+        checkoutUrlPresence: {
+          start:
+            envFlag("CAKTO_CHECKOUT_START_URL") ||
+            envFlag("VITE_CAKTO_CHECKOUT_START_URL"),
+          delivery:
+            envFlag("CAKTO_CHECKOUT_DELIVERY_URL") ||
+            envFlag("VITE_CAKTO_CHECKOUT_DELIVERY_URL"),
+          pro:
+            envFlag("CAKTO_CHECKOUT_PRO_URL") ||
+            envFlag("VITE_CAKTO_CHECKOUT_PRO_URL"),
+        },
+      },
+      accessRequests: {
+        tableExists: true,
+        pending: pendingAccessRequests?.total ?? 0,
+      },
+    });
+  },
+);
+
+router.get(
+  "/platform/support/current",
+  canReadStores,
+  async (req, res): Promise<void> => {
+    const context = await resolveAuthenticatedContext(req);
+    if (!context?.supportMode) {
+      res.json({ active: false });
+      return;
+    }
+    res.json({
+      active: true,
+      session: {
+        id: context.supportSessionId,
+        storeId: context.currentStore?.id,
+        storeName: context.supportStoreName ?? context.currentStore?.name,
+        mode: context.supportModeType,
+        reason: context.supportReason,
+        actorEmail: context.supportActorEmail,
+      },
+    });
+  },
+);
+
+router.post(
+  "/platform/support/sessions",
+  canReadStores,
+  async (req, res): Promise<void> => {
+    const context = await resolveAuthenticatedContext(req);
+    if (!context?.platformRole) {
+      res.status(403).json({ error: "Acesso negado." });
+      return;
+    }
+    const storeId = Number(req.body?.storeId);
+    const mode = req.body?.mode === "full_access" ? "full_access" : "read_only";
+    const reason = String(req.body?.reason ?? "").trim();
+    if (!Number.isInteger(storeId)) {
+      res.status(400).json({ error: "Loja inválida." });
+      return;
+    }
+    if (!reason) {
+      res.status(400).json({ error: "Motivo obrigatório." });
+      return;
+    }
+    if (context.platformRole === "platform_support" && mode === "full_access") {
+      res.status(403).json({
+        error: "platform_support só pode iniciar suporte somente leitura.",
+      });
+      return;
+    }
+    const [store] = await db
+      .select({
+        id: storesTable.id,
+        name: storesTable.name,
+        status: storesTable.status,
+      })
+      .from(storesTable)
+      .where(eq(storesTable.id, storeId))
+      .limit(1);
+    if (!store) {
+      res.status(404).json({ error: "Loja não encontrada." });
+      return;
+    }
+    if (["archived", "deleted"].includes(store.status)) {
+      res
+        .status(409)
+        .json({ error: "Loja arquivada/excluída não permite suporte." });
+      return;
+    }
+    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    const [session] = await db
+      .insert(platformSupportSessionsTable)
+      .values({
+        actorUserId: context.user.id,
+        actorEmail: context.user.email,
+        targetStoreId: store.id,
+        targetStoreName: store.name,
+        mode,
+        reason,
+        expiresAt,
+      })
+      .returning();
+    setSupportSessionCookie(res, {
+      supportSessionId: session.id,
+      actorUserId: context.user.id,
+      targetStoreId: store.id,
+      mode,
+      exp: expiresAt.getTime(),
+    });
+    await logPlatformAuditAction(
+      context.user,
+      "support_session_started",
+      "store",
+      store.id,
+      { mode, reason, supportSessionId: session.id },
+    );
+    res
+      .status(201)
+      .json({ ok: true, supportSession: session, redirectTo: "/dashboard" });
+  },
+);
+
+router.post(
+  "/platform/support/end",
+  canReadStores,
+  async (req, res): Promise<void> => {
+    const context = await resolveAuthenticatedContext(req);
+    if (context?.supportSessionId) {
+      await db
+        .update(platformSupportSessionsTable)
+        .set({ status: "ended", endedAt: new Date(), endedReason: "manual" })
+        .where(eq(platformSupportSessionsTable.id, context.supportSessionId));
+      await logPlatformAuditAction(
+        context.user,
+        "support_session_ended",
+        "support_session",
+        context.supportSessionId,
+        { storeId: context.currentStore?.id },
+      );
+    }
+    clearSupportSessionCookie(res);
+    res.json({ ok: true });
+  },
+);
+
+router.get(
+  "/platform/support/sessions",
+  canReadStores,
+  async (req, res): Promise<void> => {
+    const q = String(req.query.search ?? "").toLowerCase();
+    const rows = await db
+      .select()
+      .from(platformSupportSessionsTable)
+      .orderBy(desc(platformSupportSessionsTable.startedAt))
+      .limit(100);
+    res.json({
+      sessions: q
+        ? rows.filter((r) =>
+            `${r.actorEmail} ${r.targetStoreName} ${r.reason}`
+              .toLowerCase()
+              .includes(q),
+          )
+        : rows,
+    });
+  },
+);
+
+router.get(
+  "/platform/audit-logs",
+  canReadStores,
+  async (req, res): Promise<void> => {
+    const limit = Math.min(Number(req.query.limit ?? 100) || 100, 250);
+    const rows = await db
+      .select()
+      .from(platformAuditLogsTable)
+      .orderBy(desc(platformAuditLogsTable.createdAt))
+      .limit(limit);
+    const search = String(req.query.search ?? "").toLowerCase();
+    res.json({
+      logs: search
+        ? rows.filter((r) => JSON.stringify(r).toLowerCase().includes(search))
+        : rows,
+    });
+  },
+);
+
+router.post(
+  "/platform/manual-access",
+  canManageBilling,
+  async (req, res): Promise<void> => {
+    const email = normalizeEmail(String(req.body?.email ?? ""));
+    const name = String(req.body?.name ?? "").trim() || email;
+    const plan = String(req.body?.plan ?? "basico");
+    const releaseType = String(req.body?.releaseType ?? "trial");
+    if (!email.includes("@") || !["basico", "medio", "pro"].includes(plan)) {
+      res.status(400).json({ error: "Dados inválidos." });
+      return;
+    }
+    const actor = await platformActor(req);
+    let [user] = await db
+      .select()
+      .from(usersTable)
+      .where(sql`lower(${usersTable.email}) = ${email}`)
+      .limit(1);
+    if (!user)
+      [user] = await db
+        .insert(usersTable)
+        .values({ name, email, status: "active" })
+        .returning();
+    const trialEndsAt =
+      releaseType === "trial"
+        ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+        : null;
+    await updateEntitlement(user.id, {
+      plan,
+      status: releaseType === "trial" ? "trialing" : "active",
+      source: "manual",
+      provider: "manual",
+      trialEndsAt,
+      activatedAt: releaseType === "active" ? new Date() : null,
+    });
+    const token = crypto.randomBytes(32).toString("base64url");
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    await db.insert(userActivationTokensTable).values({
+      userId: user.id,
+      tokenHash,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
+    const activationUrl = `${process.env.APP_PUBLIC_URL ?? "http://localhost:5173"}/activate/${token}`;
+    await logPlatformAuditAction(
+      actor,
+      "manual_access_created",
+      "user",
+      user.id,
+      { plan, releaseType, note: req.body?.note ?? null },
+    );
+    res.status(201).json({ ok: true, userId: user.id, activationUrl });
   },
 );
 
