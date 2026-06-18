@@ -444,10 +444,7 @@ router.post("/kitchen/tickets/:id/ready", async (req, res): Promise<void> => {
     readyAt: new Date(),
   };
 
-  // Only advance status to 'ready' if the order has NOT been paid yet.
-  // If paidAt is set or status is already 'closed', the order was paid before the
-  // kitchen finished — preserve the financial state; never revert 'closed' to 'ready'.
-  if (!order?.paidAt && order?.status !== "closed") {
+  if (order?.status !== "closed" && order?.status !== "cancelled") {
     orderUpdate.status = "ready";
   }
 

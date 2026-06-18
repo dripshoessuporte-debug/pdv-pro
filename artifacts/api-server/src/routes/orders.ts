@@ -42,6 +42,7 @@ import {
   getCurrentOperationalScope,
 } from "../middleware/rbac";
 import { releaseTableIfOrderClosed } from "../lib/table-release";
+import { getOrderFinancialState } from "../lib/order-financial-state";
 import {
   calculateDeliveryDistanceForStore,
   deliveryCalculationErrorStatus,
@@ -193,11 +194,16 @@ async function getOrderWithItems(orderId: number, storeId?: number) {
     .leftJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
     .where(eq(orderItemsTable.orderId, orderId));
 
+  const financial = await getOrderFinancialState(orderId);
   const { customerNameRegistered, ...orderRest } = order;
   return {
     ...orderRest,
     customerName: order.customerName ?? customerNameRegistered ?? null,
-    totalAmount: parseFloat(String(order.totalAmount)),
+    totalAmount: financial.totalAmount,
+    financial,
+    paidAmount: financial.paidAmount,
+    outstandingAmount: financial.outstandingAmount,
+    paymentState: financial.paymentState,
     deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
     needsChange:
       order.needsChange == null ? null : order.needsChange === "true",
@@ -348,11 +354,16 @@ router.get("/orders", async (req, res): Promise<void> => {
         )
         .where(eq(orderItemsTable.orderId, order.id));
 
+      const financial = await getOrderFinancialState(order.id);
       const { customerNameRegistered, ...orderRest } = order;
       return {
         ...orderRest,
         customerName: order.customerName ?? customerNameRegistered ?? null,
-        totalAmount: parseFloat(String(order.totalAmount)),
+        totalAmount: financial.totalAmount,
+        financial,
+        paidAmount: financial.paidAmount,
+        outstandingAmount: financial.outstandingAmount,
+        paymentState: financial.paymentState,
         deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
         needsChange:
           order.needsChange == null ? null : order.needsChange === "true",
@@ -793,10 +804,10 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
     return;
   }
 
-  if (["closed", "cancelled"].includes(order.status)) {
+  if (["ready", "closed", "cancelled"].includes(order.status)) {
     res.status(409).json({
       error:
-        "Não é possível adicionar itens a um pedido finalizado ou cancelado.",
+        "Não é possível adicionar itens a um pedido pronto, finalizado ou cancelado.",
     });
     return;
   }
@@ -1002,6 +1013,24 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
 
       await recalcOrderTotal(params.data.id, tx);
 
+      if (order.status === "preparing") {
+        const [pendingTicket] = await tx
+          .select({ id: kitchenTicketsTable.id })
+          .from(kitchenTicketsTable)
+          .where(
+            and(
+              eq(kitchenTicketsTable.orderId, params.data.id),
+              eq(kitchenTicketsTable.status, "pending"),
+            ),
+          )
+          .limit(1);
+        if (!pendingTicket) {
+          await tx
+            .insert(kitchenTicketsTable)
+            .values({ orderId: params.data.id, status: "pending" });
+        }
+      }
+
       return {
         ...item,
         productName: product.name,
@@ -1032,6 +1061,49 @@ router.delete("/orders/:id/items/:itemId", async (req, res): Promise<void> => {
 
   const scope = await requireOpenShift(req, res);
   if (!scope) return;
+
+  const [order] = await db
+    .select({ status: ordersTable.status })
+    .from(ordersTable)
+    .where(
+      and(
+        eq(ordersTable.id, params.data.id),
+        eq(ordersTable.storeId, scope.actor.storeId),
+      ),
+    )
+    .limit(1);
+  if (!order) {
+    res.status(404).json({ error: "Order not found" });
+    return;
+  }
+  const financial = await getOrderFinancialState(params.data.id);
+  if (financial.paidAmount > 0) {
+    res
+      .status(409)
+      .json({
+        error:
+          "Pedido já possui pagamento. Remoção exigirá ajuste/estorno manual.",
+      });
+    return;
+  }
+  if (order.status === "preparing") {
+    res
+      .status(409)
+      .json({
+        error:
+          "Pedido já foi enviado para cozinha. Para remover item, cancele o pedido ou use ajuste manual.",
+      });
+    return;
+  }
+  if (order.status !== "open") {
+    res
+      .status(409)
+      .json({
+        error:
+          "Pedido pronto, finalizado ou cancelado não permite remoção de item.",
+      });
+    return;
+  }
 
   const [item] = await db
     .select({ id: orderItemsTable.id })
@@ -1077,11 +1149,13 @@ router.post("/orders/:id/send-to-kitchen", async (req, res): Promise<void> => {
   const scope = await requireOpenShift(req, res);
   if (!scope) return;
 
-  // For delivery orders, advance deliveryStatus from pending → preparing
   const [current] = await db
     .select({
+      id: ordersTable.id,
+      status: ordersTable.status,
       type: ordersTable.type,
       deliveryStatus: ordersTable.deliveryStatus,
+      kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
     })
     .from(ordersTable)
     .where(
@@ -1091,32 +1165,71 @@ router.post("/orders/:id/send-to-kitchen", async (req, res): Promise<void> => {
       ),
     );
 
-  const now = new Date();
-  await db
-    .update(ordersTable)
-    .set({
-      status: "preparing",
-      kitchenAcceptedAt: now,
-      ...(current?.type === "delivery" && current.deliveryStatus === "pending"
-        ? { deliveryStatus: "preparing" }
-        : {}),
-    })
-    .where(
-      and(
-        eq(ordersTable.id, params.data.id),
-        eq(ordersTable.storeId, scope.actor.storeId),
-      ),
-    );
-  await db
-    .insert(kitchenTicketsTable)
-    .values({ orderId: params.data.id, status: "pending" });
-
-  const order = await getOrderWithItems(params.data.id, scope.actor.storeId);
-  if (!order) {
+  if (!current) {
     res.status(404).json({ error: "Order not found" });
     return;
   }
+  if (current.kitchenAcceptedAt) {
+    res.status(409).json({ error: "Pedido já foi enviado para a cozinha." });
+    return;
+  }
+  if (current.status !== "open") {
+    res
+      .status(409)
+      .json({
+        error: "Somente pedidos abertos podem ser enviados para a cozinha.",
+      });
+    return;
+  }
 
+  const [{ count }] = await db
+    .select({ count: sql<string>`count(*)` })
+    .from(orderItemsTable)
+    .where(eq(orderItemsTable.orderId, params.data.id));
+  if (Number(count) < 1) {
+    res
+      .status(400)
+      .json({
+        error: "Adicione pelo menos um item antes de enviar para a cozinha.",
+      });
+    return;
+  }
+
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await tx
+      .update(ordersTable)
+      .set({
+        status: "preparing",
+        kitchenAcceptedAt: now,
+        ...(current.type === "delivery" && current.deliveryStatus === "pending"
+          ? { deliveryStatus: "preparing" }
+          : {}),
+      })
+      .where(
+        and(
+          eq(ordersTable.id, params.data.id),
+          eq(ordersTable.storeId, scope.actor.storeId),
+        ),
+      );
+
+    const [ticket] = await tx
+      .select({ id: kitchenTicketsTable.id })
+      .from(kitchenTicketsTable)
+      .where(
+        and(
+          eq(kitchenTicketsTable.orderId, params.data.id),
+          inArray(kitchenTicketsTable.status, ["pending", "preparing"]),
+        ),
+      )
+      .limit(1);
+    if (!ticket)
+      await tx
+        .insert(kitchenTicketsTable)
+        .values({ orderId: params.data.id, status: "pending" });
+  });
+
+  const order = await getOrderWithItems(params.data.id, scope.actor.storeId);
   res.json(SendOrderToKitchenResponse.parse(order));
 });
 
@@ -1158,6 +1271,175 @@ router.post("/orders/:id/cancel", async (req, res): Promise<void> => {
   const full = await getOrderWithItems(params.data.id, scope.actor.storeId);
   res.json(CancelOrderResponse.parse(full));
 });
+
+router.get("/orders/flow-anomalies", async (req, res): Promise<void> => {
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
+  const orders = await db
+    .select({
+      id: ordersTable.id,
+      status: ordersTable.status,
+      deliveryStatus: ordersTable.deliveryStatus,
+      paidAt: ordersTable.paidAt,
+      closedAt: ordersTable.closedAt,
+      kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
+      type: ordersTable.type,
+      paymentTiming: ordersTable.paymentTiming,
+    })
+    .from(ordersTable)
+    .where(eq(ordersTable.storeId, scope.actor.storeId));
+  const anomalies = [];
+  for (const order of orders) {
+    const financial = await getOrderFinancialState(order.id);
+    const [ticketCount] = await db
+      .select({ count: sql<string>`count(*)` })
+      .from(kitchenTicketsTable)
+      .where(eq(kitchenTicketsTable.orderId, order.id));
+    const [movementCount] = await db
+      .select({ count: sql<string>`count(*)` })
+      .from(cashMovementsTable)
+      .where(eq(cashMovementsTable.orderId, order.id));
+    const types: string[] = [];
+    if (
+      financial.paidAmount > 0 &&
+      !order.kitchenAcceptedAt &&
+      order.status !== "cancelled"
+    )
+      types.push("paid_but_not_sent_to_kitchen");
+    if (order.status === "closed" && !order.closedAt)
+      types.push("closed_without_closedAt");
+    if (order.status === "closed" && financial.paidAmount <= 0)
+      types.push("closed_without_payment");
+    if (financial.paidAmount > 0 && !order.paidAt)
+      types.push("payment_without_paidAt");
+    if (Number(ticketCount.count) > 0 && !order.kitchenAcceptedAt)
+      types.push("kitchen_ticket_without_kitchenAcceptedAt");
+    if (order.status === "ready" && financial.outstandingAmount > 0)
+      types.push("ready_with_outstanding_amount");
+    if (order.status === "closed" && financial.outstandingAmount > 0)
+      types.push("closed_with_outstanding_amount");
+    if (order.status === "preparing" && financial.paidAmount > 0)
+      types.push("preparing_with_paid_amount_and_no_financial_badge_data");
+    if (
+      order.type === "delivery" &&
+      order.paymentTiming === "on_delivery" &&
+      order.deliveryStatus === "delivered" &&
+      financial.paidAmount <= 0
+    )
+      types.push("delivered_without_payment_when_on_delivery");
+    for (const type of types)
+      anomalies.push({
+        orderId: order.id,
+        type,
+        financial,
+        hasCashMovement: Number(movementCount.count) > 0,
+      });
+  }
+  res.json(anomalies);
+});
+
+router.get("/orders/:id/flow-diagnostics", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
+  const [order] = await db
+    .select()
+    .from(ordersTable)
+    .where(
+      and(eq(ordersTable.id, id), eq(ordersTable.storeId, scope.actor.storeId)),
+    );
+  if (!order) {
+    res.status(404).json({ error: "Pedido não encontrado" });
+    return;
+  }
+  const financial = await getOrderFinancialState(id);
+  const [paymentsCount] = await db
+    .select({ count: sql<string>`count(*)` })
+    .from(paymentsTable)
+    .where(eq(paymentsTable.orderId, id));
+  const [movementsCount] = await db
+    .select({ count: sql<string>`count(*)` })
+    .from(cashMovementsTable)
+    .where(eq(cashMovementsTable.orderId, id));
+  const [ticketsCount] = await db
+    .select({ count: sql<string>`count(*)` })
+    .from(kitchenTicketsTable)
+    .where(eq(kitchenTicketsTable.orderId, id));
+  const canAddItem = ["open", "preparing"].includes(order.status);
+  const canSendToKitchen = order.status === "open" && !order.kitchenAcceptedAt;
+  const warnings = [];
+  if (financial.paidAmount > 0 && !order.kitchenAcceptedAt)
+    warnings.push(
+      "Pedido já possui pagamento, mas ainda não foi enviado para cozinha.",
+    );
+  if (financial.outstandingAmount > 0 && financial.paidAmount > 0)
+    warnings.push("Pedido possui valor complementar pendente.");
+  res.json({
+    orderId: id,
+    status: order.status,
+    deliveryStatus: order.deliveryStatus,
+    paidAt: order.paidAt,
+    closedAt: order.closedAt,
+    ...financial,
+    paymentsCount: Number(paymentsCount.count),
+    hasCashMovement: Number(movementsCount.count) > 0,
+    hasKitchenTicket: Number(ticketsCount.count) > 0,
+    kitchenTicketsCount: Number(ticketsCount.count),
+    canEdit: canAddItem,
+    canAddItem,
+    canRemoveItem: order.status === "open" && financial.paidAmount === 0,
+    canSendToKitchen,
+    canPay:
+      financial.outstandingAmount > 0 &&
+      !["cancelled", "closed"].includes(order.status),
+    canFinalize: order.status === "ready" && financial.outstandingAmount <= 0,
+    warnings,
+  });
+});
+
+router.post(
+  "/orders/:id/reopen-paid-for-kitchen",
+  async (req, res): Promise<void> => {
+    const id = Number(req.params.id);
+    const actor = await getCurrentActor(req);
+    if (actor.role !== "max_control") {
+      res
+        .status(403)
+        .json({
+          error: "Apenas max_control pode reabrir pedidos legados pagos.",
+        });
+      return;
+    }
+    const [order] = await db
+      .select()
+      .from(ordersTable)
+      .where(
+        and(eq(ordersTable.id, id), eq(ordersTable.storeId, actor.storeId)),
+      );
+    if (!order) {
+      res.status(404).json({ error: "Pedido não encontrado" });
+      return;
+    }
+    const financial = await getOrderFinancialState(id);
+    if (
+      order.status !== "closed" ||
+      order.kitchenAcceptedAt ||
+      (!order.paidAt && financial.paidAmount <= 0)
+    ) {
+      res
+        .status(409)
+        .json({ error: "Pedido não atende aos critérios de reparo legado." });
+      return;
+    }
+    await db
+      .update(ordersTable)
+      .set({ status: "open" })
+      .where(
+        and(eq(ordersTable.id, id), eq(ordersTable.storeId, actor.storeId)),
+      );
+    res.json(await getOrderWithItems(id, actor.storeId));
+  },
+);
 
 // ─── POST /orders/:id/finalize ("Dar Baixa") ─────────────────────────────────
 // Encerra operacionalmente um pedido já pago/resolvido.
@@ -1240,12 +1522,30 @@ router.post("/orders/:id/finalize", async (req, res): Promise<void> => {
     }
   }
 
-  // Non-delivery and delivery-now: must be paid
-  if (order.type !== "delivery" || order.paymentTiming !== "on_delivery") {
-    if (!order.paidAt && order.status !== "closed") {
-      res.status(400).json({ error: "Aguardando pagamento" });
-      return;
-    }
+  const financial = await getOrderFinancialState(id);
+  if (!["paid", "overpaid"].includes(financial.paymentState)) {
+    res
+      .status(400)
+      .json({
+        error: `Existe valor pendente de R$ ${financial.outstandingAmount.toFixed(2)}. Cobre a diferença antes de finalizar.`,
+      });
+    return;
+  }
+
+  const canCloseOperationally =
+    order.status === "ready" ||
+    (order.type === "delivery" &&
+      ["delivered", "awaiting_settlement", "out_for_delivery"].includes(
+        String(order.deliveryStatus),
+      ));
+  if (!canCloseOperationally) {
+    res
+      .status(400)
+      .json({
+        error:
+          "Pedido ainda não está pronto. Finalize apenas depois da cozinha marcar como pronto.",
+      });
+    return;
   }
 
   const now = new Date();

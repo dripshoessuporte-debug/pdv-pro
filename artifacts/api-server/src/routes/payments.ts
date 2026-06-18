@@ -17,6 +17,7 @@ import {
   GetReceiptResponse,
 } from "@workspace/api-zod";
 import { releaseTableIfOrderClosed } from "../lib/table-release";
+import { getOrderFinancialState } from "../lib/order-financial-state";
 import { requireOpenShift } from "../middleware/rbac";
 
 const router: IRouter = Router();
@@ -73,25 +74,37 @@ router.post("/payments", async (req, res): Promise<void> => {
     return;
   }
 
+  if (order.status === "cancelled") {
+    res
+      .status(409)
+      .json({ error: "Pedido cancelado não pode receber pagamento." });
+    return;
+  }
   if (order.status === "closed") {
     await releaseTableIfOrderClosed(parsed.data.orderId);
-    res.status(409).json({ error: "Este pedido já foi pago/finalizado." });
+    res
+      .status(409)
+      .json({ error: "Pedido finalizado não pode receber novo pagamento." });
     return;
   }
 
-  // Guard against duplicate payment even if the order status was incorrectly
-  // reverted (e.g. kitchen marking ready after payment). Check the payments
-  // table directly — this is the authoritative source of truth.
-  const [existingPayment] = await db
-    .select({ id: paymentsTable.id })
-    .from(paymentsTable)
-    .where(eq(paymentsTable.orderId, parsed.data.orderId))
-    .limit(1);
-
-  if (existingPayment) {
+  const financialBefore = await getOrderFinancialState(parsed.data.orderId);
+  if (
+    financialBefore.paidAmount >= financialBefore.totalAmount &&
+    financialBefore.totalAmount > 0
+  ) {
+    res.status(409).json({ error: "Pedido já está totalmente pago." });
+    return;
+  }
+  if (
+    parsed.data.amount > financialBefore.outstandingAmount &&
+    parsed.data.method !== "cash"
+  ) {
     res
-      .status(409)
-      .json({ error: "Este pedido já possui pagamento registrado." });
+      .status(400)
+      .json({
+        error: `Valor maior que o saldo pendente de R$ ${financialBefore.outstandingAmount.toFixed(2)}.`,
+      });
     return;
   }
 
@@ -104,6 +117,7 @@ router.post("/payments", async (req, res): Promise<void> => {
       const [freshOrder] = await tx
         .select({
           status: ordersTable.status,
+          paidAt: ordersTable.paidAt,
           tableId: ordersTable.tableId,
           cashRegisterId: ordersTable.cashRegisterId,
           createdAt: ordersTable.createdAt,
@@ -117,9 +131,13 @@ router.post("/payments", async (req, res): Promise<void> => {
         )
         .for("update");
 
-      if (!freshOrder || freshOrder.status === "closed") {
+      if (
+        !freshOrder ||
+        freshOrder.status === "closed" ||
+        freshOrder.status === "cancelled"
+      ) {
         const err = new Error(
-          "Este pedido já foi pago/finalizado.",
+          "Pedido finalizado ou cancelado não pode receber pagamento.",
         ) as Error & { alreadyPaid: true };
         err.alreadyPaid = true;
         throw err;
@@ -155,22 +173,37 @@ router.post("/payments", async (req, res): Promise<void> => {
         })
         .returning();
 
-      // Step 2: close the order and record when it was paid
-      await tx
-        .update(ordersTable)
-        .set({ status: "closed", paidAt: new Date() })
-        .where(
-          and(
-            eq(ordersTable.id, parsed.data.orderId),
-            eq(ordersTable.storeId, scope.actor.storeId),
-          ),
-        );
+      const paymentUpdate: Record<string, unknown> = {};
+      if (!freshOrder.paidAt) paymentUpdate.paidAt = new Date();
+      if (parsed.data.finalizeAfterPayment) {
+        if (freshOrder.status !== "ready") {
+          const err = new Error(
+            "Pedido pago, mas ainda não está pronto para finalizar.",
+          ) as Error & { notReadyToFinalize: true };
+          err.notReadyToFinalize = true;
+          throw err;
+        }
+        paymentUpdate.status = "closed";
+        paymentUpdate.closedAt = new Date();
+      }
+      if (Object.keys(paymentUpdate).length > 0) {
+        await tx
+          .update(ordersTable)
+          .set(paymentUpdate)
+          .where(
+            and(
+              eq(ordersTable.id, parsed.data.orderId),
+              eq(ordersTable.storeId, scope.actor.storeId),
+            ),
+          );
+      }
 
-      // Step 3: release or repoint the table if linked
-      await releaseTableIfOrderClosed(
-        parsed.data.orderId,
-        tx as unknown as typeof db,
-      );
+      if (parsed.data.finalizeAfterPayment) {
+        await releaseTableIfOrderClosed(
+          parsed.data.orderId,
+          tx as unknown as typeof db,
+        );
+      }
 
       // Step 4: register restaurant-received payments in the open cash register.
       // Platform/iFood online payments stay only in payments/reporting and never
@@ -192,18 +225,7 @@ router.post("/payments", async (req, res): Promise<void> => {
           .limit(1);
 
         if (openRegister) {
-          const [existingMovement] = await tx
-            .select({ id: cashMovementsTable.id })
-            .from(cashMovementsTable)
-            .where(
-              and(
-                eq(cashMovementsTable.orderId, parsed.data.orderId),
-                eq(cashMovementsTable.type, "payment"),
-              ),
-            )
-            .limit(1);
-
-          if (!existingMovement) {
+          {
             await tx.insert(cashMovementsTable).values({
               cashRegisterId: openRegister.id,
               type: "payment",
@@ -235,6 +257,18 @@ router.post("/payments", async (req, res): Promise<void> => {
       res.status(403).json({
         error: "Esta visualização mostra apenas dados do seu plantão atual.",
       });
+      return;
+    }
+    if (
+      err &&
+      typeof err === "object" &&
+      (err as { notReadyToFinalize?: boolean }).notReadyToFinalize
+    ) {
+      res
+        .status(409)
+        .json({
+          error: "Pedido pago, mas ainda não está pronto para finalizar.",
+        });
       return;
     }
     throw err;
