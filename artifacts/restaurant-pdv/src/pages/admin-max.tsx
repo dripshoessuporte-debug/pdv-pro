@@ -1,10 +1,4 @@
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Activity,
@@ -14,16 +8,12 @@ import {
   CheckCircle2,
   Clock3,
   CreditCard,
-  FileText,
-  Headphones,
   LayoutDashboard,
   Loader2,
   RefreshCw,
-  Settings,
   Sparkles,
   Store,
   Users,
-  ListChecks,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +27,10 @@ type Overview = {
   ordersToday: number;
   trialStores: number;
   blockedStores: number;
+  pendingAccessRequests?: number;
+  failedWebhooks?: number;
+  activeSubscriptions?: number;
+  blockedSubscriptions?: number;
 };
 
 type PlatformStore = {
@@ -63,31 +57,7 @@ const menuItems = [
   { href: "/admin-max", label: "Visão geral", icon: LayoutDashboard },
   { href: "/admin-max/stores", label: "Lojas", icon: Building2 },
   { href: "/admin-max/users", label: "Usuários", icon: Users },
-  {
-    href: "/admin-max/plans",
-    label: "Planos",
-    icon: ListChecks,
-    disabled: true,
-  },
-  {
-    href: "/admin-max/billing",
-    label: "Cobrança",
-    icon: CreditCard,
-    disabled: false,
-  },
-  {
-    href: "/admin-max/support",
-    label: "Suporte",
-    icon: Headphones,
-    disabled: true,
-  },
-  { href: "/admin-max/logs", label: "Logs", icon: FileText, disabled: true },
-  {
-    href: "/admin-max/settings",
-    label: "Configurações",
-    icon: Settings,
-    disabled: true,
-  },
+  { href: "/admin-max/billing", label: "Cobrança", icon: CreditCard },
 ];
 
 function isActiveMenu(pathname: string, href: string) {
@@ -136,9 +106,7 @@ function AdminShell({
               const classes = `group flex min-h-11 items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition ${
                 active
                   ? "border border-red-400/30 bg-red-500/15 text-red-50 shadow-lg shadow-red-950/20"
-                  : item.disabled
-                    ? "cursor-not-allowed text-slate-500 opacity-70"
-                    : "text-slate-200 hover:bg-white/10 hover:text-white"
+                  : "text-slate-200 hover:bg-white/10 hover:text-white"
               }`;
               const content = (
                 <span className={classes}>
@@ -148,16 +116,9 @@ function AdminShell({
                     />
                     <span className="truncate">{item.label}</span>
                   </span>
-                  {item.disabled && (
-                    <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                      Em breve
-                    </span>
-                  )}
                 </span>
               );
-              return item.disabled ? (
-                <div key={item.href}>{content}</div>
-              ) : (
+              return (
                 <Link key={item.href} href={item.href}>
                   {content}
                 </Link>
@@ -234,8 +195,40 @@ function AdminShell({
   );
 }
 
-function formatDate(date: string) {
-  return new Date(date).toLocaleDateString("pt-BR");
+function formatDate(date?: string | null) {
+  return date ? new Date(date).toLocaleDateString("pt-BR") : "—";
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+async function platformRequest<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await fetch(path, {
+    credentials: "include",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+    ...init,
+  });
+  const data = (await response.json().catch(() => null)) as
+    | { error?: string }
+    | T
+    | null;
+  if (!response.ok)
+    throw new Error(
+      (data as { error?: string } | null)?.error ?? `HTTP ${response.status}`,
+    );
+  return data as T;
+}
+
+function notify(message: string) {
+  window.alert(message);
 }
 
 function statusClasses(status: string) {
@@ -251,94 +244,130 @@ function statusClasses(status: string) {
 export function AdminMaxDashboardPage() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [stores, setStores] = useState<PlatformStore[]>([]);
+  const [health, setHealth] = useState<Record<string, boolean | null>>({});
   const [error, setError] = useState<string | null>(null);
-  const [storesError, setStoresError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const loadDashboard = useCallback(async (refreshing = false) => {
-    if (refreshing) setIsRefreshing(true);
-    else setIsLoading(true);
+    refreshing ? setIsRefreshing(true) : setIsLoading(true);
     setError(null);
-    setStoresError(null);
-
-    const [overviewResult, storesResult] = await Promise.allSettled([
+    const [
+      overviewResult,
+      storesResult,
+      billingResult,
+      requestsResult,
+      webhooksResult,
+    ] = await Promise.allSettled([
       fetchPlatformJson<Overview>("/api/platform/overview"),
       fetchPlatformJson<{ stores: PlatformStore[] }>("/api/platform/stores"),
+      fetchPlatformJson<{ entitlements: PlatformEntitlement[] }>(
+        "/api/platform/entitlements",
+      ),
+      fetchPlatformJson<{ requests: AccessRequest[] }>(
+        "/api/platform/access-requests",
+      ),
+      fetchPlatformJson<{ webhooks: BillingWebhook[] }>(
+        "/api/platform/billing/webhooks",
+      ),
     ]);
-
     if (overviewResult.status === "fulfilled")
       setOverview(overviewResult.value);
-    else setError("Não foi possível carregar os indicadores da plataforma.");
-
+    else setError("Não foi possível carregar todos os indicadores.");
     if (storesResult.status === "fulfilled")
       setStores(storesResult.value.stores.slice(0, 5));
-    else setStoresError("Não foi possível carregar as lojas recentes.");
-
+    setHealth({
+      api: overviewResult.status === "fulfilled",
+      db: overviewResult.status === "fulfilled",
+      billing: billingResult.status === "fulfilled",
+      requests: requestsResult.status === "fulfilled",
+      webhooks: webhooksResult.status === "fulfilled",
+    });
     setIsLoading(false);
     setIsRefreshing(false);
   }, []);
-
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
 
-  const metricCards = useMemo(
-    () => [
-      {
-        title: "Total de lojas",
-        value: overview?.totalStores,
-        description: "Clientes cadastrados na plataforma",
-        icon: Store,
-        tone: "text-sky-200 bg-sky-500/10 border-sky-400/20",
-      },
-      {
-        title: "Lojas ativas",
-        value: overview?.activeStores,
-        description: "Lojas liberadas para operar",
-        icon: CheckCircle2,
-        tone: "text-emerald-200 bg-emerald-500/10 border-emerald-400/20",
-      },
-      {
-        title: "Usuários cadastrados",
-        value: overview?.totalUsers,
-        description: "Usuários vinculados às lojas",
-        icon: Users,
-        tone: "text-violet-200 bg-violet-500/10 border-violet-400/20",
-      },
-      {
-        title: "Pedidos hoje",
-        value: overview?.ordersToday,
-        description: "Movimento operacional do dia",
-        icon: Activity,
-        tone: "text-orange-200 bg-orange-500/10 border-orange-400/20",
-      },
-      {
-        title: "Lojas em teste",
-        value: overview?.trialStores,
-        description: "Contas em avaliação",
-        icon: Clock3,
-        tone: "text-amber-200 bg-amber-500/10 border-amber-400/20",
-      },
-      {
-        title: "Lojas bloqueadas",
-        value: overview?.blockedStores,
-        description: "Acesso pausado ou inadimplente",
-        icon: AlertTriangle,
-        tone: "text-red-200 bg-red-500/10 border-red-400/20",
-      },
+  const metricCards = [
+    [
+      "Total de lojas",
+      overview?.totalStores,
+      "Clientes cadastrados",
+      Store,
+      "text-sky-200 bg-sky-500/10 border-sky-400/20",
     ],
-    [overview],
-  );
-
-  const platformStatus = [
-    ["API online", true],
-    ["Banco conectado", true],
-    ["Login ativo", true],
-    ["Multi-loja ativo", true],
-    ["Admin Max ativo", true],
-    ["Focus", false],
-    ["Assinaturas", false],
+    [
+      "Lojas ativas",
+      overview?.activeStores,
+      "Liberadas para operar",
+      CheckCircle2,
+      "text-emerald-200 bg-emerald-500/10 border-emerald-400/20",
+    ],
+    [
+      "Lojas bloqueadas",
+      overview?.blockedStores,
+      "Acesso pausado",
+      AlertTriangle,
+      "text-red-200 bg-red-500/10 border-red-400/20",
+    ],
+    [
+      "Lojas em teste",
+      overview?.trialStores,
+      "Contas em avaliação",
+      Clock3,
+      "text-amber-200 bg-amber-500/10 border-amber-400/20",
+    ],
+    [
+      "Usuários cadastrados",
+      overview?.totalUsers,
+      "Usuários globais",
+      Users,
+      "text-violet-200 bg-violet-500/10 border-violet-400/20",
+    ],
+    [
+      "Pedidos hoje",
+      overview?.ordersToday,
+      "Movimento do dia",
+      Activity,
+      "text-orange-200 bg-orange-500/10 border-orange-400/20",
+    ],
+    [
+      "Solicitações pendentes",
+      overview?.pendingAccessRequests,
+      "Aguardando análise",
+      CreditCard,
+      "text-cyan-200 bg-cyan-500/10 border-cyan-400/20",
+    ],
+    [
+      "Webhooks com erro",
+      overview?.failedWebhooks,
+      "Falhas de processamento",
+      AlertTriangle,
+      "text-rose-200 bg-rose-500/10 border-rose-400/20",
+    ],
+    [
+      "Assinaturas ativas",
+      overview?.activeSubscriptions,
+      "Clientes pagantes",
+      CheckCircle2,
+      "text-emerald-200 bg-emerald-500/10 border-emerald-400/20",
+    ],
+    [
+      "Assinaturas bloqueadas/canceladas",
+      overview?.blockedSubscriptions,
+      "Atenção comercial",
+      AlertTriangle,
+      "text-red-200 bg-red-500/10 border-red-400/20",
+    ],
+  ] as const;
+  const statusItems = [
+    ["API online", health.api],
+    ["Banco conectado", health.db],
+    ["Billing/Cakto", health.billing],
+    ["Solicitações de acesso", health.requests],
+    ["Webhooks", health.webhooks],
   ] as const;
 
   return (
@@ -348,195 +377,135 @@ export function AdminMaxDashboardPage() {
       onRefresh={() => void loadDashboard(true)}
       isRefreshing={isRefreshing}
     >
-      {(error || storesError) && (
+      {error && (
         <div className="mb-5 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100">
-          {error ?? storesError}
+          {error}
         </div>
       )}
-
-      <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-slate-900/80 p-6 shadow-2xl shadow-black/20 md:p-8">
-        <div className="absolute right-0 top-0 h-52 w-52 rounded-full bg-red-500/20 blur-3xl" />
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="max-w-2xl">
-            <Badge className="mb-4 border-red-400/30 bg-red-500/10 text-red-100 hover:bg-red-500/10">
-              <Sparkles className="mr-1 h-3 w-3" /> Centro administrativo
-            </Badge>
-            <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
-              Central de Controle Gestor Max
-            </h2>
-            <p className="mt-3 text-base leading-7 text-slate-300">
-              Acompanhe lojas, clientes, planos, status operacional e
-              crescimento da plataforma.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Link href="/admin-max/stores">
-              <Button className="bg-red-600 text-white hover:bg-red-700">
-                Ver lojas <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
+      <section className="rounded-[2rem] border border-white/10 bg-slate-900/80 p-6 shadow-2xl shadow-black/20 md:p-8">
+        <Badge className="mb-4 border-red-400/30 bg-red-500/10 text-red-100">
+          <Sparkles className="mr-1 h-3 w-3" /> Centro administrativo
+        </Badge>
+        <h2 className="text-3xl font-bold">Central de Controle Gestor Max</h2>
+        <p className="mt-3 text-slate-300">
+          Opere lojas, usuários, cobrança, webhooks e solicitações em um painel
+          P0 limpo.
+        </p>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Link href="/admin-max/stores">
+            <Button className="bg-red-600 text-white hover:bg-red-700">
+              Ver lojas <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </Link>
+          <Link href="/admin-max/billing">
             <Button
               variant="outline"
-              disabled
-              className="border-white/10 bg-white/5 text-slate-400"
+              className="border-white/10 bg-white/5 text-white"
             >
-              Nova loja · Em breve
+              Ver cobrança
             </Button>
+          </Link>
+          <Link href="/admin-max/billing">
             <Button
               variant="outline"
-              disabled
-              className="border-white/10 bg-white/5 text-slate-400"
+              className="border-white/10 bg-white/5 text-white"
             >
-              Ver planos · Em breve
+              Ver solicitações de acesso
             </Button>
-          </div>
+          </Link>
         </div>
       </section>
-
-      <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {metricCards.map((card) => {
-          const Icon = card.icon;
-          return (
-            <Card
-              key={card.title}
-              className="border-white/10 bg-white/[0.04] text-white shadow-xl shadow-black/10"
-            >
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-slate-300">
-                      {card.title}
-                    </p>
-                    <div className="mt-3 text-4xl font-bold tracking-tight">
-                      {isLoading ? "—" : (card.value ?? 0)}
-                    </div>
-                    <p className="mt-2 text-sm text-slate-400">
-                      {card.description}
-                    </p>
+      <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {metricCards.map(([title, value, description, Icon, tone]) => (
+          <Card
+            key={title}
+            className="border-white/10 bg-white/[0.04] text-white"
+          >
+            <CardContent className="p-5">
+              <div className="flex justify-between gap-4">
+                <div>
+                  <p className="text-sm text-slate-300">{title}</p>
+                  <div className="mt-3 text-3xl font-bold">
+                    {isLoading ? "—" : (value ?? 0)}
                   </div>
-                  <div className={`rounded-2xl border p-3 ${card.tone}`}>
-                    <Icon className="h-5 w-5" />
-                  </div>
+                  <p className="mt-2 text-xs text-slate-400">{description}</p>
                 </div>
-                {isLoading && (
-                  <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full w-1/2 animate-pulse rounded-full bg-red-400/60" />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
+                <div className={`h-fit rounded-2xl border p-3 ${tone}`}>
+                  <Icon className="h-5 w-5" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </section>
-
-      <section className="mt-6 grid gap-6 2xl:grid-cols-[1fr_360px]">
+      <section className="mt-6 grid gap-6 xl:grid-cols-[1fr_360px]">
         <Card className="overflow-hidden border-white/10 bg-white/[0.04] text-white">
-          <CardHeader className="flex flex-row items-center justify-between border-b border-white/10">
-            <div>
-              <CardTitle>Lojas recentes</CardTitle>
-              <p className="mt-1 text-sm text-slate-400">
-                Últimos clientes cadastrados na plataforma.
-              </p>
-            </div>
-            <Link href="/admin-max/stores">
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-white/10 bg-white/5 text-white hover:bg-white/10"
-              >
-                Abrir lojas
-              </Button>
-            </Link>
+          <CardHeader>
+            <CardTitle>Lojas recentes</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-left text-sm">
-                <thead className="bg-white/[0.03] text-xs uppercase tracking-wide text-slate-400">
+                <thead className="bg-white/[0.03] text-xs uppercase text-slate-400">
                   <tr>
-                    <th className="px-5 py-3">Nome da loja</th>
+                    <th className="px-5 py-3">Nome</th>
+                    <th className="px-5 py-3">Slug</th>
                     <th className="px-5 py-3">Status</th>
-                    <th className="px-5 py-3">Cidade/Estado</th>
                     <th className="px-5 py-3">Criada em</th>
                     <th className="px-5 py-3">Usuários</th>
-                    <th className="px-5 py-3">Ação</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/10">
                   {stores.map((store) => (
-                    <tr key={store.id} className="text-slate-100">
+                    <tr key={store.id}>
                       <td className="px-5 py-4 font-semibold">{store.name}</td>
+                      <td className="px-5 py-4 text-slate-300">
+                        {store.slug ?? "—"}
+                      </td>
                       <td className="px-5 py-4">
                         <span
-                          className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClasses(store.status)}`}
+                          className={`rounded-full border px-2.5 py-1 text-xs ${statusClasses(store.status)}`}
                         >
                           {store.status}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-slate-300">
-                        {store.city && store.state
-                          ? `${store.city}/${store.state}`
-                          : "—"}
-                      </td>
-                      <td className="px-5 py-4 text-slate-300">
+                      <td className="px-5 py-4">
                         {formatDate(store.createdAt)}
                       </td>
                       <td className="px-5 py-4">{store.membersCount}</td>
-                      <td className="px-5 py-4">
-                        <Link href="/admin-max/stores">
-                          <Button variant="secondary" size="sm">
-                            Ver detalhes
-                          </Button>
-                        </Link>
-                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {isLoading && (
-              <div className="flex items-center justify-center gap-2 p-8 text-sm text-slate-400">
-                <Loader2 className="h-4 w-4 animate-spin" /> Carregando lojas
-                recentes...
-              </div>
-            )}
-            {!isLoading && stores.length === 0 && !storesError && (
-              <div className="p-8 text-center">
-                <Building2 className="mx-auto h-10 w-10 text-slate-500" />
-                <p className="mt-3 font-medium text-white">
-                  Nenhuma loja recente encontrada
-                </p>
-                <p className="mt-1 text-sm text-slate-400">
-                  Quando novos clientes criarem lojas, elas aparecerão aqui.
-                </p>
-              </div>
-            )}
           </CardContent>
         </Card>
-
         <Card className="border-white/10 bg-white/[0.04] text-white">
           <CardHeader>
             <CardTitle>Status da plataforma</CardTitle>
-            <p className="text-sm text-slate-400">
-              Sinais operacionais principais.
-            </p>
           </CardHeader>
           <CardContent className="space-y-3">
-            {platformStatus.map(([label, active]) => (
+            {statusItems.map(([label, ok]) => (
               <div
                 key={label}
-                className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3"
+                className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-3"
               >
-                <span className="flex items-center gap-3 text-sm font-medium text-slate-200">
-                  <span
-                    className={`h-2.5 w-2.5 rounded-full ${active ? "bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.9)]" : "bg-amber-300"}`}
-                  />
-                  {label}
-                </span>
-                <span
-                  className={`text-xs font-semibold ${active ? "text-emerald-200" : "text-amber-200"}`}
+                <span>{label}</span>
+                <Badge
+                  className={
+                    ok === true
+                      ? "bg-emerald-500/10 text-emerald-200"
+                      : ok === false
+                        ? "bg-red-500/10 text-red-200"
+                        : "bg-slate-500/10 text-slate-200"
+                  }
                 >
-                  {active ? "Ativo" : "Em breve"}
-                </span>
+                  {ok === true
+                    ? "Online"
+                    : ok === false
+                      ? "Indisponível"
+                      : "Carregando"}
+                </Badge>
               </div>
             ))}
           </CardContent>
@@ -546,161 +515,256 @@ export function AdminMaxDashboardPage() {
   );
 }
 
+type StoreDetails = {
+  store: PlatformStore;
+  members: Array<{
+    id: number;
+    userId: number;
+    name: string;
+    email: string;
+    role: string;
+    active: boolean;
+    entitlementPlan: string | null;
+    entitlementStatus: string | null;
+  }>;
+  entitlement: {
+    plan: string | null;
+    status: string | null;
+    userId: number;
+  } | null;
+  todayOrders: number;
+  todayRevenue: number;
+};
+
 export function AdminMaxStoresPage() {
   const { platformRole } = useAuth();
   const [stores, setStores] = useState<PlatformStore[]>([]);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("all");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-
+  const [details, setDetails] = useState<StoreDetails | null>(null);
   const loadStores = useCallback(() => {
     setIsLoading(true);
+    setError(null);
     fetchPlatformJson<{ stores: PlatformStore[] }>("/api/platform/stores")
-      .then((data) => setStores(data.stores))
-      .catch(() => setError("Não foi possível carregar as lojas."))
+      .then((d) => setStores(d.stores))
+      .catch((e) =>
+        setError(getErrorMessage(e, "Não foi possível carregar as lojas.")),
+      )
       .finally(() => setIsLoading(false));
   }, []);
-
   useEffect(() => {
     loadStores();
   }, [loadStores]);
-
-  async function updateStoreStatus(storeId: number, status: string) {
-    await fetch(`/api/platform/stores/${storeId}/status`, {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    loadStores();
+  const filtered = stores.filter(
+    (s) =>
+      (status === "all" || s.status === status) &&
+      `${s.id} ${s.name} ${s.slug ?? ""}`
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+  );
+  const counts = stores.reduce<Record<string, number>>(
+    (a, s) => ({ ...a, [s.status]: (a[s.status] ?? 0) + 1 }),
+    {},
+  );
+  async function updateStoreStatus(storeId: number, next: string) {
+    if (
+      !["active"].includes(next) &&
+      !window.confirm(`Confirmar alteração da loja #${storeId} para ${next}?`)
+    )
+      return;
+    try {
+      await platformRequest(`/api/platform/stores/${storeId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: next }),
+      });
+      notify("Status da loja atualizado.");
+      loadStores();
+    } catch (e) {
+      setError(getErrorMessage(e, "Não foi possível atualizar."));
+    }
   }
-
+  async function openDetails(storeId: number) {
+    try {
+      setDetails(
+        await fetchPlatformJson<StoreDetails>(
+          `/api/platform/stores/${storeId}`,
+        ),
+      );
+    } catch (e) {
+      setError(getErrorMessage(e, "Não foi possível carregar detalhes."));
+    }
+  }
   async function deleteStore(storeId: number) {
     const confirmation = window.prompt(
       "Digite EXCLUIR para confirmar a exclusão definitiva.",
     );
     if (confirmation !== "EXCLUIR") return;
-    const response = await fetch(`/api/platform/stores/${storeId}`, {
-      method: "DELETE",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ confirmation }),
-    });
-    if (!response.ok) {
-      setError("Não foi possível excluir a loja.");
-      return;
+    try {
+      await platformRequest(`/api/platform/stores/${storeId}`, {
+        method: "DELETE",
+        body: JSON.stringify({ confirmation }),
+      });
+      notify("Loja excluída.");
+      loadStores();
+    } catch (e) {
+      setError(getErrorMessage(e, "Não foi possível excluir a loja."));
     }
-    loadStores();
   }
-
   return (
     <AdminShell
       title="Lojas"
-      description="Listagem básica de clientes e lojas cadastradas na plataforma."
+      description="Clientes e lojas cadastradas na plataforma."
+      onRefresh={loadStores}
+      isRefreshing={isLoading}
     >
       {error && (
         <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
           {error}
         </div>
       )}
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-xl shadow-black/10">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="bg-white/10 text-xs uppercase tracking-wide text-slate-300">
-              <tr>
-                <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">Nome da loja</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Cidade/Estado</th>
-                <th className="px-4 py-3">Criada em</th>
-                <th className="px-4 py-3">Usuários</th>
-                <th className="px-4 py-3">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/10">
-              {stores.map((store) => (
-                <tr key={store.id} className="text-slate-100">
-                  <td className="px-4 py-3">#{store.id}</td>
-                  <td className="px-4 py-3 font-medium">{store.name}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`rounded-full border px-2 py-1 text-xs ${statusClasses(store.status)}`}
-                    >
-                      {store.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-slate-300">
-                    {store.city && store.state
-                      ? `${store.city}/${store.state}`
-                      : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-slate-300">
-                    {formatDate(store.createdAt)}
-                  </td>
-                  <td className="px-4 py-3">{store.membersCount}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="secondary" size="sm" disabled>
-                        Ver detalhes
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() =>
-                          void updateStoreStatus(store.id, "blocked")
-                        }
-                      >
-                        Bloquear loja
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() =>
-                          void updateStoreStatus(store.id, "active")
-                        }
-                      >
-                        Reativar loja
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() =>
-                          void updateStoreStatus(store.id, "archived")
-                        }
-                      >
-                        Arquivar loja
-                      </Button>
-                      {platformRole === "platform_owner" ? (
-                        <Button
-                          className="bg-red-700 hover:bg-red-800"
-                          size="sm"
-                          onClick={() => void deleteStore(store.id)}
-                        >
-                          Excluir definitivamente
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-slate-400">
-                          Somente o dono da plataforma pode excluir lojas
-                          definitivamente.
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {isLoading && (
-          <div className="flex items-center justify-center gap-2 p-6 text-sm text-slate-400">
-            <Loader2 className="h-4 w-4 animate-spin" /> Carregando lojas...
-          </div>
-        )}
-        {!isLoading && stores.length === 0 && !error && (
-          <div className="p-6 text-center text-sm text-slate-400">
-            Nenhuma loja cadastrada.
-          </div>
-        )}
+      <div className="mb-4 grid gap-3 md:grid-cols-[1fr_220px]">
+        <input
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+          placeholder="Buscar por nome, slug ou ID"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <select
+          className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+        >
+          <option value="all">Todas</option>
+          <option value="active">active</option>
+          <option value="trial">trial</option>
+          <option value="blocked">blocked</option>
+          <option value="archived">archived</option>
+        </select>
       </div>
+      <div className="mb-4 flex flex-wrap gap-2 text-xs text-slate-300">
+        {["active", "trial", "blocked", "archived"].map((s) => (
+          <Badge key={s} className="bg-white/10 text-slate-200">
+            {s}: {counts[s] ?? 0}
+          </Badge>
+        ))}
+      </div>
+      <DataTable
+        empty="Nenhuma loja encontrada."
+        loading={isLoading}
+        headers={[
+          "ID",
+          "Nome",
+          "Slug",
+          "Status",
+          "Criada em",
+          "Usuários",
+          "Ações",
+        ]}
+      >
+        {filtered.map((store) => (
+          <tr key={store.id} className="text-slate-100">
+            <td className="px-4 py-3">#{store.id}</td>
+            <td className="px-4 py-3 font-medium">{store.name}</td>
+            <td className="px-4 py-3">{store.slug ?? "—"}</td>
+            <td className="px-4 py-3">
+              <span
+                className={`rounded-full border px-2 py-1 text-xs ${statusClasses(store.status)}`}
+              >
+                {store.status}
+              </span>
+            </td>
+            <td className="px-4 py-3">{formatDate(store.createdAt)}</td>
+            <td className="px-4 py-3">{store.membersCount}</td>
+            <td className="px-4 py-3">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void openDetails(store.id)}
+                >
+                  Ver detalhes
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void updateStoreStatus(store.id, "blocked")}
+                >
+                  Bloquear
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void updateStoreStatus(store.id, "active")}
+                >
+                  Reativar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void updateStoreStatus(store.id, "archived")}
+                >
+                  Arquivar
+                </Button>
+                {platformRole === "platform_owner" && (
+                  <Button
+                    className="bg-red-700 hover:bg-red-800"
+                    size="sm"
+                    onClick={() => void deleteStore(store.id)}
+                  >
+                    Excluir definitivamente
+                  </Button>
+                )}
+              </div>
+            </td>
+          </tr>
+        ))}
+      </DataTable>
+      {details && (
+        <Modal
+          title={`Detalhes da loja #${details.store.id}`}
+          onClose={() => setDetails(null)}
+        >
+          <div className="grid gap-3 md:grid-cols-2">
+            <Info label="Nome" value={details.store.name} />
+            <Info label="Slug" value={details.store.slug ?? "—"} />
+            <Info label="Status" value={details.store.status} />
+            <Info
+              label="Criada em"
+              value={formatDate(details.store.createdAt)}
+            />
+            <Info label="Usuários" value={String(details.members.length)} />
+            <Info
+              label="Pedidos hoje"
+              value={String(details.todayOrders ?? 0)}
+            />
+            <Info
+              label="Faturamento hoje"
+              value={(details.todayRevenue ?? 0).toLocaleString("pt-BR", {
+                style: "currency",
+                currency: "BRL",
+              })}
+            />
+            <Info
+              label="Plano do dono"
+              value={`${details.entitlement?.plan ?? "—"} / ${details.entitlement?.status ?? "—"}`}
+            />
+          </div>
+          <h3 className="mt-5 font-semibold">Usuários vinculados</h3>
+          <div className="mt-2 space-y-2">
+            {details.members.map((m) => (
+              <div
+                key={m.id}
+                className="rounded-xl border border-white/10 p-3 text-sm"
+              >
+                {m.name} · {m.email} · {m.role} ·{" "}
+                {m.active ? "ativo" : "inativo"}
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
     </AdminShell>
   );
 }
@@ -715,135 +779,147 @@ type PlatformOrphanUser = {
   activeStoresCount: number;
   entitlementStatus: string | null;
 };
-
+function userBlockReason(u: PlatformOrphanUser, role?: string | null) {
+  if (
+    u.platformRole === "platform_owner" ||
+    u.platformRole === "platform_admin"
+  )
+    return "usuário protegido";
+  if (u.activeStoresCount > 0) return "possui loja ativa";
+  if (role !== "platform_owner") return "somente platform_owner pode excluir";
+  return "deletável";
+}
 export function AdminMaxUsersPage() {
   const { platformRole } = useAuth();
   const [users, setUsers] = useState<PlatformOrphanUser[]>([]);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-
   const load = useCallback(() => {
     setIsLoading(true);
     setError(null);
     fetchPlatformJson<{ users: PlatformOrphanUser[] }>(
       "/api/platform/orphan-users",
     )
-      .then((data) => setUsers(data.users))
-      .catch(() => setError("Não foi possível carregar usuários sem loja."))
+      .then((d) => setUsers(d.users))
+      .catch((e) =>
+        setError(getErrorMessage(e, "Não foi possível carregar usuários.")),
+      )
       .finally(() => setIsLoading(false));
   }, []);
-
   useEffect(() => {
     load();
   }, [load]);
-
-  async function deleteUser(userId: number) {
+  const rows = users
+    .filter((u) =>
+      `${u.name} ${u.email}`.toLowerCase().includes(query.toLowerCase()),
+    )
+    .filter(
+      (u) =>
+        filter === "all" ||
+        (filter === "with" && u.entitlementStatus) ||
+        (filter === "without" && !u.entitlementStatus) ||
+        (filter === "protected" &&
+          ["platform_owner", "platform_admin"].includes(
+            u.platformRole ?? "",
+          )) ||
+        (filter === "deletable" &&
+          userBlockReason(u, platformRole) === "deletável"),
+    );
+  async function deleteUser(id: number) {
     const confirmation = window.prompt(
       "Digite EXCLUIR para confirmar a exclusão definitiva do usuário de teste.",
     );
     if (confirmation !== "EXCLUIR") return;
-    const response = await fetch(`/api/platform/orphan-users/${userId}`, {
-      method: "DELETE",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ confirmation }),
-    });
-    if (!response.ok) {
-      const data = (await response.json().catch(() => null)) as {
-        error?: string;
-      } | null;
-      setError(data?.error ?? "Não foi possível excluir o usuário.");
-      return;
+    try {
+      await platformRequest(`/api/platform/orphan-users/${id}`, {
+        method: "DELETE",
+        body: JSON.stringify({ confirmation }),
+      });
+      notify("Usuário excluído.");
+      load();
+    } catch (e) {
+      setError(getErrorMessage(e, "Não foi possível excluir."));
     }
-    load();
   }
-
   return (
     <AdminShell
-      title="Usuários"
-      description="Usuários globais sem loja ativa continuam bloqueando novos cadastros pelo mesmo e-mail."
+      title="Usuários sem loja ativa"
+      description="Use esta área para limpar cadastros de teste que impedem novo cadastro com o mesmo e-mail."
+      onRefresh={load}
+      isRefreshing={isLoading}
     >
-      <div className="mb-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4 text-sm text-amber-100">
-        Excluir loja remove vínculos da loja, mas não apaga usuários globais
-        automaticamente. Use esta área apenas para limpar usuários de teste sem
-        loja ativa.
-      </div>
       {error && (
         <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
           {error}
         </div>
       )}
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-xl shadow-black/10">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className="bg-white/10 text-xs uppercase tracking-wide text-slate-300">
-              <tr>
-                <th className="px-4 py-3">Nome</th>
-                <th className="px-4 py-3">E-mail</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Criado em</th>
-                <th className="px-4 py-3">Perfil plataforma</th>
-                <th className="px-4 py-3">Lojas ativas</th>
-                <th className="px-4 py-3">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/10">
-              {users.map((item) => {
-                const protectedAdmin =
-                  item.platformRole === "platform_owner" ||
-                  item.platformRole === "platform_admin";
-                const canDelete =
-                  platformRole === "platform_owner" &&
-                  !protectedAdmin &&
-                  item.activeStoresCount === 0;
-                return (
-                  <tr key={item.id} className="text-slate-100">
-                    <td className="px-4 py-3 font-medium">{item.name}</td>
-                    <td className="px-4 py-3">{item.email}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`rounded-full border px-2 py-1 text-xs ${statusClasses(item.status)}`}
-                      >
-                        {item.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{formatDate(item.createdAt)}</td>
-                    <td className="px-4 py-3">{item.platformRole ?? "—"}</td>
-                    <td className="px-4 py-3">{item.activeStoresCount}</td>
-                    <td className="px-4 py-3">
-                      {canDelete ? (
-                        <Button
-                          className="bg-red-700 hover:bg-red-800"
-                          size="sm"
-                          onClick={() => void deleteUser(item.id)}
-                        >
-                          Excluir usuário de teste
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-slate-400">
-                          {platformRole !== "platform_owner"
-                            ? "Somente platform_owner"
-                            : "Protegido ou com vínculo ativo"}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        {isLoading && (
-          <div className="flex items-center justify-center gap-2 p-6 text-sm text-slate-400">
-            <Loader2 className="h-4 w-4 animate-spin" /> Carregando usuários...
-          </div>
-        )}
-        {!isLoading && users.length === 0 && !error && (
-          <div className="p-6 text-center text-sm text-slate-400">
-            Nenhum usuário sem loja ativa encontrado.
-          </div>
-        )}
+      <div className="mb-4 grid gap-3 md:grid-cols-[1fr_240px]">
+        <input
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+          placeholder="Buscar por nome/e-mail"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <select
+          className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        >
+          <option value="all">todos</option>
+          <option value="with">com entitlement</option>
+          <option value="without">sem entitlement</option>
+          <option value="protected">protegidos</option>
+          <option value="deletable">deletáveis</option>
+        </select>
       </div>
+      <DataTable
+        empty="Nenhum usuário sem loja ativa encontrado."
+        loading={isLoading}
+        headers={[
+          "Nome",
+          "E-mail",
+          "Status",
+          "Entitlement",
+          "Perfil",
+          "Motivo",
+          "Ações",
+        ]}
+      >
+        {rows.map((u) => {
+          const reason = userBlockReason(u, platformRole);
+          return (
+            <tr key={u.id}>
+              <td className="px-4 py-3 font-medium">{u.name}</td>
+              <td className="px-4 py-3">{u.email}</td>
+              <td className="px-4 py-3">{u.status}</td>
+              <td className="px-4 py-3">{u.entitlementStatus ?? "—"}</td>
+              <td className="px-4 py-3">{u.platformRole ?? "—"}</td>
+              <td className="px-4 py-3 text-slate-300">{reason}</td>
+              <td className="px-4 py-3">
+                {reason === "deletável" ? (
+                  <Button
+                    className="bg-red-700"
+                    size="sm"
+                    onClick={() => void deleteUser(u.id)}
+                  >
+                    Excluir usuário de teste
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => notify(reason)}
+                  >
+                    Ver motivo
+                  </Button>
+                )}
+              </td>
+            </tr>
+          );
+        })}
+      </DataTable>
     </AdminShell>
   );
 }
@@ -861,132 +937,499 @@ type PlatformEntitlement = {
   externalSubscriptionId?: string | null;
   currentPeriodEnd?: string | null;
 };
-type BillingWebhook = { id: number; createdAt: string; eventType: string | null; processingStatus: string; email: string | null; plan: string | null; externalOrderId: string | null; externalSubscriptionId: string | null; rawPayload: unknown; errorMessage: string | null };
-type AccessRequest = { id: number; name: string; email: string; phone: string; restaurantName: string; requestedPlan: string; status: string; createdAt: string };
+type BillingWebhook = {
+  id: number;
+  createdAt: string;
+  eventType: string | null;
+  paymentStatus?: string | null;
+  processingStatus: string;
+  email: string | null;
+  plan: string | null;
+  externalOrderId: string | null;
+  externalSubscriptionId: string | null;
+  rawPayload: unknown;
+  errorMessage: string | null;
+};
+type AccessRequest = {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  restaurantName: string;
+  requestedPlan: string;
+  status: string;
+  createdAt: string;
+};
+type BillingProduct = {
+  id: number;
+  provider: string;
+  plan: string;
+  productName: string | null;
+  offerName: string | null;
+  externalProductId: string | null;
+  externalProductShortId: string | null;
+  externalOfferId: string | null;
+  checkoutUrl: string | null;
+  active: boolean;
+};
 
 export function AdminMaxBillingPage() {
+  const [tab, setTab] = useState("entitlements");
   const [entitlements, setEntitlements] = useState<PlatformEntitlement[]>([]);
   const [webhooks, setWebhooks] = useState<BillingWebhook[]>([]);
   const [requests, setRequests] = useState<AccessRequest[]>([]);
+  const [products, setProducts] = useState<BillingProduct[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [payload, setPayload] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [productForm, setProductForm] = useState({
+    plan: "basico",
+    productName: "",
+    offerName: "",
+    externalProductId: "",
+    externalProductShortId: "",
+    externalOfferId: "",
+    checkoutUrl: "",
+    active: true,
+  });
   const load = useCallback(() => {
     setIsLoading(true);
-    fetchPlatformJson<{ entitlements: PlatformEntitlement[] }>(
-      "/api/platform/entitlements",
-    )
-      .then((data) => setEntitlements(data.entitlements))
-      .catch(() => setError("Não foi possível carregar solicitações."))
+    setError(null);
+    Promise.allSettled([
+      fetchPlatformJson<{ entitlements: PlatformEntitlement[] }>(
+        "/api/platform/entitlements",
+      ),
+      fetchPlatformJson<{ requests: AccessRequest[] }>(
+        "/api/platform/access-requests",
+      ),
+      fetchPlatformJson<{ webhooks: BillingWebhook[] }>(
+        "/api/platform/billing/webhooks",
+      ),
+      fetchPlatformJson<{ products: BillingProduct[] }>(
+        "/api/platform/billing/products",
+      ),
+    ])
+      .then(([e, r, w, p]) => {
+        if (e.status === "fulfilled") setEntitlements(e.value.entitlements);
+        if (r.status === "fulfilled") setRequests(r.value.requests);
+        if (w.status === "fulfilled") setWebhooks(w.value.webhooks);
+        if (p.status === "fulfilled") setProducts(p.value.products);
+        if ([e, r, w, p].some((x) => x.status === "rejected"))
+          setError("Alguns dados de cobrança estão indisponíveis.");
+      })
       .finally(() => setIsLoading(false));
-    fetchPlatformJson<{ webhooks: BillingWebhook[] }>("/api/platform/billing/webhooks").then((data) => setWebhooks(data.webhooks)).catch(() => undefined);
-    fetchPlatformJson<{ requests: AccessRequest[] }>("/api/platform/access-requests").then((data) => setRequests(data.requests)).catch(() => undefined);
   }, []);
   useEffect(() => {
     load();
   }, [load]);
-  async function action(
-    userId: number,
-    kind: "grant-trial" | "activate" | "block" | "cancel",
-  ) {
-    await fetch(`/api/platform/entitlements/${userId}/${kind}`, {
-      method: "POST",
-      credentials: "include",
-    });
-    load();
+  async function run(key: string, fn: () => Promise<unknown>) {
+    setBusy(key);
+    try {
+      const result = (await fn()) as { activationUrl?: string };
+      notify(
+        result?.activationUrl
+          ? `Ação concluída. Link: ${result.activationUrl}`
+          : "Ação concluída.",
+      );
+      load();
+    } catch (e) {
+      setError(getErrorMessage(e, "Ação falhou."));
+    } finally {
+      setBusy(null);
+    }
   }
+  const tabs = [
+    ["entitlements", "Acessos/Entitlements"],
+    ["requests", "Solicitações de acesso"],
+    ["webhooks", "Webhooks Cakto"],
+    ["products", "Produtos/Planos Cakto"],
+  ];
   return (
     <AdminShell
       title="Cobrança"
-      description="Liberação manual de testes, ativações e bloqueios de acesso."
+      description="Gestão operacional de acessos, solicitações, webhooks e produtos Cakto."
+      onRefresh={load}
+      isRefreshing={isLoading}
     >
       {error && (
         <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
           {error}
         </div>
       )}
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-xl shadow-black/10">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className="bg-white/10 text-xs uppercase tracking-wide text-slate-300">
-              <tr>
-                <th className="px-4 py-3">Nome</th>
-                <th className="px-4 py-3">E-mail</th>
-                <th className="px-4 py-3">Plano</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Criado em</th>
-                <th className="px-4 py-3">Provider</th><th className="px-4 py-3">Pedido/Assinatura</th><th className="px-4 py-3">Período</th>
-                <th className="px-4 py-3">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/10">
-              {entitlements.map((item) => (
-                <tr key={item.userId} className="text-slate-100">
-                  <td className="px-4 py-3 font-medium">{item.name}</td>
-                  <td className="px-4 py-3">{item.email}</td>
-                  <td className="px-4 py-3">{item.plan ?? "—"}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`rounded-full border px-2 py-1 text-xs ${statusClasses(item.status)}`}
+      <div className="mb-5 flex flex-wrap gap-2">
+        {tabs.map(([id, label]) => (
+          <Button
+            key={id}
+            variant={tab === id ? "default" : "outline"}
+            className={
+              tab === id
+                ? "bg-red-600"
+                : "border-white/10 bg-white/5 text-white"
+            }
+            onClick={() => setTab(id)}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+      {tab === "entitlements" && (
+        <DataTable
+          loading={isLoading}
+          empty="Nenhum acesso encontrado."
+          headers={[
+            "Nome",
+            "E-mail",
+            "Plano",
+            "Status",
+            "Provider",
+            "Pedido externo",
+            "Assinatura externa",
+            "Período",
+            "Ações",
+          ]}
+        >
+          {entitlements.map((i) => (
+            <tr key={i.userId}>
+              <td className="px-4 py-3 font-medium">{i.name}</td>
+              <td className="px-4 py-3">{i.email}</td>
+              <td className="px-4 py-3">{i.plan ?? "—"}</td>
+              <td className="px-4 py-3">{i.status}</td>
+              <td className="px-4 py-3">{i.provider ?? "—"}</td>
+              <td className="px-4 py-3">{i.externalOrderId ?? "—"}</td>
+              <td className="px-4 py-3">{i.externalSubscriptionId ?? "—"}</td>
+              <td className="px-4 py-3">
+                {formatDate(i.currentPeriodEnd ?? i.trialEndsAt)}
+              </td>
+              <td className="px-4 py-3">
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    ["grant-trial", "Liberar teste"],
+                    ["activate", "Ativar"],
+                    ["block", "Bloquear"],
+                    ["cancel", "Cancelar"],
+                  ].map(([k, l]) => (
+                    <Button
+                      key={k}
+                      disabled={busy === `${i.userId}-${k}`}
+                      size="sm"
+                      variant="secondary"
+                      onClick={() =>
+                        void run(`${i.userId}-${k}`, () =>
+                          platformRequest(
+                            `/api/platform/entitlements/${i.userId}/${k}`,
+                            { method: "POST" },
+                          ),
+                        )
+                      }
                     >
-                      {item.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">{formatDate(item.createdAt)}</td>
-                  <td className="px-4 py-3">{item.provider ?? "—"}</td><td className="px-4 py-3">{item.externalOrderId ?? "—"}<br />{item.externalSubscriptionId ?? "—"}</td><td className="px-4 py-3">{item.currentPeriodEnd ? formatDate(item.currentPeriodEnd) : item.trialEndsAt ? formatDate(item.trialEndsAt) : "—"}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => void action(item.userId, "grant-trial")}
-                      >
-                        Liberar teste
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => void action(item.userId, "activate")}
-                      >
-                        Ativar manualmente
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => void action(item.userId, "block")}
-                      >
-                        Bloquear
-                      </Button>
-                      <Button size="sm" variant="secondary" onClick={() => void action(item.userId, "cancel")}>Cancelar</Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {isLoading && (
-          <div className="flex items-center justify-center gap-2 p-6 text-sm text-slate-400">
-            <Loader2 className="h-4 w-4 animate-spin" /> Carregando cobranças...
-          </div>
-        )}
-      </div>
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        <Card className="border-white/10 bg-white/5 text-white">
-          <CardHeader><CardTitle>Webhooks Cakto</CardTitle></CardHeader>
-          <CardContent>
-            <div className="max-h-96 overflow-auto text-sm">
-              <table className="w-full min-w-[760px] text-left">
-                <thead className="text-xs uppercase text-slate-400"><tr><th className="p-2">Data</th><th className="p-2">Evento</th><th className="p-2">Status</th><th className="p-2">E-mail</th><th className="p-2">Plano</th><th className="p-2">Order</th><th className="p-2">Payload</th></tr></thead>
-                <tbody>{webhooks.map((item) => <tr key={item.id} className="border-t border-white/10"><td className="p-2">{formatDate(item.createdAt)}</td><td className="p-2">{item.eventType ?? "—"}</td><td className="p-2">{item.processingStatus}</td><td className="p-2">{item.email ?? "—"}</td><td className="p-2">{item.plan ?? "—"}</td><td className="p-2">{item.externalOrderId ?? "—"}</td><td className="p-2"><details><summary className="cursor-pointer">Ver payload</summary><pre className="mt-2 max-w-md overflow-auto rounded bg-slate-950 p-2 text-xs">{JSON.stringify(item.rawPayload, null, 2)}</pre></details>{item.errorMessage && <p className="mt-1 text-xs text-amber-300">{item.errorMessage}</p>}</td></tr>)}</tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-white/10 bg-white/5 text-white">
-          <CardHeader><CardTitle>Solicitações de acesso</CardTitle></CardHeader>
-          <CardContent><div className="space-y-3">{requests.map((request) => <div key={request.id} className="rounded-xl border border-white/10 p-3"><div className="font-medium">{request.name} · {request.restaurantName}</div><div className="text-sm text-slate-300">{request.email} · {request.phone} · {request.requestedPlan} · {request.status}</div><div className="mt-2 flex gap-2"><Button size="sm" variant="secondary" onClick={() => fetch(`/api/platform/access-requests/${request.id}/grant-trial`, { method: "POST", credentials: "include" }).then(load)}>Liberar teste</Button><Button size="sm" variant="secondary" onClick={() => fetch(`/api/platform/access-requests/${request.id}/activate`, { method: "POST", credentials: "include" }).then(load)}>Ativar</Button><Button size="sm" variant="secondary" onClick={() => fetch(`/api/platform/access-requests/${request.id}/reject`, { method: "POST", credentials: "include" }).then(load)}>Rejeitar</Button></div></div>)}</div></CardContent>
-        </Card>
-      </div>
+                      {busy === `${i.userId}-${k}` ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        l
+                      )}
+                    </Button>
+                  ))}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </DataTable>
+      )}
+      {tab === "requests" && (
+        <DataTable
+          loading={isLoading}
+          empty="Nenhuma solicitação encontrada."
+          headers={[
+            "Nome",
+            "E-mail",
+            "Telefone",
+            "Restaurante",
+            "Plano",
+            "Status",
+            "Criada em",
+            "Ações",
+          ]}
+        >
+          {requests.map((r) => (
+            <tr key={r.id}>
+              <td className="px-4 py-3">{r.name}</td>
+              <td className="px-4 py-3">{r.email}</td>
+              <td className="px-4 py-3">{r.phone}</td>
+              <td className="px-4 py-3">{r.restaurantName}</td>
+              <td className="px-4 py-3">{r.requestedPlan}</td>
+              <td className="px-4 py-3">{r.status}</td>
+              <td className="px-4 py-3">{formatDate(r.createdAt)}</td>
+              <td className="px-4 py-3">
+                <div className="flex gap-2">
+                  {[
+                    ["grant-trial", "Liberar teste"],
+                    ["activate", "Ativar"],
+                    ["reject", "Rejeitar"],
+                  ].map(([k, l]) => (
+                    <Button
+                      key={k}
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy === `req-${r.id}-${k}`}
+                      onClick={() =>
+                        void run(`req-${r.id}-${k}`, () =>
+                          platformRequest(
+                            `/api/platform/access-requests/${r.id}/${k}`,
+                            { method: "POST" },
+                          ),
+                        )
+                      }
+                    >
+                      {l}
+                    </Button>
+                  ))}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </DataTable>
+      )}
+      {tab === "webhooks" && (
+        <DataTable
+          loading={isLoading}
+          empty="Nenhum webhook recebido."
+          headers={[
+            "Data",
+            "Evento",
+            "Status",
+            "E-mail",
+            "Plano",
+            "Pedido",
+            "Assinatura",
+            "Erro",
+            "Payload",
+          ]}
+        >
+          {webhooks.map((w) => (
+            <tr key={w.id}>
+              <td className="px-4 py-3">{formatDate(w.createdAt)}</td>
+              <td className="px-4 py-3">{w.eventType ?? "—"}</td>
+              <td className="px-4 py-3">{w.processingStatus}</td>
+              <td className="px-4 py-3">{w.email ?? "—"}</td>
+              <td className="px-4 py-3">{w.plan ?? "—"}</td>
+              <td className="px-4 py-3">{w.externalOrderId ?? "—"}</td>
+              <td className="px-4 py-3">{w.externalSubscriptionId ?? "—"}</td>
+              <td className="px-4 py-3 text-amber-200">
+                {w.errorMessage ?? "—"}
+              </td>
+              <td className="px-4 py-3">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() =>
+                    setPayload(JSON.stringify(w.rawPayload, null, 2))
+                  }
+                >
+                  Ver payload
+                </Button>
+              </td>
+            </tr>
+          ))}
+        </DataTable>
+      )}
+      {tab === "products" && (
+        <>
+          <Card className="mb-4 border-white/10 bg-white/5 text-white">
+            <CardHeader>
+              <CardTitle>Criar produto/plano Cakto</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-4">
+              {Object.entries(productForm).map(([k, v]) =>
+                k === "active" ? (
+                  <label key={k} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={!!v}
+                      onChange={(e) =>
+                        setProductForm({
+                          ...productForm,
+                          active: e.target.checked,
+                        })
+                      }
+                    />{" "}
+                    ativo
+                  </label>
+                ) : k === "plan" ? (
+                  <select
+                    key={k}
+                    className="rounded-xl bg-slate-900 p-2"
+                    value={String(v)}
+                    onChange={(e) =>
+                      setProductForm({ ...productForm, plan: e.target.value })
+                    }
+                  >
+                    <option>basico</option>
+                    <option>medio</option>
+                    <option>pro</option>
+                  </select>
+                ) : (
+                  <input
+                    key={k}
+                    className="rounded-xl border border-white/10 bg-white/5 p-2"
+                    placeholder={k}
+                    value={String(v)}
+                    onChange={(e) =>
+                      setProductForm({ ...productForm, [k]: e.target.value })
+                    }
+                  />
+                ),
+              )}
+              <Button
+                className="bg-red-600"
+                onClick={() =>
+                  void run("product-create", () =>
+                    platformRequest("/api/platform/billing/products", {
+                      method: "POST",
+                      body: JSON.stringify(productForm),
+                    }),
+                  )
+                }
+              >
+                Criar
+              </Button>
+            </CardContent>
+          </Card>
+          <DataTable
+            loading={isLoading}
+            empty="Nenhum produto cadastrado."
+            headers={[
+              "Provider",
+              "Plano",
+              "Produto",
+              "Offer ID",
+              "Product ID",
+              "Short ID",
+              "Checkout URL",
+              "Ativo",
+              "Ações",
+            ]}
+          >
+            {products.map((p) => (
+              <tr key={p.id}>
+                <td className="px-4 py-3">{p.provider}</td>
+                <td className="px-4 py-3">{p.plan}</td>
+                <td className="px-4 py-3">{p.productName ?? "—"}</td>
+                <td className="px-4 py-3">{p.externalOfferId ?? "—"}</td>
+                <td className="px-4 py-3">{p.externalProductId ?? "—"}</td>
+                <td className="px-4 py-3">{p.externalProductShortId ?? "—"}</td>
+                <td className="px-4 py-3 break-all">{p.checkoutUrl ?? "—"}</td>
+                <td className="px-4 py-3">{p.active ? "sim" : "não"}</td>
+                <td className="px-4 py-3">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      void run(`prod-${p.id}`, () =>
+                        platformRequest(
+                          `/api/platform/billing/products/${p.id}`,
+                          {
+                            method: "PATCH",
+                            body: JSON.stringify({ active: !p.active }),
+                          },
+                        ),
+                      )
+                    }
+                  >
+                    {p.active ? "Desativar" : "Ativar"}
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </DataTable>
+        </>
+      )}
+      {payload && (
+        <Modal title="Payload do webhook" onClose={() => setPayload(null)}>
+          <Button
+            className="mb-3"
+            onClick={() => void navigator.clipboard.writeText(String(payload))}
+          >
+            Copiar payload
+          </Button>
+          <pre className="max-h-[60vh] overflow-auto rounded-xl bg-slate-950 p-4 text-xs">
+            {String(payload)}
+          </pre>
+        </Modal>
+      )}
     </AdminShell>
+  );
+}
+
+function DataTable({
+  headers,
+  children,
+  loading,
+  empty,
+}: {
+  headers: string[];
+  children: ReactNode;
+  loading: boolean;
+  empty: string;
+}) {
+  const rows = Array.isArray(children) ? children.length : children ? 1 : 0;
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-xl shadow-black/10">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[900px] text-left text-sm">
+          <thead className="bg-white/10 text-xs uppercase tracking-wide text-slate-300">
+            <tr>
+              {headers.map((h) => (
+                <th key={h} className="px-4 py-3">
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/10 text-slate-100">
+            {children}
+          </tbody>
+        </table>
+      </div>
+      {loading && (
+        <div className="flex items-center justify-center gap-2 p-6 text-sm text-slate-400">
+          <Loader2 className="h-4 w-4 animate-spin" /> Carregando...
+        </div>
+      )}
+      {!loading && rows === 0 && (
+        <div className="p-6 text-center text-sm text-slate-400">{empty}</div>
+      )}
+    </div>
+  );
+}
+function Modal({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-3xl border border-white/10 bg-slate-900 p-5 text-white shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold">{title}</h2>
+          <Button variant="secondary" onClick={onClose}>
+            Fechar
+          </Button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+      <p className="text-xs text-slate-400">{label}</p>
+      <p className="mt-1 font-semibold">{value}</p>
+    </div>
   );
 }

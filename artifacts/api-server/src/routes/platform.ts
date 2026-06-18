@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
 import {
   accessRequestsTable,
   billingProviderProductsTable,
@@ -56,6 +56,26 @@ router.get(
       .where(
         sql`lower(${storesTable.status}) in ('blocked', 'bloqueada', 'bloqueado', 'suspended')`,
       );
+    const [pendingAccessRequests] = await db
+      .select({ total: count() })
+      .from(accessRequestsTable)
+      .where(eq(accessRequestsTable.status, "pending"));
+    const [failedWebhooks] = await db
+      .select({ total: count() })
+      .from(billingWebhookEventsTable)
+      .where(
+        sql`lower(${billingWebhookEventsTable.processingStatus}) in ('failed', 'error')`,
+      );
+    const [activeSubscriptions] = await db
+      .select({ total: count() })
+      .from(userEntitlementsTable)
+      .where(eq(userEntitlementsTable.status, "active"));
+    const [blockedSubscriptions] = await db
+      .select({ total: count() })
+      .from(userEntitlementsTable)
+      .where(
+        sql`lower(${userEntitlementsTable.status}) in ('blocked', 'cancelled', 'past_due')`,
+      );
     res.json({
       totalStores: storesTotal?.total ?? 0,
       activeStores: activeStores?.total ?? 0,
@@ -63,6 +83,10 @@ router.get(
       ordersToday: ordersToday?.total ?? 0,
       trialStores: trialStores?.total ?? 0,
       blockedStores: blockedStores?.total ?? 0,
+      pendingAccessRequests: pendingAccessRequests?.total ?? 0,
+      failedWebhooks: failedWebhooks?.total ?? 0,
+      activeSubscriptions: activeSubscriptions?.total ?? 0,
+      blockedSubscriptions: blockedSubscriptions?.total ?? 0,
     });
   },
 );
@@ -94,6 +118,79 @@ router.get(
       .leftJoin(memberCounts, eq(memberCounts.storeId, storesTable.id))
       .orderBy(storesTable.id);
     res.json({ stores });
+  },
+);
+
+router.get(
+  "/platform/stores/:storeId",
+  canReadStores,
+  async (req, res): Promise<void> => {
+    const storeId = Number(req.params.storeId);
+    if (!Number.isInteger(storeId)) {
+      res.status(400).json({ error: "Loja inválida." });
+      return;
+    }
+    const [store] = await db
+      .select({
+        id: storesTable.id,
+        name: storesTable.name,
+        slug: storesTable.slug,
+        status: storesTable.status,
+        createdAt: storesTable.createdAt,
+      })
+      .from(storesTable)
+      .where(eq(storesTable.id, storeId))
+      .limit(1);
+    if (!store) {
+      res.status(404).json({ error: "Loja não encontrada." });
+      return;
+    }
+    const members = await db
+      .select({
+        id: storeMembersTable.id,
+        userId: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+        role: storeMembersTable.role,
+        active: storeMembersTable.active,
+        entitlementPlan: userEntitlementsTable.plan,
+        entitlementStatus: userEntitlementsTable.status,
+      })
+      .from(storeMembersTable)
+      .innerJoin(usersTable, eq(storeMembersTable.userId, usersTable.id))
+      .leftJoin(
+        userEntitlementsTable,
+        eq(userEntitlementsTable.userId, usersTable.id),
+      )
+      .where(eq(storeMembersTable.storeId, storeId))
+      .orderBy(storeMembersTable.id);
+    const [totals] = await db
+      .select({
+        todayOrders: count(ordersTable.id),
+        todayRevenue: sql<string>`coalesce(sum(${ordersTable.totalAmount}), 0)`,
+      })
+      .from(ordersTable)
+      .where(
+        and(
+          eq(ordersTable.storeId, storeId),
+          sql`date(${ordersTable.createdAt}) = current_date`,
+        ),
+      );
+    const owner =
+      members.find((member) => member.role === "owner") ?? members[0];
+    res.json({
+      store: { ...store, membersCount: members.length },
+      members,
+      entitlement: owner
+        ? {
+            plan: owner.entitlementPlan,
+            status: owner.entitlementStatus,
+            userId: owner.userId,
+          }
+        : null,
+      todayOrders: totals?.todayOrders ?? 0,
+      todayRevenue: Number(totals?.todayRevenue ?? 0),
+    });
   },
 );
 
@@ -174,11 +271,9 @@ router.delete(
       platformAdmin?.role === "platform_owner" ||
       platformAdmin?.role === "platform_admin"
     ) {
-      res
-        .status(403)
-        .json({
-          error: "Não é permitido excluir platform_owner/platform_admin.",
-        });
+      res.status(403).json({
+        error: "Não é permitido excluir platform_owner/platform_admin.",
+      });
       return;
     }
 
@@ -202,11 +297,9 @@ router.delete(
       .where(eq(cashRegistersTable.operatorUserId, userId))
       .limit(1);
     if (criticalCashLink) {
-      res
-        .status(409)
-        .json({
-          error: "Usuário possui vínculos críticos e não pode ser excluído.",
-        });
+      res.status(409).json({
+        error: "Usuário possui vínculos críticos e não pode ser excluído.",
+      });
       return;
     }
 
@@ -249,13 +342,25 @@ router.get(
   },
 );
 
-
 router.get(
   "/platform/billing/webhooks",
   canManageBilling,
   async (_req, res): Promise<void> => {
     const webhooks = await db
-      .select({ id: billingWebhookEventsTable.id, createdAt: billingWebhookEventsTable.createdAt, eventType: billingWebhookEventsTable.eventType, paymentStatus: billingWebhookEventsTable.paymentStatus, processingStatus: billingWebhookEventsTable.processingStatus, email: billingWebhookEventsTable.email, plan: billingWebhookEventsTable.plan, externalOrderId: billingWebhookEventsTable.externalOrderId, externalSubscriptionId: billingWebhookEventsTable.externalSubscriptionId, rawPayload: billingWebhookEventsTable.rawPayload, errorMessage: billingWebhookEventsTable.errorMessage })
+      .select({
+        id: billingWebhookEventsTable.id,
+        createdAt: billingWebhookEventsTable.createdAt,
+        eventType: billingWebhookEventsTable.eventType,
+        paymentStatus: billingWebhookEventsTable.paymentStatus,
+        processingStatus: billingWebhookEventsTable.processingStatus,
+        email: billingWebhookEventsTable.email,
+        plan: billingWebhookEventsTable.plan,
+        externalOrderId: billingWebhookEventsTable.externalOrderId,
+        externalSubscriptionId:
+          billingWebhookEventsTable.externalSubscriptionId,
+        rawPayload: billingWebhookEventsTable.rawPayload,
+        errorMessage: billingWebhookEventsTable.errorMessage,
+      })
       .from(billingWebhookEventsTable)
       .orderBy(desc(billingWebhookEventsTable.createdAt))
       .limit(100);
@@ -267,7 +372,10 @@ router.get(
   "/platform/billing/products",
   canManageBilling,
   async (_req, res): Promise<void> => {
-    const products = await db.select().from(billingProviderProductsTable).orderBy(billingProviderProductsTable.id);
+    const products = await db
+      .select()
+      .from(billingProviderProductsTable)
+      .orderBy(billingProviderProductsTable.id);
     res.json({ products });
   },
 );
@@ -277,9 +385,66 @@ router.post(
   canManageBilling,
   async (req, res): Promise<void> => {
     const plan = typeof req.body?.plan === "string" ? req.body.plan : "";
-    if (!["basico", "medio", "pro"].includes(plan)) { res.status(400).json({ error: "Plano inválido." }); return; }
-    const [product] = await db.insert(billingProviderProductsTable).values({ provider: "cakto", externalProductId: req.body?.externalProductId || null, externalProductShortId: req.body?.externalProductShortId || null, externalOfferId: req.body?.externalOfferId || null, productName: req.body?.productName || null, offerName: req.body?.offerName || null, checkoutUrl: req.body?.checkoutUrl || null, active: req.body?.active !== false, plan }).returning();
+    if (!["basico", "medio", "pro"].includes(plan)) {
+      res.status(400).json({ error: "Plano inválido." });
+      return;
+    }
+    const [product] = await db
+      .insert(billingProviderProductsTable)
+      .values({
+        provider: "cakto",
+        externalProductId: req.body?.externalProductId || null,
+        externalProductShortId: req.body?.externalProductShortId || null,
+        externalOfferId: req.body?.externalOfferId || null,
+        productName: req.body?.productName || null,
+        offerName: req.body?.offerName || null,
+        checkoutUrl: req.body?.checkoutUrl || null,
+        active: req.body?.active !== false,
+        plan,
+      })
+      .returning();
     res.status(201).json({ product });
+  },
+);
+
+router.patch(
+  "/platform/billing/products/:id",
+  canManageBilling,
+  async (req, res): Promise<void> => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "Produto inválido." });
+      return;
+    }
+    const set: Record<string, unknown> = { updatedAt: new Date() };
+    for (const key of [
+      "productName",
+      "offerName",
+      "externalProductId",
+      "externalProductShortId",
+      "externalOfferId",
+      "checkoutUrl",
+    ] as const) {
+      if (key in req.body) set[key] = req.body[key] || null;
+    }
+    if ("active" in req.body) set.active = req.body.active === true;
+    if ("plan" in req.body) {
+      if (!["basico", "medio", "pro"].includes(req.body.plan)) {
+        res.status(400).json({ error: "Plano inválido." });
+        return;
+      }
+      set.plan = req.body.plan;
+    }
+    const [product] = await db
+      .update(billingProviderProductsTable)
+      .set(set)
+      .where(eq(billingProviderProductsTable.id, id))
+      .returning();
+    if (!product) {
+      res.status(404).json({ error: "Produto não encontrado." });
+      return;
+    }
+    res.json({ product });
   },
 );
 
@@ -288,13 +453,28 @@ router.get(
   canManageBilling,
   async (_req, res): Promise<void> => {
     await ensureAccessRequestsTable();
-    const requests = await db.select().from(accessRequestsTable).orderBy(desc(accessRequestsTable.createdAt));
+    const requests = await db
+      .select()
+      .from(accessRequestsTable)
+      .orderBy(desc(accessRequestsTable.createdAt));
     res.json({ requests });
   },
 );
-router.post("/platform/access-requests/:id/grant-trial", canManageBilling, (req, res) => handleAccessRequestAction(req, res, "grant-trial"));
-router.post("/platform/access-requests/:id/activate", canManageBilling, (req, res) => handleAccessRequestAction(req, res, "activate"));
-router.post("/platform/access-requests/:id/reject", canManageBilling, (req, res) => handleAccessRequestAction(req, res, "reject"));
+router.post(
+  "/platform/access-requests/:id/grant-trial",
+  canManageBilling,
+  (req, res) => handleAccessRequestAction(req, res, "grant-trial"),
+);
+router.post(
+  "/platform/access-requests/:id/activate",
+  canManageBilling,
+  (req, res) => handleAccessRequestAction(req, res, "activate"),
+);
+router.post(
+  "/platform/access-requests/:id/reject",
+  canManageBilling,
+  (req, res) => handleAccessRequestAction(req, res, "reject"),
+);
 
 async function updateEntitlement(userId: number, set: Record<string, unknown>) {
   await db
@@ -350,7 +530,11 @@ router.post(
       res.status(400).json({ error: "Usuário inválido." });
       return;
     }
-    await updateEntitlement(userId, { status: "blocked", source: "manual", blockedAt: new Date() });
+    await updateEntitlement(userId, {
+      status: "blocked",
+      source: "manual",
+      blockedAt: new Date(),
+    });
     res.json({ ok: true });
   },
 );
@@ -363,7 +547,11 @@ router.post(
       res.status(400).json({ error: "Usuário inválido." });
       return;
     }
-    await updateEntitlement(userId, { status: "cancelled", source: "manual", cancelledAt: new Date() });
+    await updateEntitlement(userId, {
+      status: "cancelled",
+      source: "manual",
+      cancelledAt: new Date(),
+    });
     res.json({ ok: true });
   },
 );
