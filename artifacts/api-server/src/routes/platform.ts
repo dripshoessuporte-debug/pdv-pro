@@ -17,7 +17,7 @@ import {
   usersTable,
   userActivationTokensTable,
 } from "@workspace/db";
-import { handleAccessRequestAction } from "./billing";
+import { handleAccessRequestAction, handleAccessRequestDebug } from "./billing";
 import { requirePlatformRole } from "../middleware/platform-rbac";
 import {
   clearSupportSessionCookie,
@@ -491,6 +491,13 @@ router.get(
     res.json({ requests });
   },
 );
+
+router.get(
+  "/platform/access-requests/:id/debug",
+  canManageBilling,
+  handleAccessRequestDebug,
+);
+
 router.post(
   "/platform/access-requests/:id/grant-trial",
   canManageBilling,
@@ -946,6 +953,50 @@ router.get(
       recentWebhooks: webhooks,
       recentAuditLogs: logs,
       activeSupportSessions: sessions,
+    });
+  },
+);
+
+async function safeTablePresence(tableNames: string[]) {
+  const rows = await Promise.all(
+    tableNames.map(async (name) => {
+      try {
+        const result = await db.execute(
+          sql`select to_regclass(${`public.${name}`}) is not null as exists`,
+        );
+        return [name, Boolean(result.rows[0]?.exists)] as const;
+      } catch {
+        return [name, false] as const;
+      }
+    }),
+  );
+  return Object.fromEntries(rows);
+}
+
+router.get(
+  "/platform/admin-readiness",
+  canManageBilling,
+  async (_req, res): Promise<void> => {
+    res.json({
+      databaseUrlConfigured: envFlag("DATABASE_URL"),
+      tables: await safeTablePresence([
+        "access_requests",
+        "user_entitlements",
+        "user_activation_tokens",
+        "billing_provider_products",
+        "billing_webhook_events",
+        "platform_admins",
+        "users",
+        "stores",
+        "store_members",
+      ]),
+      env: {
+        APP_PUBLIC_URL: envFlag("APP_PUBLIC_URL"),
+        CAKTO_WEBHOOK_SECRET: envFlag("CAKTO_WEBHOOK_SECRET"),
+        CAKTO_CHECKOUT_START_URL: envFlag("CAKTO_CHECKOUT_START_URL"),
+        CAKTO_CHECKOUT_DELIVERY_URL: envFlag("CAKTO_CHECKOUT_DELIVERY_URL"),
+        CAKTO_CHECKOUT_PRO_URL: envFlag("CAKTO_CHECKOUT_PRO_URL"),
+      },
     });
   },
 );
