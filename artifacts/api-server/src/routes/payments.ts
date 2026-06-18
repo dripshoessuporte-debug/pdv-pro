@@ -151,13 +151,45 @@ router.post("/payments", async (req, res): Promise<void> => {
         throw err;
       }
 
+      const financialNow = await getOrderFinancialState(
+        parsed.data.orderId,
+        tx as unknown as typeof db,
+      );
+      if (
+        financialNow.paidAmount >= financialNow.totalAmount &&
+        financialNow.totalAmount > 0
+      ) {
+        const err = new Error(
+          "Pedido já está totalmente pago.",
+        ) as Error & { fullyPaid?: boolean };
+        err.fullyPaid = true;
+        throw err;
+      }
+
+      if (
+        parsed.data.amount > financialNow.outstandingAmount &&
+        parsed.data.method !== "cash"
+      ) {
+        const err = new Error(
+          `Valor maior que o saldo pendente de R$ ${financialNow.outstandingAmount.toFixed(2)}.`,
+        ) as Error & { amountAboveOutstanding?: boolean };
+        err.amountAboveOutstanding = true;
+        throw err;
+      }
+
+      const paymentAmount =
+        parsed.data.method === "cash"
+          ? Math.min(parsed.data.amount, financialNow.outstandingAmount)
+          : parsed.data.amount;
       let change: string | null = null;
       if (
         parsed.data.method === "cash" &&
-        parsed.data.amountTendered !== undefined
+        (parsed.data.amountTendered !== undefined ||
+          parsed.data.amount > financialNow.outstandingAmount)
       ) {
+        const tendered = parsed.data.amountTendered ?? parsed.data.amount;
         change = String(
-          Math.max(0, parsed.data.amountTendered - parsed.data.amount),
+          Math.max(0, tendered - paymentAmount),
         );
       }
 
@@ -166,7 +198,7 @@ router.post("/payments", async (req, res): Promise<void> => {
         .insert(paymentsTable)
         .values({
           orderId: parsed.data.orderId,
-          amount: String(parsed.data.amount),
+          amount: String(paymentAmount),
           method: parsed.data.method,
           status: "approved",
           change,
@@ -229,7 +261,7 @@ router.post("/payments", async (req, res): Promise<void> => {
             await tx.insert(cashMovementsTable).values({
               cashRegisterId: openRegister.id,
               type: "payment",
-              amount: String(parsed.data.amount),
+              amount: String(paymentAmount),
               paymentMethod: parsed.data.method,
               reason: `Pagamento Pedido #${parsed.data.orderId}`,
               orderId: parsed.data.orderId,
@@ -268,7 +300,28 @@ router.post("/payments", async (req, res): Promise<void> => {
         .status(409)
         .json({
           error: "Pedido pago, mas ainda não está pronto para finalizar.",
-        });
+      });
+      return;
+    }
+    if (
+      err &&
+      typeof err === "object" &&
+      (err as { fullyPaid?: boolean }).fullyPaid
+    ) {
+      res.status(409).json({ error: "Pedido já está totalmente pago." });
+      return;
+    }
+    if (
+      err &&
+      typeof err === "object" &&
+      (err as { amountAboveOutstanding?: boolean }).amountAboveOutstanding
+    ) {
+      res.status(400).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : "Valor maior que o saldo pendente.",
+      });
       return;
     }
     throw err;
