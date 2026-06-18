@@ -226,10 +226,16 @@ async function platformRequest<T>(
     | { error?: string }
     | T
     | null;
-  if (!response.ok)
+  if (!response.ok) {
+    if (import.meta.env.DEV)
+      console.error("[Admin Max] platform request failed", {
+        status: response.status,
+        body: data,
+      });
     throw new Error(
       (data as { error?: string } | null)?.error ?? `HTTP ${response.status}`,
     );
+  }
   return data as T;
 }
 
@@ -1052,10 +1058,31 @@ export function AdminMaxBillingPage() {
   const [webhooks, setWebhooks] = useState<BillingWebhook[]>([]);
   const [requests, setRequests] = useState<AccessRequest[]>([]);
   const [products, setProducts] = useState<BillingProduct[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
   const [payload, setPayload] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loadingEntitlements, setLoadingEntitlements] = useState(true);
+  const [loadingRequests, setLoadingRequests] = useState(true);
+  const [loadingWebhooks, setLoadingWebhooks] = useState(true);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [actionLoadingId, setActionLoadingId] = useState<
+    number | string | null
+  >(null);
+  const [actionLoadingType, setActionLoadingType] = useState<string | null>(
+    null,
+  );
+  const [errorEntitlements, setErrorEntitlements] = useState<string | null>(
+    null,
+  );
+  const [errorRequests, setErrorRequests] = useState<string | null>(null);
+  const [errorWebhooks, setErrorWebhooks] = useState<string | null>(null);
+  const [errorProducts, setErrorProducts] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [activationLink, setActivationLink] = useState<{
+    activationUrl: string;
+    name: string;
+    email: string;
+    plan: string;
+    status: string;
+  } | null>(null);
   const [productForm, setProductForm] = useState({
     plan: "basico",
     productName: "",
@@ -1066,50 +1093,125 @@ export function AdminMaxBillingPage() {
     checkoutUrl: "",
     active: true,
   });
+  const isLoading =
+    loadingEntitlements ||
+    loadingRequests ||
+    loadingWebhooks ||
+    loadingProducts;
+  const absoluteActivationUrl = activationLink?.activationUrl?.startsWith(
+    "http",
+  )
+    ? activationLink.activationUrl
+    : activationLink
+      ? `${window.location.origin}${activationLink.activationUrl.startsWith("/") ? "" : "/"}${activationLink.activationUrl}`
+      : "";
   const load = useCallback(() => {
-    setIsLoading(true);
-    setError(null);
-    Promise.allSettled([
-      fetchPlatformJson<{ entitlements: PlatformEntitlement[] }>(
-        "/api/platform/entitlements",
-      ),
-      fetchPlatformJson<{ requests: AccessRequest[] }>(
-        "/api/platform/access-requests",
-      ),
-      fetchPlatformJson<{ webhooks: BillingWebhook[] }>(
-        "/api/platform/billing/webhooks",
-      ),
-      fetchPlatformJson<{ products: BillingProduct[] }>(
-        "/api/platform/billing/products",
-      ),
-    ])
-      .then(([e, r, w, p]) => {
-        if (e.status === "fulfilled") setEntitlements(e.value.entitlements);
-        if (r.status === "fulfilled") setRequests(r.value.requests);
-        if (w.status === "fulfilled") setWebhooks(w.value.webhooks);
-        if (p.status === "fulfilled") setProducts(p.value.products);
-        if ([e, r, w, p].some((x) => x.status === "rejected"))
-          setError("Alguns dados de cobrança estão indisponíveis.");
-      })
-      .finally(() => setIsLoading(false));
+    setLoadingEntitlements(true);
+    setLoadingRequests(true);
+    setLoadingWebhooks(true);
+    setLoadingProducts(true);
+    setErrorEntitlements(null);
+    setErrorRequests(null);
+    setErrorWebhooks(null);
+    setErrorProducts(null);
+    void fetchPlatformJson<{ entitlements: PlatformEntitlement[] }>(
+      "/api/platform/entitlements",
+    )
+      .then((v) => setEntitlements(v.entitlements))
+      .catch((e) =>
+        setErrorEntitlements(
+          getErrorMessage(e, "Não foi possível carregar acessos."),
+        ),
+      )
+      .finally(() => setLoadingEntitlements(false));
+    void fetchPlatformJson<{ requests: AccessRequest[] }>(
+      "/api/platform/access-requests",
+    )
+      .then((v) => setRequests(v.requests))
+      .catch((e) =>
+        setErrorRequests(
+          getErrorMessage(
+            e,
+            "Não foi possível carregar solicitações de acesso.",
+          ),
+        ),
+      )
+      .finally(() => setLoadingRequests(false));
+    void fetchPlatformJson<{ webhooks: BillingWebhook[] }>(
+      "/api/platform/billing/webhooks",
+    )
+      .then((v) => setWebhooks(v.webhooks))
+      .catch((e) =>
+        setErrorWebhooks(
+          getErrorMessage(e, "Não foi possível carregar webhooks."),
+        ),
+      )
+      .finally(() => setLoadingWebhooks(false));
+    void fetchPlatformJson<{ products: BillingProduct[] }>(
+      "/api/platform/billing/products",
+    )
+      .then((v) => setProducts(v.products))
+      .catch((e) =>
+        setErrorProducts(
+          getErrorMessage(e, "Não foi possível carregar produtos Cakto."),
+        ),
+      )
+      .finally(() => setLoadingProducts(false));
   }, []);
   useEffect(() => {
     load();
   }, [load]);
   async function run(key: string, fn: () => Promise<unknown>) {
-    setBusy(key);
+    setActionLoadingId(key);
+    setActionLoadingType(key.split("-").pop() ?? key);
+    setActionError(null);
     try {
-      const result = (await fn()) as { activationUrl?: string };
+      await fn();
+      notify("Ação concluída.");
+      load();
+    } catch (e) {
+      setActionError(
+        `Falha ao executar ação: ${getErrorMessage(e, "Ação falhou.")}`,
+      );
+    } finally {
+      setActionLoadingId(null);
+      setActionLoadingType(null);
+    }
+  }
+  async function runRequestAction(request: AccessRequest, type: string) {
+    const key = `req-${request.id}-${type}`;
+    setActionLoadingId(key);
+    setActionLoadingType(type);
+    setActionError(null);
+    try {
+      const result = await platformRequest<{
+        activationUrl?: string;
+        status?: string;
+        accessRequestStatus?: string;
+      }>(`/api/platform/access-requests/${request.id}/${type}`, {
+        method: "POST",
+      });
+      if (result.activationUrl)
+        setActivationLink({
+          activationUrl: result.activationUrl,
+          name: request.name,
+          email: request.email,
+          plan: request.requestedPlan,
+          status: result.status ?? result.accessRequestStatus ?? "liberado",
+        });
       notify(
-        result?.activationUrl
-          ? `Ação concluída. Link: ${result.activationUrl}`
-          : "Ação concluída.",
+        type === "reject"
+          ? "Solicitação rejeitada."
+          : "Acesso liberado e link de ativação gerado.",
       );
       load();
     } catch (e) {
-      setError(getErrorMessage(e, "Ação falhou."));
+      setActionError(
+        `Falha ao executar ação: ${getErrorMessage(e, "Ação falhou.")}`,
+      );
     } finally {
-      setBusy(null);
+      setActionLoadingId(null);
+      setActionLoadingType(null);
     }
   }
   const tabs = [
@@ -1125,11 +1227,22 @@ export function AdminMaxBillingPage() {
       onRefresh={load}
       isRefreshing={isLoading}
     >
-      {error && (
-        <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-          {error}
-        </div>
-      )}
+      {[
+        errorEntitlements,
+        errorRequests && "Não foi possível carregar solicitações de acesso.",
+        errorWebhooks,
+        errorProducts,
+        actionError,
+      ]
+        .filter(Boolean)
+        .map((err) => (
+          <div
+            key={String(err)}
+            className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200"
+          >
+            {err}
+          </div>
+        ))}
       <div className="mb-5 flex flex-wrap gap-2">
         {tabs.map(([id, label]) => (
           <Button
@@ -1148,7 +1261,7 @@ export function AdminMaxBillingPage() {
       </div>
       {tab === "entitlements" && (
         <DataTable
-          loading={isLoading}
+          loading={loadingEntitlements}
           empty="Nenhum acesso encontrado."
           headers={[
             "Nome",
@@ -1184,7 +1297,7 @@ export function AdminMaxBillingPage() {
                   ].map(([k, l]) => (
                     <Button
                       key={k}
-                      disabled={busy === `${i.userId}-${k}`}
+                      disabled={actionLoadingId === `${i.userId}-${k}`}
                       size="sm"
                       variant="secondary"
                       onClick={() =>
@@ -1196,7 +1309,7 @@ export function AdminMaxBillingPage() {
                         )
                       }
                     >
-                      {busy === `${i.userId}-${k}` ? (
+                      {actionLoadingId === `${i.userId}-${k}` ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         l
@@ -1211,7 +1324,7 @@ export function AdminMaxBillingPage() {
       )}
       {tab === "requests" && (
         <DataTable
-          loading={isLoading}
+          loading={loadingRequests}
           empty="Nenhuma solicitação encontrada."
           headers={[
             "Nome",
@@ -1244,17 +1357,14 @@ export function AdminMaxBillingPage() {
                       key={k}
                       size="sm"
                       variant="secondary"
-                      disabled={busy === `req-${r.id}-${k}`}
-                      onClick={() =>
-                        void run(`req-${r.id}-${k}`, () =>
-                          platformRequest(
-                            `/api/platform/access-requests/${r.id}/${k}`,
-                            { method: "POST" },
-                          ),
-                        )
-                      }
+                      disabled={actionLoadingId === `req-${r.id}-${k}`}
+                      onClick={() => void runRequestAction(r, k)}
                     >
-                      {l}
+                      {actionLoadingId === `req-${r.id}-${k}` ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        l
+                      )}
                     </Button>
                   ))}
                 </div>
@@ -1265,7 +1375,7 @@ export function AdminMaxBillingPage() {
       )}
       {tab === "webhooks" && (
         <DataTable
-          loading={isLoading}
+          loading={loadingWebhooks}
           empty="Nenhum webhook recebido."
           headers={[
             "Data",
@@ -1369,7 +1479,7 @@ export function AdminMaxBillingPage() {
             </CardContent>
           </Card>
           <DataTable
-            loading={isLoading}
+            loading={loadingProducts}
             empty="Nenhum produto cadastrado."
             headers={[
               "Provider",
@@ -1416,6 +1526,50 @@ export function AdminMaxBillingPage() {
             ))}
           </DataTable>
         </>
+      )}
+      {activationLink && (
+        <Modal
+          title="Link de ativação gerado"
+          onClose={() => setActivationLink(null)}
+        >
+          <div className="space-y-3">
+            <p className="text-sm text-slate-200">
+              Envie este link para o cliente concluir o cadastro e criar a loja.
+            </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Info label="Nome" value={activationLink.name} />
+              <Info label="E-mail" value={activationLink.email} />
+              <Info label="Plano" value={activationLink.plan} />
+              <Info label="Status liberado" value={activationLink.status} />
+            </div>
+            <input
+              className="w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm"
+              readOnly
+              value={absoluteActivationUrl}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() =>
+                  void navigator.clipboard.writeText(absoluteActivationUrl)
+                }
+              >
+                Copiar link
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  window.open(
+                    absoluteActivationUrl,
+                    "_blank",
+                    "noopener,noreferrer",
+                  )
+                }
+              >
+                Abrir link
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
       {payload && (
         <Modal title="Payload do webhook" onClose={() => setPayload(null)}>
