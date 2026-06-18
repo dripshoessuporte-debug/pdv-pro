@@ -42,7 +42,6 @@ const ROUTE_COLORS = [
   "#475569",
 ] as const;
 
-
 type NormalizedDeliveryPaymentMethod =
   | "cash"
   | "pix"
@@ -69,7 +68,11 @@ function normalizeDeliveryPaymentMethod(
   ) {
     return "credit_card";
   }
-  if (normalized === "debito" || normalized === "débito" || normalized === "debit_card") {
+  if (
+    normalized === "debito" ||
+    normalized === "débito" ||
+    normalized === "debit_card"
+  ) {
     return "debit_card";
   }
   if (normalized === "voucher") return "voucher";
@@ -1621,6 +1624,9 @@ router.post(
               paymentMethod: method,
               reason: `Pagamento Pedido #${order.orderId}`,
               orderId: order.orderId,
+              actorUserId: actor.id,
+              actorName: actor.name,
+              actorRole: actor.role,
             });
           }
         }
@@ -2198,6 +2204,9 @@ router.post("/delivery/orders/:id/settle", async (req, res): Promise<void> => {
         paymentMethod: rawMethod,
         reason: notes ?? `Baixa entrega Pedido #${orderId}`,
         orderId,
+        actorUserId: actor.id,
+        actorName: actor.name,
+        actorRole: actor.role,
       });
 
       // Close the order

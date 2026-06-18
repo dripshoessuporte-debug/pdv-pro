@@ -157,6 +157,9 @@ async function buildRegisterDetail(
       paymentMethod: cashMovementsTable.paymentMethod,
       reason: cashMovementsTable.reason,
       orderId: cashMovementsTable.orderId,
+      actorUserId: cashMovementsTable.actorUserId,
+      actorName: cashMovementsTable.actorName,
+      actorRole: cashMovementsTable.actorRole,
       createdAt: cashMovementsTable.createdAt,
       orderCreatedAt: ordersTable.createdAt,
       orderPaidAt: ordersTable.paidAt,
@@ -209,7 +212,9 @@ async function buildRegisterDetail(
           : sql`true`,
       ),
     );
-  const totalPlatform = parseFloat(String(platformPaymentsSummary?.total ?? "0"));
+  const totalPlatform = parseFloat(
+    String(platformPaymentsSummary?.total ?? "0"),
+  );
   const totalRestaurantReceived =
     totalCash + totalPix + totalCredit + totalDebit + totalVoucher;
   const totalSales = totalRestaurantReceived + totalPlatform;
@@ -230,7 +235,9 @@ async function buildRegisterDetail(
     totalManualIn -
     totalWithdrawals;
 
-  let reconciliation: Awaited<ReturnType<typeof buildReconciliationSummary>> | undefined;
+  let reconciliation:
+    | Awaited<ReturnType<typeof buildReconciliationSummary>>
+    | undefined;
   try {
     reconciliation = await buildReconciliationSummary(register);
   } catch (error) {
@@ -267,15 +274,19 @@ async function buildRegisterDetail(
 
 router.get("/cash/current", async (req, res): Promise<void> => {
   const actor = await getCurrentActor(req);
+  if (
+    !["max_control", "atendente"].includes(actor.role) &&
+    !actor.isDevelopmentFallback
+  ) {
+    res
+      .status(403)
+      .json({ error: "Você não tem permissão para acessar o caixa." });
+    return;
+  }
   const conditions = [
     eq(cashRegistersTable.storeId, actor.storeId),
     eq(cashRegistersTable.status, "open"),
   ];
-  if (actor.role === "atendente") {
-    if (actor.id)
-      conditions.push(eq(cashRegistersTable.operatorUserId, actor.id));
-    else conditions.push(sql`${cashRegistersTable.operator} = ${actor.name}`);
-  }
 
   const [register] = await db
     .select()
@@ -354,11 +365,12 @@ router.get("/cash/history", async (req, res): Promise<void> => {
   res.json(details);
 });
 
-
 router.post("/cash/reconcile/current", async (req, res): Promise<void> => {
   const actor = await getCurrentActor(req);
   if (actor.role !== "max_control" && !actor.isDevelopmentFallback) {
-    res.status(403).json({ error: "Você não tem permissão para reconciliar o caixa." });
+    res
+      .status(403)
+      .json({ error: "Você não tem permissão para reconciliar o caixa." });
     return;
   }
 
@@ -405,7 +417,9 @@ router.post("/cash/reconcile/current", async (req, res): Promise<void> => {
     const skippedOrders: number[] = [];
 
     for (const order of candidates) {
-      const method = normalizeDeliveryPaymentMethod(order.deliveryPaymentMethod);
+      const method = normalizeDeliveryPaymentMethod(
+        order.deliveryPaymentMethod,
+      );
       const amount = String(order.totalAmount ?? "0");
       const [payment] = await tx
         .insert(paymentsTable)
@@ -442,6 +456,9 @@ router.post("/cash/reconcile/current", async (req, res): Promise<void> => {
             paymentMethod: method,
             reason: `Pagamento Pedido #${order.id}`,
             orderId: order.id,
+            actorUserId: actor.id,
+            actorName: actor.name,
+            actorRole: actor.role,
           });
           createdMovements.push(order.id);
         }
@@ -556,7 +573,8 @@ router.post("/cash/movements", async (req, res): Promise<void> => {
     if (!scope) return;
     if (scope.cashRegisterId !== parsed.data.cashRegisterId) {
       res.status(403).json({
-        error: "Esta visualização mostra apenas dados do seu plantão atual.",
+        error:
+          "Este caixa pertence à loja atual e está compartilhado com a equipe autorizada.",
       });
       return;
     }
@@ -592,6 +610,9 @@ router.post("/cash/movements", async (req, res): Promise<void> => {
       paymentMethod: parsed.data.paymentMethod,
       reason: parsed.data.reason,
       orderId: parsed.data.orderId,
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
     })
     .returning();
 

@@ -49,6 +49,9 @@ export const cashMovementsTable = pgTable("cash_movements", {
   paymentMethod: text("payment_method"),
   reason: text("reason").notNull(),
   orderId: integer("order_id").references(() => ordersTable.id),
+  actorUserId: integer("actor_user_id").references(() => usersTable.id),
+  actorName: text("actor_name"),
+  actorRole: text("actor_role"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

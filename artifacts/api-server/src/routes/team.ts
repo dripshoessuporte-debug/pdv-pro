@@ -1,6 +1,12 @@
 import { Router, type IRouter } from "express";
-import { and, count, eq, sql } from "drizzle-orm";
-import { db, storeMembersTable, usersTable } from "@workspace/db";
+import { and, count, desc, eq, sql } from "drizzle-orm";
+import {
+  cashRegistersTable,
+  db,
+  storeMembersTable,
+  storesTable,
+  usersTable,
+} from "@workspace/db";
 import {
   getCurrentActor,
   requireRole,
@@ -32,9 +38,14 @@ async function findMemberInStore(memberId: number, storeId: number) {
       role: storeMembersTable.role,
       active: storeMembersTable.active,
       createdAt: storeMembersTable.createdAt,
+      isDefault: storeMembersTable.isDefault,
+      storeId: storeMembersTable.storeId,
+      storeName: storesTable.name,
+      lastLoginAt: usersTable.lastLoginAt,
     })
     .from(storeMembersTable)
     .innerJoin(usersTable, eq(storeMembersTable.userId, usersTable.id))
+    .innerJoin(storesTable, eq(storeMembersTable.storeId, storesTable.id))
     .where(
       and(
         eq(storeMembersTable.id, memberId),
@@ -76,6 +87,80 @@ async function wouldRemoveLastActiveMaxControl(
   return { member, blocked: (await countActiveMaxControls(storeId)) <= 1 };
 }
 
+router.get("/team/context-diagnostics", async (req, res): Promise<void> => {
+  const actor = await getCurrentActor(req);
+  const memberships = await db
+    .select({
+      storeMemberId: storeMembersTable.id,
+      storeId: storeMembersTable.storeId,
+      storeName: storesTable.name,
+      role: storeMembersTable.role,
+      active: storeMembersTable.active,
+      isDefault: storeMembersTable.isDefault,
+    })
+    .from(storeMembersTable)
+    .innerJoin(storesTable, eq(storeMembersTable.storeId, storesTable.id))
+    .where(eq(storeMembersTable.userId, actor.id ?? 0))
+    .orderBy(sql`${storeMembersTable.isDefault} DESC`, storesTable.id);
+
+  const membership =
+    memberships.find((member) => member.storeId === actor.storeId) ?? null;
+  const [openCash] = await db
+    .select({
+      id: cashRegistersTable.id,
+      openedByUserId: cashRegistersTable.operatorUserId,
+      openedByName: cashRegistersTable.operator,
+    })
+    .from(cashRegistersTable)
+    .where(
+      and(
+        eq(cashRegistersTable.storeId, actor.storeId),
+        eq(cashRegistersTable.status, "open"),
+      ),
+    )
+    .orderBy(desc(cashRegistersTable.openedAt))
+    .limit(1);
+  const actorCanAccessCash = ["max_control", "atendente"].includes(actor.role);
+  const warnings: string[] = [];
+  if (!membership)
+    warnings.push("Usuário sem store_member ativo para a loja atual.");
+  if (!memberships.length) warnings.push("Usuário sem loja ativa vinculada.");
+  if (openCash && !actorCanAccessCash)
+    warnings.push(
+      "Existe caixa aberto na loja, mas o perfil atual não acessa caixa.",
+    );
+
+  res.json({
+    user: { id: actor.id, name: actor.name, email: actor.email ?? null },
+    currentStore: {
+      id: actor.storeId,
+      name: membership?.storeName ?? `Loja ${actor.storeId}`,
+      role: actor.role,
+    },
+    stores: memberships.map((member) => ({
+      id: member.storeId,
+      name: member.storeName,
+      role: member.role,
+    })),
+    membership: membership
+      ? {
+          storeMemberId: membership.storeMemberId,
+          role: membership.role,
+          active: membership.active,
+          isDefault: membership.isDefault,
+        }
+      : null,
+    cash: {
+      storeHasOpenCashRegister: Boolean(openCash),
+      openCashRegisterId: openCash?.id ?? null,
+      openedByUserId: openCash?.openedByUserId ?? null,
+      openedByName: openCash?.openedByName ?? null,
+      actorCanAccessCash,
+    },
+    warnings,
+  });
+});
+
 router.use("/team", requireRole("max_control"));
 
 router.get("/team", async (req, res): Promise<void> => {
@@ -89,14 +174,22 @@ router.get("/team", async (req, res): Promise<void> => {
       role: storeMembersTable.role,
       active: storeMembersTable.active,
       createdAt: storeMembersTable.createdAt,
+      storeId: storeMembersTable.storeId,
+      storeName: storesTable.name,
+      lastLoginAt: usersTable.lastLoginAt,
     })
     .from(storeMembersTable)
     .innerJoin(usersTable, eq(storeMembersTable.userId, usersTable.id))
+    .innerJoin(storesTable, eq(storeMembersTable.storeId, storesTable.id))
     .where(eq(storeMembersTable.storeId, actor.storeId))
     .orderBy(storeMembersTable.createdAt);
 
   res.json(
-    members.map((m) => ({ ...m, createdAt: m.createdAt.toISOString() })),
+    members.map((m) => ({
+      ...m,
+      createdAt: m.createdAt.toISOString(),
+      lastLoginAt: m.lastLoginAt?.toISOString() ?? null,
+    })),
   );
 });
 
@@ -117,11 +210,9 @@ router.post("/team", async (req, res): Promise<void> => {
     return;
   }
   if (password.length < minimumPasswordLength) {
-    res
-      .status(400)
-      .json({
-        error: `A senha deve ter pelo menos ${minimumPasswordLength} caracteres.`,
-      });
+    res.status(400).json({
+      error: `A senha deve ter pelo menos ${minimumPasswordLength} caracteres.`,
+    });
     return;
   }
   if (!role) {
@@ -147,9 +238,11 @@ router.post("/team", async (req, res): Promise<void> => {
       )
       .limit(1);
     if (existingMember) {
-      res
-        .status(409)
-        .json({ error: "Este e-mail já pertence à equipe desta loja." });
+      await db
+        .update(storeMembersTable)
+        .set({ role, active: true })
+        .where(eq(storeMembersTable.id, existingMember.id));
+      res.status(200).json({ memberId: existingMember.id, updated: true });
       return;
     }
   } else {
@@ -165,6 +258,16 @@ router.post("/team", async (req, res): Promise<void> => {
     userId = createdUser.id;
   }
 
+  const [defaultCount] = await db
+    .select({ total: count() })
+    .from(storeMembersTable)
+    .where(
+      and(
+        eq(storeMembersTable.userId, userId),
+        eq(storeMembersTable.isDefault, true),
+      ),
+    );
+
   const [createdMember] = await db
     .insert(storeMembersTable)
     .values({
@@ -172,7 +275,7 @@ router.post("/team", async (req, res): Promise<void> => {
       userId,
       role,
       active: true,
-      isDefault: false,
+      isDefault: Number(defaultCount?.total ?? 0) === 0,
     })
     .returning({ memberId: storeMembersTable.id });
   res.status(201).json({ memberId: createdMember.memberId });
@@ -200,11 +303,9 @@ router.patch("/team/:memberId", async (req, res): Promise<void> => {
     return;
   }
   if (check.blocked) {
-    res
-      .status(409)
-      .json({
-        error: "A loja precisa manter pelo menos um Administrador ativo.",
-      });
+    res.status(409).json({
+      error: "A loja precisa manter pelo menos um Administrador ativo.",
+    });
     return;
   }
   await db
@@ -231,11 +332,9 @@ router.post(
       return;
     }
     if (password.length < minimumPasswordLength) {
-      res
-        .status(400)
-        .json({
-          error: `A senha deve ter pelo menos ${minimumPasswordLength} caracteres.`,
-        });
+      res.status(400).json({
+        error: `A senha deve ter pelo menos ${minimumPasswordLength} caracteres.`,
+      });
       return;
     }
     const member = await findMemberInStore(memberId, actor.storeId);
@@ -269,11 +368,9 @@ router.post("/team/:memberId/deactivate", async (req, res): Promise<void> => {
     return;
   }
   if (check.blocked) {
-    res
-      .status(409)
-      .json({
-        error: "A loja precisa manter pelo menos um Administrador ativo.",
-      });
+    res.status(409).json({
+      error: "A loja precisa manter pelo menos um Administrador ativo.",
+    });
     return;
   }
   await db

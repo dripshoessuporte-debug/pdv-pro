@@ -199,12 +199,10 @@ export const attachCurrentActor: RequestHandler = async (req, res, next) => {
           supportSessionId: context.supportSessionId,
         },
       );
-      res
-        .status(403)
-        .json({
-          error:
-            "Modo suporte somente leitura. Encerre e inicie suporte com permissão de edição para alterar dados.",
-        });
+      res.status(403).json({
+        error:
+          "Modo suporte somente leitura. Encerre e inicie suporte com permissão de edição para alterar dados.",
+      });
       return;
     }
     next();
@@ -249,8 +247,6 @@ export async function getCurrentOperationalScope(req: Request): Promise<{
     eq(cashRegistersTable.storeId, actor.storeId),
     eq(cashRegistersTable.status, "open"),
   ];
-  if (actor.id) filters.push(eq(cashRegistersTable.operatorUserId, actor.id));
-  else filters.push(sql`${cashRegistersTable.operator} = ${actor.name}`);
 
   const [register] = await db
     .select({
@@ -279,7 +275,12 @@ export async function requireOpenShift(
 } | null> {
   const scope = await getCurrentOperationalScope(req);
   if (scope.actor.role === "atendente" && !scope.cashRegisterId) {
-    res.status(403).json({ error: "Abra o caixa para iniciar seu plantão." });
+    res
+      .status(403)
+      .json({
+        error:
+          "Nenhum caixa aberto para esta loja. Abra o caixa antes de vender.",
+      });
     return null;
   }
   return scope;
