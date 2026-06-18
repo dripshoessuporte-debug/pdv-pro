@@ -9,6 +9,7 @@ import {
 } from "@workspace/db";
 import { getDefaultStoreIdOrThrow } from "../lib/store-context";
 import { resolveAuthenticatedContext } from "../lib/auth";
+import { logPlatformAuditAction } from "../lib/platform-audit";
 
 export const roles = [
   "max_control",
@@ -180,7 +181,32 @@ export async function resolveCurrentActor(req: Request): Promise<CurrentActor> {
 
 export const attachCurrentActor: RequestHandler = async (req, res, next) => {
   try {
+    const context = await resolveAuthenticatedContext(req);
     await resolveCurrentActor(req);
+    if (
+      context?.supportMode &&
+      context.supportModeType === "read_only" &&
+      !["GET", "HEAD", "OPTIONS"].includes(req.method)
+    ) {
+      await logPlatformAuditAction(
+        context.user,
+        "support_readonly_blocked_write",
+        "store",
+        String(context.currentStore?.id ?? ""),
+        {
+          path: req.originalUrl,
+          method: req.method,
+          supportSessionId: context.supportSessionId,
+        },
+      );
+      res
+        .status(403)
+        .json({
+          error:
+            "Modo suporte somente leitura. Encerre e inicie suporte com permissão de edição para alterar dados.",
+        });
+      return;
+    }
     next();
   } catch (error) {
     const status = (error as Error & { status?: number }).status ?? 500;

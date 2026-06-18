@@ -90,6 +90,12 @@ async function serializeContext(
     platformRole: context.platformRole,
     stores: context.stores,
     currentStore: context.currentStore,
+    supportMode: context.supportMode ?? false,
+    supportSessionId: context.supportSessionId ?? null,
+    supportModeType: context.supportModeType ?? null,
+    supportActorEmail: context.supportActorEmail ?? null,
+    supportReason: context.supportReason ?? null,
+    supportStoreName: context.supportStoreName ?? null,
     entitlement: context.platformRole
       ? null
       : await getSerializedEntitlement(context.user.id),

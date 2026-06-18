@@ -12,7 +12,10 @@ import {
   Loader2,
   RefreshCw,
   Sparkles,
+  ShieldCheck,
   Store,
+  TerminalSquare,
+  ScrollText,
   Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +61,9 @@ const menuItems = [
   { href: "/admin-max/stores", label: "Lojas", icon: Building2 },
   { href: "/admin-max/users", label: "Usuários", icon: Users },
   { href: "/admin-max/billing", label: "Cobrança", icon: CreditCard },
+  { href: "/admin-max/systems", label: "Sistemas/APIs", icon: TerminalSquare },
+  { href: "/admin-max/support", label: "Suporte", icon: ShieldCheck },
+  { href: "/admin-max/logs", label: "Logs", icon: ScrollText },
 ];
 
 function isActiveMenu(pathname: string, href: string) {
@@ -596,6 +602,27 @@ export function AdminMaxStoresPage() {
       setError(getErrorMessage(e, "Não foi possível carregar detalhes."));
     }
   }
+  async function startSupport(
+    storeId: number,
+    mode: "read_only" | "full_access",
+  ) {
+    const reason = window.prompt(
+      "Informe o motivo obrigatório do Modo Suporte:",
+    );
+    if (!reason?.trim()) return;
+    try {
+      const result = await platformRequest<{ redirectTo: string }>(
+        "/api/platform/support/sessions",
+        {
+          method: "POST",
+          body: JSON.stringify({ storeId, mode, reason }),
+        },
+      );
+      window.location.href = result.redirectTo || "/dashboard";
+    } catch (e) {
+      setError(getErrorMessage(e, "Não foi possível iniciar suporte."));
+    }
+  }
   async function deleteStore(storeId: number) {
     const confirmation = window.prompt(
       "Digite EXCLUIR para confirmar a exclusão definitiva.",
@@ -689,6 +716,20 @@ export function AdminMaxStoresPage() {
                 <Button
                   size="sm"
                   variant="secondary"
+                  onClick={() => void startSupport(store.id, "read_only")}
+                >
+                  Suporte — Visualizar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void startSupport(store.id, "full_access")}
+                >
+                  Suporte — Editar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
                   onClick={() => void updateStoreStatus(store.id, "blocked")}
                 >
                   Bloquear
@@ -750,6 +791,38 @@ export function AdminMaxStoresPage() {
               label="Plano do dono"
               value={`${details.entitlement?.plan ?? "—"} / ${details.entitlement?.status ?? "—"}`}
             />
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              onClick={() => void startSupport(details.store.id, "read_only")}
+            >
+              Entrar em suporte — Visualizar
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void startSupport(details.store.id, "full_access")}
+            >
+              Entrar em suporte — Editar
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                navigator.clipboard?.writeText(String(details.store.id))
+              }
+            >
+              Copiar ID
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                navigator.clipboard?.writeText(details.store.slug ?? "")
+              }
+            >
+              Copiar slug
+            </Button>
           </div>
           <h3 className="mt-5 font-semibold">Usuários vinculados</h3>
           <div className="mt-2 space-y-2">
@@ -1431,5 +1504,256 @@ function Info({ label, value }: { label: string; value: string }) {
       <p className="text-xs text-slate-400">{label}</p>
       <p className="mt-1 font-semibold">{value}</p>
     </div>
+  );
+}
+
+export function AdminMaxSystemsPage() {
+  const [data, setData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setData(await fetchPlatformJson<any>("/api/platform/system-status"));
+    } catch (e) {
+      setError(getErrorMessage(e, "Falha ao carregar sistemas."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const cards = data
+    ? [
+        [
+          "API",
+          data.api?.status,
+          `NODE_ENV: ${data.api?.nodeEnv} • Servidor: ${data.api?.serverTime}`,
+        ],
+        [
+          "Banco",
+          data.database?.connection,
+          `DATABASE_URL configurada: ${data.database?.databaseUrlConfigured ? "sim" : "não"}`,
+        ],
+        [
+          "Cakto",
+          data.cakto?.status,
+          `Webhook: ${data.cakto?.webhookSecretConfigured ? "sim" : "não"} • Produtos: ${data.cakto?.mappedProducts}`,
+        ],
+        ["Focus", data.focus?.status, data.focus?.message],
+        [
+          "Planos públicos",
+          data.publicPlans?.ok ? "ok" : "pendente",
+          JSON.stringify(data.publicPlans?.checkoutUrlPresence ?? {}),
+        ],
+        [
+          "Solicitações",
+          data.accessRequests?.tableExists ? "ok" : "pendente",
+          `Pendentes: ${data.accessRequests?.pending ?? 0}`,
+        ],
+      ]
+    : [];
+  return (
+    <AdminShell
+      title="Sistemas/APIs"
+      description="Diagnóstico técnico de API, Banco, Cakto, Focus, planos públicos e APP_PUBLIC_URL."
+      onRefresh={load}
+      isRefreshing={loading}
+    >
+      {error && (
+        <div className="mb-4 rounded-2xl border border-red-400/30 bg-red-500/10 p-4 text-red-100">
+          {error}
+        </div>
+      )}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {cards.map(([title, status, desc]) => (
+          <Card
+            key={title}
+            className="border-white/10 bg-white/[0.04] text-white"
+          >
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>{title}</span>
+                <Badge className={statusClasses(String(status))}>
+                  {String(status)}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-300">{String(desc)}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <Card className="mt-4 border-white/10 bg-white/[0.04] text-white">
+        <CardHeader>
+          <CardTitle>Tabelas críticas</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-2 md:grid-cols-3">
+            {(data?.database?.criticalTables ?? []).map((t: any) => (
+              <div
+                key={t.name}
+                className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm"
+              >
+                {t.name} <span className="text-emerald-300">{t.status}</span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </AdminShell>
+  );
+}
+
+export function AdminMaxSupportPage() {
+  const [rows, setRows] = useState<any[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetchPlatformJson<any>(
+        `/api/platform/support/sessions?search=${encodeURIComponent(search)}`,
+      );
+      setRows(r.sessions ?? []);
+    } finally {
+      setLoading(false);
+    }
+  }, [search]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  async function endSession() {
+    await platformRequest("/api/platform/support/end", {
+      method: "POST",
+      body: "{}",
+    });
+    notify("Sessão encerrada.");
+    void load();
+  }
+  return (
+    <AdminShell
+      title="Suporte"
+      description="Use o Modo Suporte para acessar a loja do cliente sem pedir senha. Toda ação fica registrada."
+      onRefresh={load}
+      isRefreshing={loading}
+    >
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Buscar loja/ator"
+        className="mb-4 w-full rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-white placeholder:text-slate-400"
+      />
+      <div className="overflow-x-auto rounded-3xl border border-white/10 bg-white/[0.04]">
+        <table className="w-full text-sm">
+          <thead className="text-slate-300">
+            <tr>
+              <th className="p-3 text-left">Ator</th>
+              <th className="p-3 text-left">Loja</th>
+              <th className="p-3 text-left">Motivo</th>
+              <th className="p-3">Modo</th>
+              <th className="p-3">Status</th>
+              <th className="p-3">Expira</th>
+              <th className="p-3">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="border-t border-white/10">
+                <td className="p-3">{r.actorEmail}</td>
+                <td className="p-3">{r.targetStoreName}</td>
+                <td className="p-3">{r.reason}</td>
+                <td className="p-3">
+                  <Badge>{r.mode}</Badge>
+                </td>
+                <td className="p-3">{r.status}</td>
+                <td className="p-3">{formatDate(r.expiresAt)}</td>
+                <td className="p-3">
+                  {r.status === "active" && (
+                    <Button size="sm" onClick={endSession}>
+                      Encerrar
+                    </Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </AdminShell>
+  );
+}
+
+export function AdminMaxLogsPage() {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [selected, setSelected] = useState<any | null>(null);
+  const [loading, setLoading] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetchPlatformJson<any>("/api/platform/audit-logs");
+      setLogs(r.logs ?? []);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  return (
+    <AdminShell
+      title="Logs administrativos"
+      description="Trilha de auditoria de lojas, cobrança, usuários e Modo Suporte."
+      onRefresh={load}
+      isRefreshing={loading}
+    >
+      <div className="overflow-x-auto rounded-3xl border border-white/10 bg-white/[0.04]">
+        <table className="w-full text-sm">
+          <thead className="text-slate-300">
+            <tr>
+              <th className="p-3 text-left">Data</th>
+              <th className="p-3 text-left">Ator</th>
+              <th className="p-3 text-left">Ação</th>
+              <th className="p-3 text-left">Alvo</th>
+              <th className="p-3">Metadata</th>
+            </tr>
+          </thead>
+          <tbody>
+            {logs.map((l) => (
+              <tr key={l.id} className="border-t border-white/10">
+                <td className="p-3">{formatDate(l.createdAt)}</td>
+                <td className="p-3">{l.actorEmail ?? "—"}</td>
+                <td className="p-3">{l.action}</td>
+                <td className="p-3">
+                  {l.targetType}:{l.targetId}
+                </td>
+                <td className="p-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSelected(l.metadata)}
+                  >
+                    Ver JSON
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {selected && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setSelected(null)}
+        >
+          <pre className="max-h-[80vh] max-w-3xl overflow-auto rounded-3xl border border-white/10 bg-slate-950 p-5 text-xs text-emerald-100">
+            {JSON.stringify(selected, null, 2)}
+          </pre>
+        </div>
+      )}
+    </AdminShell>
   );
 }

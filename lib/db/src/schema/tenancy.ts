@@ -6,6 +6,7 @@ import {
   timestamp,
   integer,
   boolean,
+  jsonb,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -103,6 +104,46 @@ export const platformAdminsTable = pgTable(
   (table) => [uniqueIndex("platform_admins_user_unique").on(table.userId)],
 );
 
+export const platformAuditLogsTable = pgTable("platform_audit_logs", {
+  id: serial("id").primaryKey(),
+  actorUserId: integer("actor_user_id").references(() => usersTable.id),
+  actorEmail: text("actor_email"),
+  action: text("action").notNull(),
+  targetType: text("target_type"),
+  targetId: text("target_id"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const platformSupportSessionsTable = pgTable(
+  "platform_support_sessions",
+  {
+    id: serial("id").primaryKey(),
+    actorUserId: integer("actor_user_id")
+      .notNull()
+      .references(() => usersTable.id),
+    actorEmail: text("actor_email").notNull(),
+    targetStoreId: integer("target_store_id")
+      .notNull()
+      .references(() => storesTable.id),
+    targetStoreName: text("target_store_name"),
+    mode: text("mode").notNull().default("read_only"),
+    reason: text("reason").notNull(),
+    status: text("status").notNull().default("active"),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    endedReason: text("ended_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+);
+
 export const insertStoreSchema = createInsertSchema(storesTable).omit({
   id: true,
   createdAt: true,
@@ -131,3 +172,6 @@ export const insertPlatformAdminSchema = createInsertSchema(
 export type PlatformAdminRole = (typeof platformAdminRoles)[number];
 export type InsertPlatformAdmin = z.infer<typeof insertPlatformAdminSchema>;
 export type PlatformAdmin = typeof platformAdminsTable.$inferSelect;
+export type PlatformAuditLog = typeof platformAuditLogsTable.$inferSelect;
+export type PlatformSupportSession =
+  typeof platformSupportSessionsTable.$inferSelect;
