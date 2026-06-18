@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 import { resolveAuthenticatedContext, type PlatformRole } from "../lib/auth";
+import { ensureBillingRuntimeSchema } from "../lib/ensure-billing-schema";
 
 export const platformRoles = [
   "platform_owner",
@@ -20,21 +21,19 @@ export function requirePlatformRole(
   ...allowedRoles: PlatformRole[]
 ): RequestHandler {
   return async (req, res, next) => {
-    try {
-      const context = await resolveAuthenticatedContext(req);
-      const role = context?.platformRole ?? null;
+    const context = await resolveAuthenticatedContext(req);
+    const role = context?.platformRole ?? null;
 
-      if (!role || !allowedRoles.includes(role)) {
-        res
-          .status(403)
-          .json({ error: "Acesso administrativo da plataforma necessário." });
-        return;
-      }
-
-      req.platformRole = role;
-      next();
-    } catch {
-      res.status(401).json({ error: "Autenticação necessária." });
+    if (!role || !allowedRoles.includes(role)) {
+      res
+        .status(403)
+        .json({ error: "Acesso administrativo da plataforma necessário." });
+      return;
     }
+
+    await ensureBillingRuntimeSchema();
+
+    req.platformRole = role;
+    next();
   };
 }
