@@ -7,6 +7,7 @@ import {
   ordersTable,
 } from "@workspace/db";
 import { OpenCashRegisterBody } from "@workspace/api-zod";
+import { prepareCashSchema } from "../lib/cash-schema";
 import { getCurrentActor } from "../middleware/rbac";
 
 const router: IRouter = Router();
@@ -18,6 +19,8 @@ function canAccessCash(role: string, isDevelopmentFallback: boolean): boolean {
 async function buildCashRegisterResponse(
   register: typeof cashRegistersTable.$inferSelect,
 ) {
+  await prepareCashSchema();
+
   const movements = await db
     .select({
       id: cashMovementsTable.id,
@@ -53,19 +56,33 @@ async function buildCashRegisterResponse(
   }));
 
   const totalCash = parsedMovements
-    .filter((movement) => movement.type === "payment" && movement.paymentMethod === "cash")
+    .filter(
+      (movement) =>
+        movement.type === "payment" && movement.paymentMethod === "cash",
+    )
     .reduce((sum, movement) => sum + movement.amount, 0);
   const totalPix = parsedMovements
-    .filter((movement) => movement.type === "payment" && movement.paymentMethod === "pix")
+    .filter(
+      (movement) => movement.type === "payment" && movement.paymentMethod === "pix",
+    )
     .reduce((sum, movement) => sum + movement.amount, 0);
   const totalCredit = parsedMovements
-    .filter((movement) => movement.type === "payment" && movement.paymentMethod === "credit_card")
+    .filter(
+      (movement) =>
+        movement.type === "payment" && movement.paymentMethod === "credit_card",
+    )
     .reduce((sum, movement) => sum + movement.amount, 0);
   const totalDebit = parsedMovements
-    .filter((movement) => movement.type === "payment" && movement.paymentMethod === "debit_card")
+    .filter(
+      (movement) =>
+        movement.type === "payment" && movement.paymentMethod === "debit_card",
+    )
     .reduce((sum, movement) => sum + movement.amount, 0);
   const totalVoucher = parsedMovements
-    .filter((movement) => movement.type === "payment" && movement.paymentMethod === "voucher")
+    .filter(
+      (movement) =>
+        movement.type === "payment" && movement.paymentMethod === "voucher",
+    )
     .reduce((sum, movement) => sum + movement.amount, 0);
   const totalWithdrawals = parsedMovements
     .filter((movement) => movement.type === "withdrawal")
@@ -99,12 +116,15 @@ async function buildCashRegisterResponse(
       totalWithdrawals,
       totalSupplies,
       totalManualIn,
-      expectedCash: openingAmount + totalCash + totalSupplies + totalManualIn - totalWithdrawals,
+      expectedCash:
+        openingAmount + totalCash + totalSupplies + totalManualIn - totalWithdrawals,
     },
   };
 }
 
 router.post("/cash/open", async (req, res): Promise<void> => {
+  await prepareCashSchema();
+
   const actor = await getCurrentActor(req);
 
   if (!canAccessCash(actor.role, actor.isDevelopmentFallback)) {
