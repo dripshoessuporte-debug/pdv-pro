@@ -5,15 +5,86 @@ import {
   cashRegistersTable,
   db,
   ordersTable,
+  storeMembersTable,
+  usersTable,
 } from "@workspace/db";
 import { OpenCashRegisterBody } from "@workspace/api-zod";
 import { prepareCashSchema } from "../lib/cash-schema";
 import { getCurrentActor } from "../middleware/rbac";
 
 const router: IRouter = Router();
+const cashOperatorRoles = ["max_control", "atendente"];
 
 function canAccessCash(role: string, isDevelopmentFallback: boolean): boolean {
-  return ["max_control", "atendente"].includes(role) || isDevelopmentFallback;
+  return cashOperatorRoles.includes(role) || isDevelopmentFallback;
+}
+
+function normalizeName(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+async function listCashOperators(storeId: number) {
+  const operators = await db
+    .select({
+      userId: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+      role: storeMembersTable.role,
+      memberId: storeMembersTable.id,
+    })
+    .from(storeMembersTable)
+    .innerJoin(usersTable, eq(storeMembersTable.userId, usersTable.id))
+    .where(
+      and(
+        eq(storeMembersTable.storeId, storeId),
+        eq(storeMembersTable.active, true),
+        sql`${storeMembersTable.role} in ('max_control', 'atendente')`,
+      ),
+    )
+    .orderBy(usersTable.name);
+
+  return operators;
+}
+
+async function resolveSelectedOperator(
+  storeId: number,
+  operatorUserIdValue: unknown,
+  operatorNameValue: unknown,
+) {
+  const operatorUserId = Number(operatorUserIdValue);
+  if (Number.isInteger(operatorUserId) && operatorUserId > 0) {
+    const [operator] = await db
+      .select({
+        userId: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+        role: storeMembersTable.role,
+        memberId: storeMembersTable.id,
+      })
+      .from(storeMembersTable)
+      .innerJoin(usersTable, eq(storeMembersTable.userId, usersTable.id))
+      .where(
+        and(
+          eq(storeMembersTable.storeId, storeId),
+          eq(storeMembersTable.userId, operatorUserId),
+          eq(storeMembersTable.active, true),
+          sql`${storeMembersTable.role} in ('max_control', 'atendente')`,
+        ),
+      )
+      .limit(1);
+
+    return operator ?? null;
+  }
+
+  const operatorName = normalizeName(operatorNameValue);
+  if (!operatorName) return null;
+
+  const operators = await listCashOperators(storeId);
+  const matches = operators.filter((operator) => normalizeName(operator.name) === operatorName);
+  return matches.length === 1 ? matches[0] : null;
 }
 
 async function buildCashRegisterResponse(
@@ -122,6 +193,17 @@ async function buildCashRegisterResponse(
   };
 }
 
+router.get("/cash/operators", async (req, res): Promise<void> => {
+  const actor = await getCurrentActor(req);
+
+  if (!canAccessCash(actor.role, actor.isDevelopmentFallback)) {
+    res.status(403).json({ error: "Você não tem permissão para listar operadores de caixa." });
+    return;
+  }
+
+  res.json(await listCashOperators(actor.storeId));
+});
+
 router.post("/cash/open", async (req, res): Promise<void> => {
   await prepareCashSchema();
 
@@ -153,12 +235,22 @@ router.post("/cash/open", async (req, res): Promise<void> => {
     return;
   }
 
+  const selectedOperator = await resolveSelectedOperator(
+    actor.storeId,
+    req.body?.operatorUserId,
+    req.body?.operator,
+  );
+
+  if (!selectedOperator) {
+    res.status(400).json({
+      error: "Selecione um operador cadastrado e ativo na equipe desta loja.",
+    });
+    return;
+  }
+
   const parsed = OpenCashRegisterBody.safeParse({
     ...req.body,
-    operator:
-      typeof req.body?.operator === "string" && req.body.operator.trim()
-        ? req.body.operator.trim()
-        : actor.name,
+    operator: selectedOperator.name,
   });
 
   if (!parsed.success) {
@@ -170,8 +262,8 @@ router.post("/cash/open", async (req, res): Promise<void> => {
     .insert(cashRegistersTable)
     .values({
       storeId: actor.storeId,
-      operatorUserId: actor.id,
-      operator: actor.name || parsed.data.operator,
+      operatorUserId: selectedOperator.userId,
+      operator: selectedOperator.name,
       openingAmount: String(parsed.data.openingAmount),
       notes: parsed.data.notes,
       status: "open",
