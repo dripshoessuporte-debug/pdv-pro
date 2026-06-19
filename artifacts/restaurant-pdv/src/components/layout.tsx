@@ -53,6 +53,7 @@ function AlertBadge({ count }: { count: number }) {
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { actor, user, currentStore, logout } = useAuth();
+  const currentStoreId = currentStore?.id ?? actor?.storeId ?? null;
 
   const visibleNavItems = actor
     ? navItems.filter((item) => canAccessPath(actor.role, item.href))
@@ -61,25 +62,38 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const { data: cashRegister, isError: noCash } = useGetCurrentCashRegister({
     query: {
-      queryKey: getGetCurrentCashRegisterQueryKey(),
+      queryKey: [...getGetCurrentCashRegisterQueryKey(), currentStoreId ?? "no-store"],
+      enabled: Boolean(currentStoreId),
       retry: false,
       refetchInterval: 60_000,
-      staleTime: 30_000,
+      staleTime: 0,
+      refetchOnMount: "always",
+      refetchOnWindowFocus: true,
     },
   });
 
   const { data: alerts } = useGetAlerts({
     query: {
-      queryKey: [...getGetAlertsQueryKey(), currentStore?.id],
-      enabled: Boolean(currentStore?.id),
+      queryKey: [...getGetAlertsQueryKey(), currentStoreId ?? "no-store"],
+      enabled: Boolean(currentStoreId),
       refetchInterval: 30_000,
-      staleTime: 20_000,
+      staleTime: 0,
+      refetchOnMount: "always",
       refetchOnWindowFocus: true,
       retry: false,
     },
   });
 
-  const cashOpen = !noCash && !!cashRegister;
+  const cashRegisterStoreId = (cashRegister as { storeId?: number } | undefined)
+    ?.storeId;
+  const cashRegisterBelongsToCurrentStore =
+    Boolean(cashRegister) &&
+    Boolean(currentStoreId) &&
+    (cashRegisterStoreId === undefined || cashRegisterStoreId === currentStoreId);
+  const visibleCashRegister = cashRegisterBelongsToCurrentStore
+    ? cashRegister
+    : undefined;
+  const cashOpen = !noCash && Boolean(visibleCashRegister);
 
   // Badge counts per nav section
   const cashBadge = alerts?.awaitingSettlement ?? 0;
@@ -164,7 +178,7 @@ export function Layout({ children }: { children: ReactNode }) {
         {/* Cash status footer */}
         {actor.role === "atendente" && (
           <div className="mx-4 mb-3 rounded-xl border border-blue-400/20 bg-blue-500/10 px-3.5 py-3 text-xs text-blue-100">
-            Esta visualização mostra apenas dados do seu plantão atual.
+            Esta visualização mostra apenas dados da loja atual.
           </div>
         )}
         {canAccessPath(actor.role, "/cash") && (
@@ -179,7 +193,7 @@ export function Layout({ children }: { children: ReactNode }) {
               className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${cashOpen ? "bg-green-400" : "bg-amber-400"}`}
             />
             {cashOpen ? (
-              <span>Caixa aberto · {cashRegister?.operator}</span>
+              <span>Caixa aberto · {visibleCashRegister?.operator}</span>
             ) : (
               <Link href="/cash" className="hover:underline">
                 Caixa fechado — clique para abrir
