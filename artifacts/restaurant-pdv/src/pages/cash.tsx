@@ -16,7 +16,7 @@ import {
   type CashRegisterDetail,
   type AwaitingSettlementOrder,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -46,6 +46,9 @@ import {
   History,
   LockKeyhole,
   UnlockKeyhole,
+  UserCheck,
+  Users,
+  AlertCircle,
   ArrowDownCircle,
   ArrowUpCircle,
   Plus,
@@ -55,6 +58,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { OrderTimeBadge } from "@/components/order-time-badge";
 import { formatOrderTime } from "@/lib/time";
+import { useAuth } from "@/lib/auth";
 
 const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   payment: "Pagamento",
@@ -69,6 +73,34 @@ const MOVEMENT_TYPE_ICONS: Record<string, React.ElementType> = {
   supply: ArrowUpCircle,
   manual_in: Plus,
 };
+
+type CashOperator = {
+  userId: number;
+  name: string;
+  email?: string | null;
+  role: "max_control" | "atendente";
+  memberId: number;
+};
+
+const OPERATOR_ROLE_LABELS: Record<CashOperator["role"], string> = {
+  max_control: "Administrador",
+  atendente: "Atendente",
+};
+
+async function fetchCashOperators(): Promise<CashOperator[]> {
+  const response = await fetch("/api/cash/operators", {
+    credentials: "include",
+  });
+  if (!response.ok) {
+    const data = (await response.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(
+      data?.error ?? "Não foi possível carregar operadores do caixa.",
+    );
+  }
+  return response.json();
+}
 
 const METHOD_LABELS: Record<string, string> = {
   cash: "Dinheiro",
@@ -95,6 +127,8 @@ function fmtDate(iso: string) {
 export default function Cash() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { currentStore, actor } = useAuth();
+  const currentStoreId = currentStore?.id ?? actor?.storeId ?? null;
   const [tab, setTab] = useState<"current" | "history">("current");
 
   const {
@@ -103,7 +137,10 @@ export default function Cash() {
     isError: noCashOpen,
   } = useGetCurrentCashRegister({
     query: {
-      queryKey: getGetCurrentCashRegisterQueryKey(),
+      queryKey: [
+        ...getGetCurrentCashRegisterQueryKey(),
+        currentStoreId ?? "no-store",
+      ],
       retry: false,
       refetchInterval: 30_000,
     },
@@ -111,14 +148,20 @@ export default function Cash() {
 
   const { data: history, isLoading: loadingHistory } = useListCashRegisters({
     query: {
-      queryKey: getListCashRegistersQueryKey(),
+      queryKey: [
+        ...getListCashRegistersQueryKey(),
+        currentStoreId ?? "no-store",
+      ],
       enabled: tab === "history" || noCashOpen,
     },
   });
 
   const invalidate = () => {
     queryClient.invalidateQueries({
-      queryKey: getGetCurrentCashRegisterQueryKey(),
+      queryKey: [
+        ...getGetCurrentCashRegisterQueryKey(),
+        currentStoreId ?? "no-store",
+      ],
     });
     queryClient.invalidateQueries({ queryKey: getListCashRegistersQueryKey() });
     queryClient.invalidateQueries({ queryKey: getGetAlertsQueryKey() });
@@ -258,9 +301,34 @@ function ClosedCashOverview({
 
 function OpenCashForm({ onSuccess }: { onSuccess: () => void }) {
   const { toast } = useToast();
-  const [operator, setOperator] = useState("");
+  const { currentStore, actor } = useAuth();
+  const currentStoreId = currentStore?.id ?? actor?.storeId ?? null;
+  const [operatorUserId, setOperatorUserId] = useState("");
   const [openingAmount, setOpeningAmount] = useState("");
   const [notes, setNotes] = useState("");
+
+  const {
+    data: operators = [],
+    isLoading: loadingOperators,
+    isError: operatorsError,
+    error: operatorsErrorData,
+    refetch: refetchOperators,
+  } = useQuery({
+    queryKey: ["cash-operators", currentStoreId ?? "no-store"],
+    queryFn: fetchCashOperators,
+    enabled: Boolean(currentStoreId),
+    staleTime: 15_000,
+    refetchOnMount: "always",
+  });
+
+  const selectedOperator = operators.find(
+    (operator) => String(operator.userId) === operatorUserId,
+  );
+  const parsedOpeningAmount = Number(openingAmount);
+  const hasValidOpeningAmount =
+    openingAmount.trim() !== "" &&
+    Number.isFinite(parsedOpeningAmount) &&
+    parsedOpeningAmount >= 0;
 
   const openRegister = useOpenCashRegister({
     mutation: {
@@ -268,84 +336,179 @@ function OpenCashForm({ onSuccess }: { onSuccess: () => void }) {
         toast({ title: "✅ Caixa aberto com sucesso!" });
         onSuccess();
       },
-      onError: () => {
-        toast({ title: "Erro ao abrir caixa", variant: "destructive" });
+      onError: (err) => {
+        const msg =
+          (err as { response?: { data?: { error?: string } } })?.response?.data
+            ?.error ?? "Erro ao abrir caixa";
+        toast({ title: msg, variant: "destructive" });
       },
     },
   });
 
   const handleOpen = () => {
-    if (!operator.trim()) {
-      toast({ title: "Informe o nome do operador", variant: "destructive" });
+    if (!selectedOperator) {
+      toast({
+        title: "Selecione um operador do caixa",
+        variant: "destructive",
+      });
       return;
     }
+    if (!hasValidOpeningAmount) {
+      toast({
+        title: "Informe um valor inicial válido",
+        variant: "destructive",
+      });
+      return;
+    }
+
     openRegister.mutate({
       data: {
-        operator: operator.trim(),
-        openingAmount: parseFloat(openingAmount) || 0,
+        operatorUserId: selectedOperator.userId,
+        openingAmount: parsedOpeningAmount,
         ...(notes.trim() ? { notes: notes.trim() } : {}),
       },
     });
   };
 
   return (
-    <div className="max-w-lg mx-auto">
-      <Card className="border-2 border-dashed border-muted-foreground/30">
-        <CardHeader className="text-center pb-3">
-          <div className="mx-auto w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-3">
-            <LockKeyhole className="w-8 h-8 text-muted-foreground" />
+    <div className="mx-auto max-w-2xl">
+      <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-white via-background to-primary/5 shadow-2xl shadow-slate-950/10 dark:from-slate-950 dark:via-background dark:to-red-950/20">
+        <div className="h-1.5 bg-gradient-to-r from-primary via-red-500 to-orange-400" />
+        <CardHeader className="pb-4 text-center">
+          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-3xl bg-primary/10 ring-1 ring-primary/20">
+            <LockKeyhole className="h-10 w-10 text-primary" />
           </div>
-          <CardTitle className="text-xl">Caixa Fechado</CardTitle>
-          <p className="text-muted-foreground text-sm mt-1">
-            Abra o caixa para começar a registrar vendas e movimentações
+          <div className="inline-flex items-center justify-center gap-2 rounded-full border border-amber-300/40 bg-amber-500/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">
+            <span className="h-2 w-2 rounded-full bg-amber-500" />
+            Caixa fechado
+          </div>
+          <CardTitle className="mt-3 text-2xl font-black tracking-tight">
+            Abrir caixa da loja atual
+          </CardTitle>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+            Selecione um operador ativo cadastrado na Equipe desta loja para
+            iniciar uma sessão de caixa sem misturar dados entre lojas.
           </p>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="operator">Nome do Operador *</Label>
-            <Input
-              id="operator"
-              placeholder="Ex: João Silva"
-              value={operator}
-              onChange={(e) => setOperator(e.target.value)}
-              data-testid="input-operator"
-            />
+        <CardContent className="space-y-5 p-6 pt-0">
+          <div className="rounded-2xl border bg-background/80 p-4 shadow-sm">
+            <div className="mb-3 flex items-start gap-3 text-sm text-muted-foreground">
+              <Users className="mt-0.5 h-4 w-4 text-primary" />
+              <p>
+                O operador precisa estar ativo na equipe da loja atual com
+                perfil Administrador ou Atendente.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="operator-user-id">Operador do caixa *</Label>
+              {operatorsError ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <AlertCircle className="h-4 w-4" /> Não foi possível
+                    carregar operadores
+                  </div>
+                  <p className="mt-1 text-xs">
+                    {operatorsErrorData instanceof Error
+                      ? operatorsErrorData.message
+                      : "Tente novamente."}
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-3"
+                    onClick={() => void refetchOperators()}
+                  >
+                    Tentar novamente
+                  </Button>
+                </div>
+              ) : (
+                <Select
+                  value={operatorUserId}
+                  onValueChange={setOperatorUserId}
+                  disabled={loadingOperators || operators.length === 0}
+                >
+                  <SelectTrigger
+                    id="operator-user-id"
+                    className="h-12"
+                    data-testid="select-cash-operator"
+                  >
+                    <SelectValue
+                      placeholder={
+                        loadingOperators
+                          ? "Carregando operadores..."
+                          : "Selecione nome e cargo"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {operators.map((operator) => (
+                      <SelectItem
+                        key={operator.userId}
+                        value={String(operator.userId)}
+                      >
+                        <span className="flex items-center gap-2">
+                          <UserCheck className="h-4 w-4" /> {operator.name} ·{" "}
+                          {OPERATOR_ROLE_LABELS[operator.role]}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {!loadingOperators &&
+                !operatorsError &&
+                operators.length === 0 && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
+                    Nenhum operador ativo encontrado para esta loja. Cadastre ou
+                    ative um atendente/administrador em Equipe.
+                  </div>
+                )}
+            </div>
           </div>
-          <div>
-            <Label htmlFor="opening-amount">Valor Inicial em Caixa (R$)</Label>
-            <Input
-              id="opening-amount"
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0,00"
-              value={openingAmount}
-              onChange={(e) => setOpeningAmount(e.target.value)}
-              data-testid="input-opening-amount"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Dinheiro em espécie já disponível no caixa
-            </p>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="opening-amount">Valor inicial em caixa *</Label>
+              <Input
+                id="opening-amount"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0,00"
+                value={openingAmount}
+                onChange={(e) => setOpeningAmount(e.target.value)}
+                data-testid="input-opening-amount"
+              />
+              <p className="text-xs text-muted-foreground">
+                Dinheiro em espécie disponível para troco.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="open-notes">Observação opcional</Label>
+              <Textarea
+                id="open-notes"
+                placeholder="Ex: Troco vindo do dia anterior"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+              />
+            </div>
           </div>
-          <div>
-            <Label htmlFor="open-notes">Observação (opcional)</Label>
-            <Textarea
-              id="open-notes"
-              placeholder="Ex: Troco do dia anterior"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-            />
-          </div>
+
           <Button
-            className="w-full"
+            className="h-12 w-full text-base font-bold"
             size="lg"
             onClick={handleOpen}
-            disabled={openRegister.isPending || !operator.trim()}
+            disabled={
+              openRegister.isPending ||
+              !selectedOperator ||
+              !hasValidOpeningAmount
+            }
             data-testid="button-open-cash"
           >
-            <UnlockKeyhole className="w-4 h-4 mr-2" />
-            {openRegister.isPending ? "Abrindo..." : "Abrir Caixa"}
+            <UnlockKeyhole className="mr-2 h-5 w-5" />
+            {openRegister.isPending ? "Abrindo caixa..." : "Abrir caixa"}
           </Button>
         </CardContent>
       </Card>
