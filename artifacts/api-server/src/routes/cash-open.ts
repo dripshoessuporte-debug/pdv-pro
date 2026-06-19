@@ -19,6 +19,13 @@ function canAccessCash(role: string, isDevelopmentFallback: boolean): boolean {
   return cashOperatorRoles.includes(role) || isDevelopmentFallback;
 }
 
+function normalizeName(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
 async function listCashOperators(storeId: number) {
   const operators = await db
     .select({
@@ -42,31 +49,42 @@ async function listCashOperators(storeId: number) {
   return operators;
 }
 
-async function resolveSelectedOperator(storeId: number, value: unknown) {
-  const operatorUserId = Number(value);
-  if (!Number.isInteger(operatorUserId) || operatorUserId <= 0) return null;
+async function resolveSelectedOperator(
+  storeId: number,
+  operatorUserIdValue: unknown,
+  operatorNameValue: unknown,
+) {
+  const operatorUserId = Number(operatorUserIdValue);
+  if (Number.isInteger(operatorUserId) && operatorUserId > 0) {
+    const [operator] = await db
+      .select({
+        userId: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+        role: storeMembersTable.role,
+        memberId: storeMembersTable.id,
+      })
+      .from(storeMembersTable)
+      .innerJoin(usersTable, eq(storeMembersTable.userId, usersTable.id))
+      .where(
+        and(
+          eq(storeMembersTable.storeId, storeId),
+          eq(storeMembersTable.userId, operatorUserId),
+          eq(storeMembersTable.active, true),
+          sql`${storeMembersTable.role} in ('max_control', 'atendente')`,
+        ),
+      )
+      .limit(1);
 
-  const [operator] = await db
-    .select({
-      userId: usersTable.id,
-      name: usersTable.name,
-      email: usersTable.email,
-      role: storeMembersTable.role,
-      memberId: storeMembersTable.id,
-    })
-    .from(storeMembersTable)
-    .innerJoin(usersTable, eq(storeMembersTable.userId, usersTable.id))
-    .where(
-      and(
-        eq(storeMembersTable.storeId, storeId),
-        eq(storeMembersTable.userId, operatorUserId),
-        eq(storeMembersTable.active, true),
-        sql`${storeMembersTable.role} in ('max_control', 'atendente')`,
-      ),
-    )
-    .limit(1);
+    return operator ?? null;
+  }
 
-  return operator ?? null;
+  const operatorName = normalizeName(operatorNameValue);
+  if (!operatorName) return null;
+
+  const operators = await listCashOperators(storeId);
+  const matches = operators.filter((operator) => normalizeName(operator.name) === operatorName);
+  return matches.length === 1 ? matches[0] : null;
 }
 
 async function buildCashRegisterResponse(
@@ -220,6 +238,7 @@ router.post("/cash/open", async (req, res): Promise<void> => {
   const selectedOperator = await resolveSelectedOperator(
     actor.storeId,
     req.body?.operatorUserId,
+    req.body?.operator,
   );
 
   if (!selectedOperator) {
