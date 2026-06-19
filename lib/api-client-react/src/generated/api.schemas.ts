@@ -810,8 +810,9 @@ export interface CashRegister {
 }
 
 export interface CashRegisterInput {
+  operatorUserId?: number;
   /** @minLength 1 */
-  operator: string;
+  operator?: string;
   /** @minimum 0 */
   openingAmount: number;
   notes?: string;

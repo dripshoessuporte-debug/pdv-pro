@@ -1974,7 +1974,8 @@ export const GetCurrentCashRegisterResponse = zod
 export const openCashRegisterBodyOpeningAmountMin = 0;
 
 export const OpenCashRegisterBody = zod.object({
-  operator: zod.string().min(1),
+  operatorUserId: zod.number().int().positive().optional(),
+  operator: zod.string().min(1).optional(),
   openingAmount: zod.number().min(openCashRegisterBodyOpeningAmountMin),
   notes: zod.string().optional(),
 });

@@ -6,6 +6,8 @@ import {
   cashMovementsTable,
   ordersTable,
   paymentsTable,
+  storeMembersTable,
+  usersTable,
 } from "@workspace/db";
 import {
   OpenCashRegisterBody,
@@ -305,6 +307,14 @@ router.get("/cash/current", async (req, res): Promise<void> => {
 
 router.post("/cash/open", async (req, res): Promise<void> => {
   const actor = await getCurrentActor(req);
+  if (
+    !["max_control", "atendente"].includes(actor.role) &&
+    !actor.isDevelopmentFallback
+  ) {
+    res.status(403).json({ error: "Você não tem permissão para abrir caixa." });
+    return;
+  }
+
   const [existingOpen] = await db
     .select()
     .from(cashRegistersTable)
@@ -321,7 +331,46 @@ router.post("/cash/open", async (req, res): Promise<void> => {
     return;
   }
 
-  const parsed = OpenCashRegisterBody.safeParse(req.body);
+  const operatorUserId = Number(req.body?.operatorUserId);
+  let selectedOperator: { userId: number; name: string } | null = null;
+
+  if (Number.isInteger(operatorUserId) && operatorUserId > 0) {
+    const [operator] = await db
+      .select({ userId: usersTable.id, name: usersTable.name })
+      .from(storeMembersTable)
+      .innerJoin(usersTable, eq(storeMembersTable.userId, usersTable.id))
+      .where(
+        and(
+          eq(storeMembersTable.storeId, actor.storeId),
+          eq(storeMembersTable.userId, operatorUserId),
+          eq(storeMembersTable.active, true),
+          sql`${storeMembersTable.role} in ('max_control', 'atendente')`,
+        ),
+      )
+      .limit(1);
+    selectedOperator = operator ?? null;
+  }
+
+  if (!selectedOperator && typeof req.body?.operator === "string") {
+    selectedOperator = {
+      userId: actor.id ?? 0,
+      name: req.body.operator.trim(),
+    };
+  }
+
+  if (!selectedOperator?.name) {
+    res
+      .status(400)
+      .json({
+        error: "Selecione um operador cadastrado e ativo na equipe desta loja.",
+      });
+    return;
+  }
+
+  const parsed = OpenCashRegisterBody.safeParse({
+    ...req.body,
+    operator: selectedOperator.name,
+  });
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
@@ -331,8 +380,8 @@ router.post("/cash/open", async (req, res): Promise<void> => {
     .insert(cashRegistersTable)
     .values({
       storeId: actor.storeId,
-      operatorUserId: actor.id,
-      operator: actor.role === "atendente" ? actor.name : parsed.data.operator,
+      operatorUserId: selectedOperator.userId || actor.id,
+      operator: selectedOperator.name,
       openingAmount: String(parsed.data.openingAmount),
       notes: parsed.data.notes,
       status: "open",
