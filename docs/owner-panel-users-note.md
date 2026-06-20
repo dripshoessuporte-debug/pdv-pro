@@ -1,1 +1,0 @@
-Owner Panel Global Users implementation note.
