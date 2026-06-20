@@ -42,6 +42,26 @@ const canManageBilling = requirePlatformRole(
 const canManageStores = requirePlatformRole("platform_owner", "platform_admin");
 const ownerOnly = requirePlatformRole("platform_owner");
 
+function getPlatformUserBlockReason(user: {
+  platformRole: string | null;
+  activeStoresCount: number;
+  criticalLinksCount: number;
+}) {
+  if (
+    user.platformRole === "platform_owner" ||
+    user.platformRole === "platform_admin"
+  ) {
+    return "Usuário protegido: platform_owner/platform_admin nunca pode ser excluído.";
+  }
+  if (user.activeStoresCount > 0) {
+    return "Usuário possui loja ativa e não pode ser excluído.";
+  }
+  if (user.criticalLinksCount > 0) {
+    return "Usuário possui vínculos críticos e não pode ser excluído.";
+  }
+  return null;
+}
+
 router.get(
   "/platform/overview",
   canReadStores,
@@ -205,6 +225,115 @@ router.get(
       },
       todayOrders: totals?.todayOrders ?? 0,
       todayRevenue: Number(totals?.todayRevenue ?? 0),
+    });
+  },
+);
+
+router.get(
+  "/platform/users",
+  canReadStores,
+  async (_req, res): Promise<void> => {
+    const memberships = await db
+      .select({
+        userId: storeMembersTable.userId,
+        storeId: storesTable.id,
+        storeName: storesTable.name,
+        storeSlug: storesTable.slug,
+        storeStatus: storesTable.status,
+        role: storeMembersTable.role,
+        active: storeMembersTable.active,
+        isDefault: storeMembersTable.isDefault,
+      })
+      .from(storeMembersTable)
+      .innerJoin(storesTable, eq(storeMembersTable.storeId, storesTable.id))
+      .orderBy(
+        storeMembersTable.userId,
+        sql`${storeMembersTable.isDefault} DESC`,
+        storesTable.name,
+      );
+
+    const criticalLinks = db
+      .select({
+        userId: cashRegistersTable.operatorUserId,
+        criticalLinksCount: count(cashRegistersTable.id).as(
+          "critical_links_count",
+        ),
+      })
+      .from(cashRegistersTable)
+      .where(sql`${cashRegistersTable.operatorUserId} is not null`)
+      .groupBy(cashRegistersTable.operatorUserId)
+      .as("critical_links");
+
+    const users = await db
+      .select({
+        id: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+        status: usersTable.status,
+        createdAt: usersTable.createdAt,
+        lastLoginAt: usersTable.lastLoginAt,
+        platformRole: platformAdminsTable.role,
+        entitlementStatus: userEntitlementsTable.status,
+        entitlementPlan: userEntitlementsTable.plan,
+        criticalLinksCount: sql<number>`coalesce(${criticalLinks.criticalLinksCount}, 0)`,
+      })
+      .from(usersTable)
+      .leftJoin(
+        platformAdminsTable,
+        eq(platformAdminsTable.userId, usersTable.id),
+      )
+      .leftJoin(
+        userEntitlementsTable,
+        eq(userEntitlementsTable.userId, usersTable.id),
+      )
+      .leftJoin(criticalLinks, eq(criticalLinks.userId, usersTable.id))
+      .orderBy(desc(usersTable.createdAt));
+
+    const storesByUserId = new Map<number, typeof memberships>();
+    for (const membership of memberships) {
+      const current = storesByUserId.get(membership.userId) ?? [];
+      current.push(membership);
+      storesByUserId.set(membership.userId, current);
+    }
+
+    res.json({
+      users: users.map((user) => {
+        const stores = (storesByUserId.get(user.id) ?? []).map((store) => ({
+          storeId: store.storeId,
+          storeName: store.storeName,
+          storeSlug: store.storeSlug,
+          storeStatus: store.storeStatus,
+          role: store.role,
+          active: store.active,
+          isDefault: store.isDefault,
+        }));
+        const activeStoresCount = stores.filter((store) => store.active).length;
+        const isProtected =
+          user.platformRole === "platform_owner" ||
+          user.platformRole === "platform_admin";
+        const blockReason = getPlatformUserBlockReason({
+          platformRole: user.platformRole,
+          activeStoresCount,
+          criticalLinksCount: Number(user.criticalLinksCount ?? 0),
+        });
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          status: user.status,
+          createdAt: user.createdAt,
+          lastLoginAt: user.lastLoginAt,
+          platformRole: user.platformRole,
+          entitlementStatus: user.entitlementStatus,
+          entitlementPlan: user.entitlementPlan,
+          stores,
+          activeStoresCount,
+          totalStoresCount: stores.length,
+          isProtected,
+          canDelete: !blockReason,
+          blockReason,
+        };
+      }),
     });
   },
 );
