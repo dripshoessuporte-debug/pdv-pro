@@ -19,6 +19,7 @@ import devRouter from "./dev";
 import adminRouter from "./admin";
 import authRouter from "./auth";
 import platformRouter from "./platform";
+import platformUsersRouter from "./platform-users";
 import onboardingRouter from "./onboarding";
 import billingRouter from "./billing";
 import caktoRouter from "./cakto";
@@ -29,6 +30,7 @@ const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
+router.use(platformUsersRouter);
 router.use(platformRouter);
 router.use(onboardingRouter);
 router.use(billingRouter);

@@ -25,6 +25,7 @@ import PlansPage from "@/pages/plans";
 import ActivatePage from "@/pages/activate";
 import OnboardingPage from "@/pages/onboarding";
 import AdminMaxLoginPage from "@/pages/admin-max-login";
+import { AdminMaxUsersPage } from "@/pages/admin-max-users";
 import {
   AdminMaxBillingPage,
   AdminMaxDashboardPage,
@@ -32,7 +33,6 @@ import {
   AdminMaxStoresPage,
   AdminMaxSupportPage,
   AdminMaxSystemsPage,
-  AdminMaxUsersPage,
 } from "@/pages/admin-max";
 import { AuthProvider, hasStoreCreationAccess, useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
