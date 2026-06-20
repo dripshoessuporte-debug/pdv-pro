@@ -848,84 +848,133 @@ export function AdminMaxStoresPage() {
   );
 }
 
-type PlatformOrphanUser = {
+type PlatformUserStore = {
+  storeId: number;
+  storeName: string;
+  storeSlug: string;
+  storeStatus: string;
+  role: string;
+  active: boolean;
+  isDefault: boolean;
+};
+
+type PlatformUser = {
   id: number;
   name: string;
   email: string;
   status: string;
   createdAt: string;
+  lastLoginAt: string | null;
   platformRole: string | null;
-  activeStoresCount: number;
   entitlementStatus: string | null;
+  entitlementPlan: string | null;
+  stores: PlatformUserStore[];
+  activeStoresCount: number;
+  totalStoresCount: number;
+  isProtected: boolean;
+  canDelete: boolean;
+  blockReason: string | null;
 };
-function userBlockReason(u: PlatformOrphanUser, role?: string | null) {
-  if (
-    u.platformRole === "platform_owner" ||
-    u.platformRole === "platform_admin"
-  )
-    return "usuário protegido";
-  if (u.activeStoresCount > 0) return "possui loja ativa";
-  if (role !== "platform_owner") return "somente platform_owner pode excluir";
-  return "deletável";
+
+const userTabs = [
+  { value: "all", label: "Todos" },
+  { value: "active-store", label: "Com loja ativa" },
+  { value: "orphan", label: "Sem loja ativa" },
+  { value: "platform-admins", label: "Platform admins" },
+  { value: "with-subscription", label: "Com assinatura" },
+  { value: "without-subscription", label: "Sem assinatura" },
+  { value: "deletable", label: "Deletáveis" },
+];
+
+function formatDateTime(value: string | null) {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("pt-BR");
 }
+
+function platformUserMatchesTab(user: PlatformUser, tab: string) {
+  if (tab === "active-store") return user.activeStoresCount > 0;
+  if (tab === "orphan") return user.activeStoresCount === 0;
+  if (tab === "platform-admins") return Boolean(user.platformRole);
+  if (tab === "with-subscription") return Boolean(user.entitlementStatus);
+  if (tab === "without-subscription") return !user.entitlementStatus;
+  if (tab === "deletable") return user.canDelete;
+  return true;
+}
+
 export function AdminMaxUsersPage() {
-  const { platformRole } = useAuth();
-  const [users, setUsers] = useState<PlatformOrphanUser[]>([]);
+  const [users, setUsers] = useState<PlatformUser[]>([]);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [tab, setTab] = useState("all");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const load = useCallback(() => {
     setIsLoading(true);
     setError(null);
-    fetchPlatformJson<{ users: PlatformOrphanUser[] }>(
-      "/api/platform/orphan-users",
-    )
+    fetchPlatformJson<{ users: PlatformUser[] }>("/api/platform/users")
       .then((d) => setUsers(d.users))
       .catch((e) =>
-        setError(getErrorMessage(e, "Não foi possível carregar usuários.")),
+        setError(
+          getErrorMessage(
+            e,
+            "Não foi possível carregar os usuários globais da plataforma.",
+          ),
+        ),
       )
       .finally(() => setIsLoading(false));
   }, []);
   useEffect(() => {
     load();
   }, [load]);
+
   const rows = users
-    .filter((u) =>
-      `${u.name} ${u.email}`.toLowerCase().includes(query.toLowerCase()),
-    )
-    .filter(
-      (u) =>
-        filter === "all" ||
-        (filter === "with" && u.entitlementStatus) ||
-        (filter === "without" && !u.entitlementStatus) ||
-        (filter === "protected" &&
-          ["platform_owner", "platform_admin"].includes(
-            u.platformRole ?? "",
-          )) ||
-        (filter === "deletable" &&
-          userBlockReason(u, platformRole) === "deletável"),
-    );
-  async function deleteUser(id: number) {
+    .filter((u) => platformUserMatchesTab(u, tab))
+    .filter((u) => {
+      const term = query.trim().toLowerCase();
+      if (!term) return true;
+      return [
+        u.name,
+        u.email,
+        u.status,
+        u.platformRole ?? "",
+        u.entitlementPlan ?? "",
+        u.entitlementStatus ?? "",
+        ...u.stores.flatMap((store) => [
+          store.storeName,
+          store.storeSlug,
+          store.storeStatus,
+          store.role,
+        ]),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(term);
+    });
+
+  async function deleteUser(user: PlatformUser) {
+    if (!user.canDelete) {
+      notify(user.blockReason ?? "Usuário não pode ser excluído.");
+      return;
+    }
     const confirmation = window.prompt(
-      "Digite EXCLUIR para confirmar a exclusão definitiva do usuário de teste.",
+      `Digite EXCLUIR para confirmar a exclusão definitiva de ${user.email}.`,
     );
     if (confirmation !== "EXCLUIR") return;
     try {
-      await platformRequest(`/api/platform/orphan-users/${id}`, {
+      await platformRequest(`/api/platform/orphan-users/${user.id}`, {
         method: "DELETE",
         body: JSON.stringify({ confirmation }),
       });
       notify("Usuário excluído.");
       load();
     } catch (e) {
-      setError(getErrorMessage(e, "Não foi possível excluir."));
+      setError(getErrorMessage(e, "Não foi possível excluir o usuário."));
     }
   }
+
   return (
     <AdminShell
-      title="Usuários sem loja ativa"
-      description="Use esta área para limpar cadastros de teste que impedem novo cadastro com o mesmo e-mail."
+      title="Usuários da Plataforma"
+      description="Visão global de todos os usuários, lojas vinculadas, perfis, assinaturas e proteções do Painel Dono. A aba Sem loja ativa continua usando a mesma regra de usuários órfãos."
       onRefresh={load}
       isRefreshing={isLoading}
     >
@@ -934,70 +983,154 @@ export function AdminMaxUsersPage() {
           {error}
         </div>
       )}
-      <div className="mb-4 grid gap-3 md:grid-cols-[1fr_240px]">
+      <div className="mb-4 grid gap-3 md:grid-cols-[1fr_auto]">
         <input
-          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
-          placeholder="Buscar por nome/e-mail"
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-slate-500"
+          placeholder="Buscar por nome, e-mail, loja, função, plano ou status"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <select
-          className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        >
-          <option value="all">todos</option>
-          <option value="with">com entitlement</option>
-          <option value="without">sem entitlement</option>
-          <option value="protected">protegidos</option>
-          <option value="deletable">deletáveis</option>
-        </select>
+        <Button variant="secondary" onClick={load} disabled={isLoading}>
+          {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          Atualizar
+        </Button>
       </div>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {userTabs.map((item) => (
+          <button
+            key={item.value}
+            className={`rounded-full border px-3 py-2 text-sm transition ${
+              tab === item.value
+                ? "border-cyan-400/60 bg-cyan-400/15 text-cyan-100"
+                : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+            }`}
+            onClick={() => setTab(item.value)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <div className="mb-4 grid gap-3 md:grid-cols-4">
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-400">Total</p>
+            <p className="text-2xl font-bold">{users.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-400">Com loja ativa</p>
+            <p className="text-2xl font-bold">
+              {users.filter((u) => u.activeStoresCount > 0).length}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-400">Sem loja ativa</p>
+            <p className="text-2xl font-bold">
+              {users.filter((u) => u.activeStoresCount === 0).length}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-400">Deletáveis</p>
+            <p className="text-2xl font-bold">
+              {users.filter((u) => u.canDelete).length}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+      {!isLoading && users.length > 0 && rows.length === 0 && (
+        <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+          Nenhum usuário encontrado para esta aba e busca. Ajuste os filtros ou
+          atualize os dados.
+        </div>
+      )}
       <DataTable
-        empty="Nenhum usuário sem loja ativa encontrado."
+        empty="Nenhum usuário da plataforma encontrado."
         loading={isLoading}
         headers={[
           "Nome",
           "E-mail",
           "Status",
-          "Entitlement",
-          "Perfil",
-          "Motivo",
+          "Lojas",
+          "Funções",
+          "Assinatura",
+          "Último login",
+          "Proteção",
           "Ações",
         ]}
       >
-        {rows.map((u) => {
-          const reason = userBlockReason(u, platformRole);
-          return (
-            <tr key={u.id}>
-              <td className="px-4 py-3 font-medium">{u.name}</td>
-              <td className="px-4 py-3">{u.email}</td>
-              <td className="px-4 py-3">{u.status}</td>
-              <td className="px-4 py-3">{u.entitlementStatus ?? "—"}</td>
-              <td className="px-4 py-3">{u.platformRole ?? "—"}</td>
-              <td className="px-4 py-3 text-slate-300">{reason}</td>
-              <td className="px-4 py-3">
-                {reason === "deletável" ? (
-                  <Button
-                    className="bg-red-700"
-                    size="sm"
-                    onClick={() => void deleteUser(u.id)}
-                  >
-                    Excluir usuário de teste
-                  </Button>
+        {rows.map((u) => (
+          <tr key={u.id}>
+            <td className="px-4 py-3 font-medium">{u.name}</td>
+            <td className="px-4 py-3">{u.email}</td>
+            <td className="px-4 py-3">
+              <Badge variant="outline">{u.status}</Badge>
+            </td>
+            <td className="px-4 py-3">
+              <div className="flex max-w-md flex-wrap gap-2">
+                {u.stores.length === 0 ? (
+                  <span className="text-slate-400">Sem loja vinculada</span>
                 ) : (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => notify(reason)}
-                  >
-                    Ver motivo
-                  </Button>
+                  u.stores.map((store) => (
+                    <Badge
+                      key={`${u.id}-${store.storeId}`}
+                      variant="secondary"
+                      className="whitespace-normal text-left"
+                    >
+                      {store.storeName} · {store.role} ·{" "}
+                      {store.active ? "ativo" : "inativo"}
+                    </Badge>
+                  ))
                 )}
-              </td>
-            </tr>
-          );
-        })}
+              </div>
+            </td>
+            <td className="px-4 py-3 text-slate-300">
+              {[u.platformRole, ...u.stores.map((store) => store.role)]
+                .filter(Boolean)
+                .join(", ") || "—"}
+            </td>
+            <td className="px-4 py-3">
+              {u.entitlementStatus
+                ? `${u.entitlementPlan ?? "plano"} · ${u.entitlementStatus}`
+                : "Sem assinatura"}
+            </td>
+            <td className="px-4 py-3 text-slate-300">
+              {formatDateTime(u.lastLoginAt)}
+            </td>
+            <td className="px-4 py-3">
+              {u.isProtected ? (
+                <Badge className="bg-amber-600">Protegido</Badge>
+              ) : (
+                <Badge variant="outline">Normal</Badge>
+              )}
+            </td>
+            <td className="px-4 py-3">
+              {u.canDelete ? (
+                <Button
+                  className="bg-red-700"
+                  size="sm"
+                  onClick={() => void deleteUser(u)}
+                >
+                  Excluir
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() =>
+                    notify(u.blockReason ?? "Usuário não pode ser excluído.")
+                  }
+                >
+                  Ver motivo
+                </Button>
+              )}
+            </td>
+          </tr>
+        ))}
       </DataTable>
     </AdminShell>
   );
