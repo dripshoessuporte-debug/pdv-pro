@@ -40,7 +40,15 @@ const navItems = [
   { href: "/routes", label: "Rotas", icon: Truck },
   { href: "/motoboys", label: "Motoboys", icon: Bike },
   { href: "/settings", label: "Configurações", icon: Settings },
-  { href: "/openrouteservice", label: "API de Distância", icon: KeyRound },
+];
+
+const settingsItems = [
+  { href: "/settings", label: "Configurações gerais", icon: Settings },
+  {
+    href: "/settings/openrouteservice",
+    label: "API de Distância",
+    icon: KeyRound,
+  },
 ];
 
 function AlertBadge({ count }: { count: number }) {
@@ -49,6 +57,38 @@ function AlertBadge({ count }: { count: number }) {
     <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-primary text-white text-[10px] font-bold leading-none shadow-sm shadow-red-950/25">
       {count > 99 ? "99+" : count}
     </span>
+  );
+}
+
+function SettingsNavigation({ location }: { location: string }) {
+  if (!location.startsWith("/settings")) return null;
+
+  return (
+    <div className="mb-6 rounded-2xl border bg-card p-2 shadow-sm">
+      <div className="flex flex-wrap gap-2">
+        {settingsItems.map((item) => {
+          const isActive =
+            item.href === "/settings"
+              ? location === "/settings"
+              : location.startsWith(item.href);
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
+                isActive
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <item.icon className="h-4 w-4" />
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -97,7 +137,6 @@ export function Layout({ children }: { children: ReactNode }) {
     : undefined;
   const cashOpen = !noCash && Boolean(visibleCashRegister);
 
-  // Badge counts per nav section
   const cashBadge = alerts?.awaitingSettlement ?? 0;
   const routesBadge =
     (alerts?.routesInProgress ?? 0) +
@@ -177,7 +216,6 @@ export function Layout({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        {/* Cash status footer */}
         {actor.role === "atendente" && (
           <div className="mx-4 mb-3 rounded-xl border border-blue-400/20 bg-blue-500/10 px-3.5 py-3 text-xs text-blue-100">
             Esta visualização mostra apenas dados da loja atual.
@@ -241,6 +279,7 @@ export function Layout({ children }: { children: ReactNode }) {
       </aside>
       <main className="flex-1 overflow-y-auto bg-background">
         <div className="p-8 lg:p-10 max-w-7xl mx-auto min-h-full">
+          <SettingsNavigation location={location} />
           {children}
         </div>
       </main>
