@@ -40,10 +40,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api", router);
 
 if (process.env.NODE_ENV === "production") {
-  const frontendDist = path.resolve(
-    process.cwd(),
-    "artifacts/restaurant-pdv/dist/public",
-  );
+  const frontendDist = process.env.FRONTEND_DIST
+    ? path.resolve(process.env.FRONTEND_DIST)
+    : path.resolve(import.meta.dirname, "../../restaurant-pdv/dist/public");
 
   app.use(express.static(frontendDist));
   app.use((req, res, next) => {
