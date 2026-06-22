@@ -15,6 +15,7 @@ import {
   Settings,
   KeyRound,
   LogOut,
+  ReceiptText,
 } from "lucide-react";
 import {
   useHealthCheck,
@@ -39,6 +40,7 @@ const navItems = [
   { href: "/team", label: "Equipe", icon: Users },
   { href: "/routes", label: "Rotas", icon: Truck },
   { href: "/motoboys", label: "Motoboys", icon: Bike },
+  { href: "/fiscal", label: "Fiscal", icon: ReceiptText },
   { href: "/settings", label: "Configurações", icon: Settings },
 ];
 
