@@ -11,7 +11,7 @@ import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
- type FiscalAccess = {
+type FiscalAccess = {
   feature: "fiscal";
   allowed: true;
   storeId: number;
@@ -112,14 +112,14 @@ export default function FiscalPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Esta loja possui o Gestor Max PRO ativo. A estrutura de acesso
-                ao módulo fiscal já está protegida pelo backend.
+                Sua loja possui o Gestor Max PRO e está habilitada para iniciar
+                a configuração fiscal.
               </p>
               <div className="rounded-xl border bg-background/70 p-4">
                 <div className="text-sm font-semibold">Configuração fiscal</div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  Ainda não iniciada. O próximo PR criará a fundação dos dados
-                  fiscais, sem emitir notas reais.
+                  Ainda não iniciada. O próximo passo será cadastrar os dados da
+                  empresa e as regras fiscais antes de qualquer emissão real.
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
