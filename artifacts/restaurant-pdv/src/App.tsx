@@ -19,6 +19,7 @@ import Motoboys from "@/pages/motoboys";
 import SettingsPage from "@/pages/settings";
 import OpenRouteServiceSettingsPage from "@/pages/openrouteservice-settings";
 import TeamPage from "@/pages/team";
+import FiscalPage from "@/pages/fiscal";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import CreateStorePage from "@/pages/create-store";
@@ -255,6 +256,13 @@ function Router() {
         {() => (
           <ProtectedRoute path="/motoboys">
             <Motoboys />
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/fiscal">
+        {() => (
+          <ProtectedRoute path="/fiscal">
+            <FiscalPage />
           </ProtectedRoute>
         )}
       </Route>
