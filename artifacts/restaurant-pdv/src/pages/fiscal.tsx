@@ -17,6 +17,12 @@ type FiscalAccess = {
   storeId: number;
   plan: string | null;
   status: string | null;
+  setup: {
+    configured: boolean;
+    status: string;
+    environment: string;
+    emissionMode: string;
+  };
 };
 
 type FiscalAccessError = {
@@ -26,6 +32,18 @@ type FiscalAccessError = {
   plan?: string | null;
   status?: string | null;
 };
+
+function setupStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    not_configured: "Não configurado",
+    configuring: "Em configuração",
+    homologation: "Em homologação",
+    production: "Em produção",
+    blocked: "Bloqueado",
+    disabled: "Desativado",
+  };
+  return labels[status] ?? status;
+}
 
 export default function FiscalPage() {
   const [access, setAccess] = useState<FiscalAccess | null>(null);
@@ -97,7 +115,7 @@ export default function FiscalPage() {
           <Card>
             <CardContent className="flex min-h-44 items-center justify-center gap-3 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
-              Verificando o plano da loja...
+              Verificando o plano e a fundação fiscal da loja...
             </CardContent>
           </Card>
         )}
@@ -107,27 +125,35 @@ export default function FiscalPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
                 <CheckCircle2 className="h-5 w-5" />
-                Acesso fiscal liberado
+                Fundação fiscal disponível
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Sua loja possui o Gestor Max PRO e está habilitada para iniciar
-                a configuração fiscal.
+                Sua loja possui o Gestor Max PRO e a estrutura segura para
+                configurações fiscais já está disponível.
               </p>
               <div className="rounded-xl border bg-background/70 p-4">
                 <div className="text-sm font-semibold">Configuração fiscal</div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  Ainda não iniciada. O próximo passo será cadastrar os dados da
-                  empresa e as regras fiscais antes de qualquer emissão real.
+                  {access.setup.configured
+                    ? `Situação atual: ${setupStatusLabel(access.setup.status)}.`
+                    : "Ainda não iniciada. O próximo passo será cadastrar os dados da empresa e as regras fiscais antes de qualquer emissão real."}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span className="rounded-full border px-3 py-1">Plano: PRO</span>
                 <span className="rounded-full border px-3 py-1">
-                  Plano: PRO
+                  Assinatura: {access.status === "trialing" ? "Teste ativo" : "Ativa"}
                 </span>
                 <span className="rounded-full border px-3 py-1">
-                  Status: {access.status === "trialing" ? "Teste ativo" : "Ativo"}
+                  Fiscal: {setupStatusLabel(access.setup.status)}
+                </span>
+                <span className="rounded-full border px-3 py-1">
+                  Ambiente: {access.setup.environment === "production" ? "Produção" : "Homologação"}
+                </span>
+                <span className="rounded-full border px-3 py-1">
+                  Emissão: {access.setup.emissionMode === "automatic" ? "Automática" : "Manual"}
                 </span>
               </div>
             </CardContent>
