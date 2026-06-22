@@ -13,6 +13,7 @@ import {
   Truck,
   Bike,
   Settings,
+  KeyRound,
   LogOut,
 } from "lucide-react";
 import {
@@ -39,6 +40,7 @@ const navItems = [
   { href: "/routes", label: "Rotas", icon: Truck },
   { href: "/motoboys", label: "Motoboys", icon: Bike },
   { href: "/settings", label: "Configurações", icon: Settings },
+  { href: "/openrouteservice", label: "API de Distância", icon: KeyRound },
 ];
 
 function AlertBadge({ count }: { count: number }) {
