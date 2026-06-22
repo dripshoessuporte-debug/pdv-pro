@@ -141,6 +141,13 @@
       "when": 1781742600000,
       "tag": "0019_cakto_billing_hotfix",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1782154800000,
+      "tag": "0020_fiscal_configuration_foundation",
+      "breakpoints": true
     }
   ]
 }
