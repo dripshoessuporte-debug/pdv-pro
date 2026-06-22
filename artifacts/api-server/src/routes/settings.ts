@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, storeSettingsTable } from "@workspace/db";
-import { isOrsConfigured } from "../lib/openrouteservice";
+import { getStoreOpenRouteServiceStatus } from "../lib/store-integration-secrets";
 import { getCurrentActor } from "../middleware/rbac";
 
 const MIN_DISPATCH_TIME_MINUTES = 1;
@@ -61,7 +61,8 @@ async function getOrCreateSettings(storeId = 1) {
 router.get("/settings", async (req, res): Promise<void> => {
   const { storeId } = await getCurrentActor(req);
   const settings = await getOrCreateSettings(storeId);
-  res.json({ ...settings, orsConfigured: isOrsConfigured() });
+  const providerStatus = await getStoreOpenRouteServiceStatus(storeId);
+  res.json({ ...settings, orsConfigured: providerStatus.configured });
 });
 
 router.put("/settings", async (req, res): Promise<void> => {
