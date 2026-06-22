@@ -12,6 +12,7 @@ RUN PORT=5173 BASE_PATH=/ NODE_ENV=production pnpm --filter @workspace/restauran
 RUN pnpm --filter @workspace/api-server build
 
 ENV NODE_ENV=production
+ENV FRONTEND_DIST=/app/artifacts/restaurant-pdv/dist/public
 EXPOSE 3000
 
-CMD ["pnpm", "--filter", "@workspace/api-server", "start"]
+CMD ["node", "--enable-source-maps", "artifacts/api-server/dist/index.mjs"]
