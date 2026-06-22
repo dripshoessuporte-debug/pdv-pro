@@ -17,6 +17,7 @@ router.get(
         setupStatus: storeFiscalSettingsTable.setupStatus,
         environment: storeFiscalSettingsTable.environment,
         emissionMode: storeFiscalSettingsTable.emissionMode,
+        itemizationMode: storeFiscalSettingsTable.itemizationMode,
       })
       .from(storeFiscalSettingsTable)
       .where(eq(storeFiscalSettingsTable.storeId, access.storeId))
@@ -33,6 +34,7 @@ router.get(
         status: settings?.setupStatus ?? "not_configured",
         environment: settings?.environment ?? "homologation",
         emissionMode: settings?.emissionMode ?? "manual",
+        itemizationMode: settings?.itemizationMode ?? "simplified",
       },
     });
   },
