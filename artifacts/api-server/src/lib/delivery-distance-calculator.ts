@@ -10,11 +10,8 @@ import {
   estimateDistanceKmFromCep,
   normalizeCep,
 } from "./delivery-fee";
-import {
-  calculateRouteDistanceKm,
-  getOrsApiKey,
-  isOrsConfigured,
-} from "./openrouteservice";
+import { calculateRouteDistanceKm } from "./openrouteservice";
+import { getStoreOpenRouteServiceKey } from "./store-integration-secrets";
 import {
   getStoreDeliveryOrigin,
   INVALID_STORE_CEP_DELIVERY_ERROR,
@@ -167,7 +164,11 @@ export async function calculateDeliveryDistanceForStore(input: {
   const providerPref = settings.distanceProvider ?? "approximate_cep";
   const useCache =
     settings.useDistanceCache !== "false" && input.ignoreCache !== true;
-  const orsReady = providerPref === "openrouteservice" && isOrsConfigured();
+  const resolvedOrs =
+    providerPref === "openrouteservice"
+      ? await getStoreOpenRouteServiceKey(input.storeId)
+      : { apiKey: null, source: "none" as const };
+  const orsReady = Boolean(resolvedOrs.apiKey);
   const activeProvider = orsReady ? "openrouteservice" : "approximate_cep";
   const customerFullAddr = [
     input.customerAddress,
@@ -248,7 +249,7 @@ export async function calculateDeliveryDistanceForStore(input: {
       distanceKm = await calculateRouteDistanceKm(
         origin.address.fullAddress,
         customerFullAddr,
-        getOrsApiKey()!,
+        resolvedOrs.apiKey!,
       );
     }
 

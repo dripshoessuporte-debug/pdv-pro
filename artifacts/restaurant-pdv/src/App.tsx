@@ -17,6 +17,7 @@ import Cash from "@/pages/cash";
 import Routes from "@/pages/routes";
 import Motoboys from "@/pages/motoboys";
 import SettingsPage from "@/pages/settings";
+import OpenRouteServiceSettingsPage from "@/pages/openrouteservice-settings";
 import TeamPage from "@/pages/team";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
@@ -254,6 +255,13 @@ function Router() {
         {() => (
           <ProtectedRoute path="/motoboys">
             <Motoboys />
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/openrouteservice">
+        {() => (
+          <ProtectedRoute path="/openrouteservice">
+            <OpenRouteServiceSettingsPage />
           </ProtectedRoute>
         )}
       </Route>
