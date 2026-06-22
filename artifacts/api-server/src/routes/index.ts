@@ -25,6 +25,7 @@ import onboardingRouter from "./onboarding";
 import billingRouter from "./billing";
 import caktoRouter from "./cakto";
 import teamRouter from "./team";
+import fiscalAccessRouter from "./fiscal-access";
 import { attachCurrentActor, rbacRouteGuard } from "../middleware/rbac";
 
 const router: IRouter = Router();
@@ -54,6 +55,7 @@ router.use(couriersRouter);
 router.use(settingsRouter);
 router.use(openRouteServiceSettingsRouter);
 router.use(teamRouter);
+router.use(fiscalAccessRouter);
 router.use(alertsRouter);
 router.use(integrationsRouter);
 router.use(deliveryDistanceRouter);
