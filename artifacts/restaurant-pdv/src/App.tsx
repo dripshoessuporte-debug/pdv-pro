@@ -259,8 +259,11 @@ function Router() {
         )}
       </Route>
       <Route path="/openrouteservice">
+        {() => <Redirect to="/settings/openrouteservice" />}
+      </Route>
+      <Route path="/settings/openrouteservice">
         {() => (
-          <ProtectedRoute path="/openrouteservice">
+          <ProtectedRoute path="/settings">
             <OpenRouteServiceSettingsPage />
           </ProtectedRoute>
         )}
