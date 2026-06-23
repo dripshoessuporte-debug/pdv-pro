@@ -17,6 +17,7 @@ import {
   LogOut,
   ReceiptText,
   Layers3,
+  BookOpenCheck,
 } from "lucide-react";
 import {
   useHealthCheck,
@@ -57,6 +58,7 @@ const settingsItems = [
 const fiscalItems = [
   { href: "/fiscal", label: "Visão geral", icon: ReceiptText },
   { href: "/fiscal/groups", label: "Grupos e produtos", icon: Layers3 },
+  { href: "/fiscal/codes", label: "Biblioteca de códigos", icon: BookOpenCheck },
 ];
 
 function AlertBadge({ count }: { count: number }) {
