@@ -7,11 +7,13 @@ import {
   CheckCircle2,
   CircleAlert,
   Code2,
+  Download,
   Loader2,
   Pencil,
   Save,
   Search,
   Sparkles,
+  Store,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -98,6 +100,239 @@ type RuleForm = {
   cofinsCode: string;
   natureOperation: string;
 };
+
+type BusinessType = {
+  id: string;
+  label: string;
+  description: string;
+  presetIds: string[];
+};
+
+const businessTypes: BusinessType[] = [
+  {
+    id: "all",
+    label: "Todos os tipos de negócio",
+    description: "Mostra toda a biblioteca disponível para alimentação e bebidas.",
+    presetIds: [],
+  },
+  {
+    id: "pizzaria",
+    label: "Pizzaria",
+    description: "Pizzas, refeições, produtos de padaria, queijo, calabresa, bebidas e sobremesas.",
+    presetIds: [
+      "prepared-meals-generic",
+      "bakery-pastry-other",
+      "mozzarella",
+      "sausages",
+      "frozen-potatoes",
+      "potatoes-not-frozen",
+      "soft-drink",
+      "mineral-water",
+      "other-water",
+      "beer",
+      "non-alcoholic-beer",
+      "confectionery-no-cocoa",
+      "chocolate-other",
+      "ice-cream-small-pack",
+      "ice-cream-other",
+    ],
+  },
+  {
+    id: "hamburgueria",
+    label: "Hamburgueria",
+    description: "Hambúrgueres, preparações de carne e frango, batatas, bebidas e sobremesas.",
+    presetIds: [
+      "prepared-meals-generic",
+      "beef-preparation",
+      "chicken-preparation",
+      "sausages",
+      "bakery-pastry-other",
+      "frozen-potatoes",
+      "potatoes-not-frozen",
+      "soft-drink",
+      "mineral-water",
+      "other-water",
+      "beer",
+      "non-alcoholic-beer",
+      "confectionery-no-cocoa",
+      "chocolate-other",
+      "ice-cream-small-pack",
+    ],
+  },
+  {
+    id: "restaurante",
+    label: "Restaurante",
+    description: "Refeições, sopas, massas, carnes, peixes, acompanhamentos, bebidas e sobremesas.",
+    presetIds: [
+      "prepared-meals-generic",
+      "prepared-soup",
+      "stuffed-pasta",
+      "other-pasta",
+      "beef-preparation",
+      "chicken-preparation",
+      "fish-preparation",
+      "frozen-potatoes",
+      "potatoes-not-frozen",
+      "confectionery-no-cocoa",
+      "chocolate-other",
+      "ice-cream-small-pack",
+      "ice-cream-other",
+      "mineral-water",
+      "other-water",
+      "soft-drink",
+      "other-non-alcoholic-beverage",
+      "fruit-juice-mixture",
+      "coconut-water",
+      "beer",
+      "non-alcoholic-beer",
+      "wine-small-container",
+    ],
+  },
+  {
+    id: "lanchonete",
+    label: "Lanchonete",
+    description: "Lanches, salgados, padaria, carnes, batatas, café, bebidas e doces.",
+    presetIds: [
+      "prepared-meals-generic",
+      "bakery-pastry-other",
+      "bread-loaf",
+      "sausages",
+      "beef-preparation",
+      "chicken-preparation",
+      "frozen-potatoes",
+      "potatoes-not-frozen",
+      "roasted-coffee",
+      "yogurt",
+      "confectionery-no-cocoa",
+      "chocolate-other",
+      "mineral-water",
+      "other-water",
+      "soft-drink",
+      "other-non-alcoholic-beverage",
+      "fruit-juice-mixture",
+    ],
+  },
+  {
+    id: "cafeteria",
+    label: "Cafeteria",
+    description: "Café, produtos de padaria, biscoitos, waffles, chocolates, lácteos e bebidas.",
+    presetIds: [
+      "roasted-coffee",
+      "bakery-pastry-other",
+      "bread-loaf",
+      "biscuits",
+      "waffles-wafers",
+      "confectionery-no-cocoa",
+      "chocolate-other",
+      "yogurt",
+      "mozzarella",
+      "ice-cream-small-pack",
+      "mineral-water",
+      "other-water",
+      "soft-drink",
+      "other-non-alcoholic-beverage",
+      "fruit-juice-mixture",
+      "coconut-water",
+    ],
+  },
+  {
+    id: "padaria",
+    label: "Padaria e confeitaria",
+    description: "Pães, bolos, salgados, biscoitos, waffles, doces, chocolates, café e lácteos.",
+    presetIds: [
+      "bakery-pastry-other",
+      "bread-loaf",
+      "biscuits",
+      "waffles-wafers",
+      "confectionery-no-cocoa",
+      "chocolate-other",
+      "yogurt",
+      "mozzarella",
+      "roasted-coffee",
+      "ice-cream-small-pack",
+      "ice-cream-other",
+      "mineral-water",
+      "soft-drink",
+      "fruit-juice-mixture",
+    ],
+  },
+  {
+    id: "acaiteria",
+    label: "Açaíteria e sorveteria",
+    description: "Açaí, sorvetes, chocolates, confeitos, água, sucos e refrigerantes.",
+    presetIds: [
+      "acai-puree",
+      "ice-cream-small-pack",
+      "ice-cream-other",
+      "confectionery-no-cocoa",
+      "chocolate-other",
+      "yogurt",
+      "mineral-water",
+      "other-water",
+      "soft-drink",
+      "other-non-alcoholic-beverage",
+      "fruit-juice-mixture",
+      "coconut-water",
+    ],
+  },
+  {
+    id: "sushi",
+    label: "Sushi e comida oriental",
+    description: "Preparações de peixe, pratos compostos, sopas e bebidas. Pratos mistos exigem validação reforçada.",
+    presetIds: [
+      "fish-preparation",
+      "prepared-meals-generic",
+      "prepared-soup",
+      "mineral-water",
+      "other-water",
+      "soft-drink",
+      "other-non-alcoholic-beverage",
+      "beer",
+      "non-alcoholic-beer",
+      "wine-small-container",
+    ],
+  },
+  {
+    id: "bar",
+    label: "Bar e bebidas",
+    description: "Água, refrigerante, suco, água de coco, cerveja, chope, vinho e petiscos.",
+    presetIds: [
+      "prepared-meals-generic",
+      "sausages",
+      "frozen-potatoes",
+      "potatoes-not-frozen",
+      "mineral-water",
+      "other-water",
+      "soft-drink",
+      "other-non-alcoholic-beverage",
+      "fruit-juice-mixture",
+      "coconut-water",
+      "beer",
+      "non-alcoholic-beer",
+      "wine-small-container",
+    ],
+  },
+  {
+    id: "doceria",
+    label: "Doceria",
+    description: "Confeitaria, chocolates, sorvetes, açaí, padaria, café e produtos lácteos.",
+    presetIds: [
+      "confectionery-no-cocoa",
+      "chocolate-other",
+      "ice-cream-small-pack",
+      "ice-cream-other",
+      "acai-puree",
+      "bakery-pastry-other",
+      "biscuits",
+      "waffles-wafers",
+      "roasted-coffee",
+      "yogurt",
+      "mineral-water",
+      "soft-drink",
+      "fruit-juice-mixture",
+    ],
+  },
+];
 
 const emptyRule: RuleForm = {
   source: "library",
@@ -186,6 +421,7 @@ export default function FiscalCodesPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [productSearch, setProductSearch] = useState("");
   const [librarySearch, setLibrarySearch] = useState("");
+  const [businessType, setBusinessType] = useState("all");
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
   const [showEditor, setShowEditor] = useState(false);
   const [rule, setRule] = useState<RuleForm>(emptyRule);
@@ -225,20 +461,29 @@ export default function FiscalCodesPage() {
     );
   }, [data, productSearch]);
 
+  const selectedBusiness = useMemo(
+    () => businessTypes.find((item) => item.id === businessType) ?? businessTypes[0],
+    [businessType],
+  );
+
   const visiblePresets = useMemo(() => {
     if (!data) return [];
     const search = librarySearch.trim().toLowerCase();
-    if (!search) return data.library.ncmPresets;
-    return data.library.ncmPresets.filter((preset) =>
-      [
+    const allowedIds = new Set(selectedBusiness.presetIds);
+
+    return data.library.ncmPresets.filter((preset) => {
+      const belongsToBusiness = businessType === "all" || allowedIds.has(preset.id);
+      if (!belongsToBusiness) return false;
+      if (!search) return true;
+      return [
         preset.segment,
         preset.label,
         preset.ncm,
         preset.officialDescription,
         ...preset.keywords,
-      ].some((value) => value.toLowerCase().includes(search)),
-    );
-  }, [data, librarySearch]);
+      ].some((value) => value.toLowerCase().includes(search));
+    });
+  }, [businessType, data, librarySearch, selectedBusiness.presetIds]);
 
   const compatibleCestOptions = useMemo(() => {
     if (!data || !rule.ncm) return [];
@@ -378,16 +623,27 @@ export default function FiscalCodesPage() {
             <div>
               <h1 className="text-3xl font-bold tracking-tight">Biblioteca de códigos</h1>
               <p className="mt-1 text-muted-foreground">
-                Selecione produtos, escolha os códigos e preencha vários de uma vez.
+                Filtre pelo tipo de negócio, escolha os códigos e preencha vários produtos de uma vez.
               </p>
             </div>
           </div>
-          <Button asChild variant="outline" className="gap-2">
-            <Link href="/fiscal/groups">
-              <ArrowLeft className="h-4 w-4" />
-              Voltar aos grupos
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" className="gap-2">
+              <a
+                href="/guides/guia-preenchimento-fiscal-gestor-max.pdf"
+                download="Guia_Preenchimento_Fiscal_Gestor_Max.pdf"
+              >
+                <Download className="h-4 w-4" />
+                Baixar guia PDF
+              </a>
+            </Button>
+            <Button asChild variant="outline" className="gap-2">
+              <Link href="/fiscal/groups">
+                <ArrowLeft className="h-4 w-4" />
+                Voltar aos grupos
+              </Link>
+            </Button>
+          </div>
         </div>
 
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-800 dark:text-amber-200">
@@ -495,6 +751,40 @@ export default function FiscalCodesPage() {
 
                   {rule.source === "library" ? (
                     <div className="space-y-4">
+                      <div className="rounded-xl border bg-muted/20 p-4">
+                        <div className="grid gap-3 md:grid-cols-[minmax(220px,320px)_1fr] md:items-end">
+                          <div className="space-y-2">
+                            <Label htmlFor="business-type" className="flex items-center gap-2">
+                              <Store className="h-4 w-4 text-primary" />
+                              Tipo de negócio
+                            </Label>
+                            <select
+                              id="business-type"
+                              value={businessType}
+                              onChange={(event) => {
+                                setBusinessType(event.target.value);
+                                setLibrarySearch("");
+                              }}
+                              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            >
+                              {businessTypes.map((business) => (
+                                <option key={business.id} value={business.id}>
+                                  {business.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+                            <div className="font-medium text-foreground">{selectedBusiness.label}</div>
+                            <div className="mt-1 text-muted-foreground">{selectedBusiness.description}</div>
+                            <div className="mt-2 text-xs font-medium text-primary">
+                              {visiblePresets.length} opção{visiblePresets.length === 1 ? "" : "ões"} exibida
+                              {visiblePresets.length === 1 ? "" : "s"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
                       <div className="relative">
                         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
@@ -536,6 +826,12 @@ export default function FiscalCodesPage() {
                             </button>
                           );
                         })}
+                        {visiblePresets.length === 0 && (
+                          <div className="p-6 text-center text-sm text-muted-foreground">
+                            Nenhum código encontrado para este tipo de negócio e pesquisa. Tente
+                            outro termo, selecione “Todos os tipos de negócio” ou use o modo manual.
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (

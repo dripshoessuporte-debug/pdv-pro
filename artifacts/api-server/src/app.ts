@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import path from "node:path";
 import router from "./routes";
+import { buildFiscalGuidePdf } from "./lib/fiscal-guide-pdf";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
@@ -36,6 +37,13 @@ app.use(
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+app.get("/guides/guia-preenchimento-fiscal-gestor-max.pdf", (_req, res) => {
+  const pdf = buildFiscalGuidePdf();
+  res.type("application/pdf");
+  res.attachment("Guia_Preenchimento_Fiscal_Gestor_Max.pdf");
+  res.send(pdf);
+});
 
 app.use("/api", router);
 
