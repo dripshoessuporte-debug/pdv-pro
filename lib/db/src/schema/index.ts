@@ -13,3 +13,4 @@ export * from "./tenancy";
 export * from "./integrations";
 export * from "./entitlements";
 export * from "./billing";
+export * from "./fiscal";
