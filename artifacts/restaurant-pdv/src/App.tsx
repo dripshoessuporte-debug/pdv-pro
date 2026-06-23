@@ -21,6 +21,7 @@ import OpenRouteServiceSettingsPage from "@/pages/openrouteservice-settings";
 import TeamPage from "@/pages/team";
 import FiscalPage from "@/pages/fiscal";
 import FiscalGroupsPage from "@/pages/fiscal-groups";
+import FiscalCodesPage from "@/pages/fiscal-codes";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import CreateStorePage from "@/pages/create-store";
@@ -257,6 +258,13 @@ function Router() {
         {() => (
           <ProtectedRoute path="/motoboys">
             <Motoboys />
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/fiscal/codes">
+        {() => (
+          <ProtectedRoute path="/fiscal">
+            <FiscalCodesPage />
           </ProtectedRoute>
         )}
       </Route>
