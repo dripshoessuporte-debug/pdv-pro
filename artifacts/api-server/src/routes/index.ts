@@ -28,6 +28,7 @@ import teamRouter from "./team";
 import fiscalAccessRouter from "./fiscal-access";
 import fiscalCatalogRouter from "./fiscal-catalog";
 import fiscalCodeLibraryRouter from "./fiscal-code-library";
+import fiscalGuideRouter from "./fiscal-guide";
 import { attachCurrentActor, rbacRouteGuard } from "../middleware/rbac";
 
 const router: IRouter = Router();
@@ -60,6 +61,7 @@ router.use(teamRouter);
 router.use(fiscalAccessRouter);
 router.use(fiscalCatalogRouter);
 router.use(fiscalCodeLibraryRouter);
+router.use(fiscalGuideRouter);
 router.use(alertsRouter);
 router.use(integrationsRouter);
 router.use(deliveryDistanceRouter);
