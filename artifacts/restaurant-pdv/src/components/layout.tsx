@@ -16,6 +16,7 @@ import {
   KeyRound,
   LogOut,
   ReceiptText,
+  Layers3,
 } from "lucide-react";
 import {
   useHealthCheck,
@@ -53,6 +54,11 @@ const settingsItems = [
   },
 ];
 
+const fiscalItems = [
+  { href: "/fiscal", label: "Visão geral", icon: ReceiptText },
+  { href: "/fiscal/groups", label: "Grupos e produtos", icon: Layers3 },
+];
+
 function AlertBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
@@ -72,6 +78,38 @@ function SettingsNavigation({ location }: { location: string }) {
           const isActive =
             item.href === "/settings"
               ? location === "/settings"
+              : location.startsWith(item.href);
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
+                isActive
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <item.icon className="h-4 w-4" />
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FiscalNavigation({ location }: { location: string }) {
+  if (!location.startsWith("/fiscal")) return null;
+
+  return (
+    <div className="mb-6 rounded-2xl border bg-card p-2 shadow-sm">
+      <div className="flex flex-wrap gap-2">
+        {fiscalItems.map((item) => {
+          const isActive =
+            item.href === "/fiscal"
+              ? location === "/fiscal"
               : location.startsWith(item.href);
 
           return (
@@ -282,6 +320,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <main className="flex-1 overflow-y-auto bg-background">
         <div className="p-8 lg:p-10 max-w-7xl mx-auto min-h-full">
           <SettingsNavigation location={location} />
+          <FiscalNavigation location={location} />
           {children}
         </div>
       </main>
