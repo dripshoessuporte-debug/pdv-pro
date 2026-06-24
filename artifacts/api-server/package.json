@@ -7,7 +7,8 @@
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "pnpm --filter @workspace/db db:migrate && node --enable-source-maps ./dist/index.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:focus-nfe": "node ./scripts/run-focus-nfe-tests.mjs"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
