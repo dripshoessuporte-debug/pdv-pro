@@ -3,7 +3,11 @@ import { fiscalGuidePdfPart02 } from "./fiscal-guide-pdf-data/part-02";
 import { fiscalGuidePdfPart03 } from "./fiscal-guide-pdf-data/part-03";
 import { fiscalGuidePdfPart04A } from "./fiscal-guide-pdf-data/part-04a";
 import { fiscalGuidePdfPart04B } from "./fiscal-guide-pdf-data/part-04b";
-import { fiscalGuidePdfPart04C } from "./fiscal-guide-pdf-data/part-04c";
+import { fiscalGuidePdfPart04C1 } from "./fiscal-guide-pdf-data/part-04c1";
+import { fiscalGuidePdfPart04C2 } from "./fiscal-guide-pdf-data/part-04c2";
+import { fiscalGuidePdfPart04C3 } from "./fiscal-guide-pdf-data/part-04c3";
+import { fiscalGuidePdfPart04C4 } from "./fiscal-guide-pdf-data/part-04c4";
+import { fiscalGuidePdfPart04C5 } from "./fiscal-guide-pdf-data/part-04c5";
 import { fiscalGuidePdfPart04D } from "./fiscal-guide-pdf-data/part-04d";
 import { fiscalGuidePdfPart04E } from "./fiscal-guide-pdf-data/part-04e";
 import { fiscalGuidePdfPart05 } from "./fiscal-guide-pdf-data/part-05";
@@ -17,7 +21,11 @@ const approvedFiscalGuidePdfBase64 = [
   fiscalGuidePdfPart03,
   fiscalGuidePdfPart04A,
   fiscalGuidePdfPart04B,
-  fiscalGuidePdfPart04C,
+  fiscalGuidePdfPart04C1,
+  fiscalGuidePdfPart04C2,
+  fiscalGuidePdfPart04C3,
+  fiscalGuidePdfPart04C4,
+  fiscalGuidePdfPart04C5,
   fiscalGuidePdfPart04D,
   fiscalGuidePdfPart04E,
   fiscalGuidePdfPart05,
