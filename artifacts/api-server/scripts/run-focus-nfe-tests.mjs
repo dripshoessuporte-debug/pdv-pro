@@ -6,6 +6,12 @@ import path from "node:path";
 const outdir = path.resolve(".tmp/focus-nfe-tests");
 await rm(outdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
-await build({ entryPoints: ["src/integrations/focus-nfe/__tests__/client.test.ts"], bundle: true, platform: "node", format: "esm", outfile: path.join(outdir, "client.test.mjs"), logLevel: "silent" });
-const result = spawnSync(process.execPath, ["--test", path.join(outdir, "client.test.mjs")], { stdio: "inherit" });
+const tests = [
+  ["src/integrations/focus-nfe/__tests__/client.test.ts", "client.test.mjs"],
+  ["src/lib/fiscal-secrets/__tests__.test.ts", "fiscal-secrets.test.mjs"],
+];
+for (const [entry, file] of tests) {
+  await build({ entryPoints: [entry], bundle: true, platform: "node", format: "esm", outfile: path.join(outdir, file), logLevel: "silent", external: ["pg-native"] });
+}
+const result = spawnSync(process.execPath, ["--test", ...tests.map(([, file]) => path.join(outdir, file))], { stdio: "inherit" });
 process.exit(result.status ?? 1);
