@@ -27,6 +27,8 @@ export const fiscalSetupStatuses = [
 
 export const fiscalEnvironments = ["homologation", "production"] as const;
 export const fiscalEmissionModes = ["manual", "automatic"] as const;
+export const fiscalProviders = ["focus_nfe"] as const;
+export const fiscalCredentialTypes = ["api_token"] as const;
 
 export const storeFiscalSettingsTable = pgTable(
   "store_fiscal_settings",
@@ -93,6 +95,51 @@ export const storeFiscalSettingsTable = pgTable(
     check(
       "store_fiscal_settings_emission_mode_check",
       sql`${table.emissionMode} in ('manual', 'automatic')`,
+    ),
+  ],
+);
+
+export const fiscalProviderCredentialsTable = pgTable(
+  "fiscal_provider_credentials",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id")
+      .notNull()
+      .references(() => storesTable.id),
+    provider: text("provider").notNull().default("focus_nfe"),
+    environment: text("environment").notNull(),
+    credentialType: text("credential_type").notNull().default("api_token"),
+    encryptedValue: text("encrypted_value").notNull(),
+    initializationVector: text("initialization_vector").notNull(),
+    authenticationTag: text("authentication_tag").notNull(),
+    keyVersion: text("key_version").notNull().default("v1"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("fiscal_provider_credentials_store_id_idx").on(table.storeId),
+    uniqueIndex("fiscal_provider_credentials_unique").on(
+      table.storeId,
+      table.provider,
+      table.environment,
+      table.credentialType,
+    ),
+    check(
+      "fiscal_provider_credentials_provider_check",
+      sql`${table.provider} in ('focus_nfe')`,
+    ),
+    check(
+      "fiscal_provider_credentials_environment_check",
+      sql`${table.environment} in ('homologation', 'production')`,
+    ),
+    check(
+      "fiscal_provider_credentials_type_check",
+      sql`${table.credentialType} in ('api_token')`,
     ),
   ],
 );
@@ -235,6 +282,15 @@ export type InsertStoreFiscalSettings = z.infer<
   typeof insertStoreFiscalSettingsSchema
 >;
 export type StoreFiscalSettings = typeof storeFiscalSettingsTable.$inferSelect;
+
+export const insertFiscalProviderCredentialSchema = createInsertSchema(
+  fiscalProviderCredentialsTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFiscalProviderCredential = z.infer<
+  typeof insertFiscalProviderCredentialSchema
+>;
+export type FiscalProviderCredential =
+  typeof fiscalProviderCredentialsTable.$inferSelect;
 
 export const insertFiscalGroupSchema = createInsertSchema(
   fiscalGroupsTable,
