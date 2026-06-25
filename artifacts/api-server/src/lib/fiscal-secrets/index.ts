@@ -1,17 +1,20 @@
 import { and, eq } from "drizzle-orm";
 import { db, fiscalProviderCredentialsTable } from "@workspace/db";
 import type { FocusNfeEnvironment } from "../../integrations/focus-nfe";
-import { decryptSecret, encryptSecret, type EncryptedSecret } from "./crypto";
+import { decryptSecret, encryptSecret } from "./crypto";
 export { decryptSecret, encryptSecret, FiscalSecretsError } from "./crypto";
 
 export type FiscalProvider = "focus_nfe";
-export type FiscalCredentialType = "api_token";
+export type FiscalCredentialType = "api_token" | "csc_secret";
+
+type DbExecutor = Pick<typeof db, "select" | "insert" | "update" | "delete">;
 
 type StoreCredentialKey = {
   storeId: number;
   provider?: FiscalProvider;
   environment: FocusNfeEnvironment;
   credentialType?: FiscalCredentialType;
+  executor?: DbExecutor;
 };
 
 const whereCredential = ({ storeId, provider = "focus_nfe", environment, credentialType = "api_token" }: StoreCredentialKey) =>
@@ -24,8 +27,9 @@ const whereCredential = ({ storeId, provider = "focus_nfe", environment, credent
 
 export async function saveStoreFiscalCredential(params: StoreCredentialKey & { value: string }): Promise<"created" | "replaced"> {
   const encrypted = encryptSecret(params.value);
-  const [existing] = await db.select({ id: fiscalProviderCredentialsTable.id }).from(fiscalProviderCredentialsTable).where(whereCredential(params)).limit(1);
-  await db
+  const executor = params.executor ?? db;
+  const [existing] = await executor.select({ id: fiscalProviderCredentialsTable.id }).from(fiscalProviderCredentialsTable).where(whereCredential(params)).limit(1);
+  await executor
     .insert(fiscalProviderCredentialsTable)
     .values({
       storeId: params.storeId,
@@ -47,7 +51,8 @@ export async function saveStoreFiscalCredential(params: StoreCredentialKey & { v
 }
 
 export async function getStoreFiscalCredential(params: StoreCredentialKey): Promise<string | null> {
-  const [row] = await db
+  const executor = params.executor ?? db;
+  const [row] = await executor
     .select({
       encryptedValue: fiscalProviderCredentialsTable.encryptedValue,
       initializationVector: fiscalProviderCredentialsTable.initializationVector,
@@ -61,11 +66,13 @@ export async function getStoreFiscalCredential(params: StoreCredentialKey): Prom
 }
 
 export async function hasStoreFiscalCredential(params: StoreCredentialKey): Promise<boolean> {
-  const [row] = await db.select({ id: fiscalProviderCredentialsTable.id }).from(fiscalProviderCredentialsTable).where(whereCredential(params)).limit(1);
+  const executor = params.executor ?? db;
+  const [row] = await executor.select({ id: fiscalProviderCredentialsTable.id }).from(fiscalProviderCredentialsTable).where(whereCredential(params)).limit(1);
   return Boolean(row);
 }
 
 export async function deleteStoreFiscalCredential(params: StoreCredentialKey): Promise<boolean> {
-  const deleted = await db.delete(fiscalProviderCredentialsTable).where(whereCredential(params)).returning({ id: fiscalProviderCredentialsTable.id });
+  const executor = params.executor ?? db;
+  const deleted = await executor.delete(fiscalProviderCredentialsTable).where(whereCredential(params)).returning({ id: fiscalProviderCredentialsTable.id });
   return deleted.length > 0;
 }

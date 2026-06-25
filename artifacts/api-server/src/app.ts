@@ -35,7 +35,13 @@ app.use(
   }),
 );
 app.use(cookieParser());
-app.use(express.json());
+app.use((req, res, next) => {
+  if (req.method === "POST" && req.path === "/api/fiscal/focus/certificate") {
+    next();
+    return;
+  }
+  express.json()(req, res, next);
+});
 app.use(express.urlencoded({ extended: true }));
 
 app.get("/guides/guia-preenchimento-fiscal-gestor-max.pdf", (_req, res) => {

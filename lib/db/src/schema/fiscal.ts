@@ -28,7 +28,7 @@ export const fiscalSetupStatuses = [
 export const fiscalEnvironments = ["homologation", "production"] as const;
 export const fiscalEmissionModes = ["manual", "automatic"] as const;
 export const fiscalProviders = ["focus_nfe"] as const;
-export const fiscalCredentialTypes = ["api_token"] as const;
+export const fiscalCredentialTypes = ["api_token", "csc_secret"] as const;
 
 export const storeFiscalSettingsTable = pgTable(
   "store_fiscal_settings",
@@ -139,7 +139,7 @@ export const fiscalProviderCredentialsTable = pgTable(
     ),
     check(
       "fiscal_provider_credentials_type_check",
-      sql`${table.credentialType} in ('api_token')`,
+      sql`${table.credentialType} in ('api_token', 'csc_secret')`,
     ),
   ],
 );
