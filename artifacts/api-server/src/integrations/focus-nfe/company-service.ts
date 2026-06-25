@@ -1,6 +1,9 @@
 import { and, eq, isNotNull } from "drizzle-orm";
-import { db, fiscalAuditLogsTable, fiscalGroupRulesTable, fiscalGroupsTable, storeFiscalSettingsTable } from "@workspace/db";
+import { db, fiscalAuditLogsTable, fiscalGroupRulesTable, fiscalGroupsTable, productFiscalSettingsTable, productsTable, storeFiscalSettingsTable } from "@workspace/db";
 import { FocusNfeClient } from "./client";
+import { FocusNfeError } from "./errors";
+import { CERTIFICATE_VALIDATION_ERROR, COMPANY_NOT_LINKED, CSC_VALIDATION_ERROR, FOCUS_APPLIED_LOCAL_SYNC_FAILED, FOCUS_AUTHENTICATION_ERROR, FOCUS_TIMEOUT, FOCUS_UNAVAILABLE, FOCUS_VALIDATION_ERROR, FocusSetupError, STORE_CREDENTIAL_NOT_CONFIGURED } from "./setup-errors";
+export { isFiscalRuleComplete } from "./readiness";
 import { resolveFocusNfeToken } from "./config";
 import type { FocusNfeEnvironment, FocusNfeStoreContext } from "./types";
 import { getStoreFiscalCredential, hasStoreFiscalCredential, saveStoreFiscalCredential } from "../../lib/fiscal-secrets";
@@ -11,20 +14,9 @@ type DbExecutor = Pick<typeof db, "select" | "insert" | "update" | "delete">;
 
 type FocusCompanyUpdateResponse = Record<string, unknown>;
 
-export const FOCUS_APPLIED_LOCAL_SYNC_FAILED = "FOCUS_APPLIED_LOCAL_SYNC_FAILED" as const;
-export const CSC_VALIDATION_ERROR = "CSC_VALIDATION_ERROR" as const;
-export const CERTIFICATE_VALIDATION_ERROR = "CERTIFICATE_VALIDATION_ERROR" as const;
-
-export class FocusSetupError extends Error {
-  constructor(public readonly code: string, message: string) {
-    super(message);
-    this.name = "FocusSetupError";
-  }
-}
-
 export async function resolveStoreFocusCredentials(params: { storeId: number; environment: FocusNfeEnvironment }): Promise<FocusNfeStoreContext> {
   const token = await getStoreFiscalCredential({ storeId: params.storeId, provider: "focus_nfe", environment: params.environment, credentialType: "api_token" });
-  if (!token) throw new Error("Credencial Focus NFe da loja não configurada para o ambiente fiscal.");
+  if (!token) throw new FocusSetupError(STORE_CREDENTIAL_NOT_CONFIGURED, "Credencial Focus NFe da loja não configurada para o ambiente fiscal.");
   const [settings] = await db.select({ providerCompanyId: storeFiscalSettingsTable.providerCompanyId }).from(storeFiscalSettingsTable).where(eq(storeFiscalSettingsTable.storeId, params.storeId)).limit(1);
   return { storeId: params.storeId, environment: params.environment, credentials: { token, tokenReference: "fiscal_provider_credentials" }, providerCompanyId: settings?.providerCompanyId ?? null };
 }
@@ -55,7 +47,7 @@ export async function getFocusCompanySummary(storeId: number) {
 }
 
 export async function linkExistingFocusCompany(input: LinkFocusCompanyInput) {
-  await db.transaction(async (tx) => {
+  await db.transaction(async (tx: DbExecutor) => {
     const homologationStatus = await saveStoreFiscalCredential({ storeId: input.storeId, provider: "focus_nfe", environment: "homologation", credentialType: "api_token", value: input.homologationToken, executor: tx });
     let productionStatus: "created" | "replaced" | null = null;
     if (input.productionToken) productionStatus = await saveStoreFiscalCredential({ storeId: input.storeId, provider: "focus_nfe", environment: "production", credentialType: "api_token", value: input.productionToken, executor: tx });
@@ -81,7 +73,7 @@ export async function uploadFocusCertificate(input: { storeId: number; actorUser
   try {
     validateCertificate(input.filename, input.content, input.password);
     const context = await resolveStoreFocusCredentials({ storeId: input.storeId, environment: "homologation" });
-    if (!context.providerCompanyId) throw new FocusSetupError(CERTIFICATE_VALIDATION_ERROR, "Empresa Focus NFe ainda não vinculada à loja.");
+    if (!context.providerCompanyId) throw new FocusSetupError(COMPANY_NOT_LINKED, "Empresa Focus NFe ainda não vinculada à loja.");
     const previous = await getFocusCompanySummary(input.storeId);
 
     let result: { data: FocusCompanyUpdateResponse };
@@ -89,12 +81,12 @@ export async function uploadFocusCertificate(input: { storeId: number; actorUser
       result = await (input.client ?? new FocusNfeClient()).request<FocusCompanyUpdateResponse>(context, { method: "PUT", path: `/v2/empresas/${encodeURIComponent(context.providerCompanyId)}`, body: { arquivo_certificado_base64: input.content.toString("base64"), senha_certificado: input.password } });
     } catch (error) {
       await audit(db, input.storeId, input.actorUserId, "focus_certificate_rejected", context.providerCompanyId, { environment: "homologation", status: "rejected", errorCode: error instanceof Error ? error.name : "focus_error" });
-      throw new FocusSetupError(CERTIFICATE_VALIDATION_ERROR, "A Focus NFe rejeitou ou não recebeu o certificado. A configuração anterior foi mantida.");
+      throw classifyFocusError(error, "A Focus NFe rejeitou ou não recebeu o certificado. A configuração anterior foi mantida.");
     }
 
     try {
       const meta = certMeta(context.providerCompanyId, result.data);
-      await db.transaction(async (tx) => {
+      await db.transaction(async (tx: DbExecutor) => {
         await tx.insert(storeFiscalSettingsTable).values({ storeId: input.storeId, provider: "focus_nfe", environment: "homologation", providerCompanyId: context.providerCompanyId, certificateReference: meta.reference, certificateStatus: meta.status, certificateExpiresAt: meta.expiresAt, setupStatus: "configuring", configuredByUserId: input.actorUserId ?? null }).onConflictDoUpdate({ target: storeFiscalSettingsTable.storeId, set: { certificateReference: meta.reference, certificateStatus: meta.status, certificateExpiresAt: meta.expiresAt, configuredByUserId: input.actorUserId ?? null, updatedAt: new Date() } });
         await audit(tx, input.storeId, input.actorUserId, "focus_certificate_submitted", context.providerCompanyId!, { environment: "homologation", status: meta.status, certificateExpiresAt: meta.expiresAt?.toISOString() ?? null });
         if (previous.certificateConfigured) await audit(tx, input.storeId, input.actorUserId, "focus_certificate_replaced", context.providerCompanyId!, { environment: "homologation" });
@@ -112,15 +104,15 @@ export async function configureFocusCsc(input: { storeId: number; actorUserId?: 
   if (!/^\d{1,6}$/.test(cscId)) throw new FocusSetupError(CSC_VALIDATION_ERROR, "ID do CSC de homologação inválido.");
   if (cscSecret.length < 6 || cscSecret.length > 255) throw new FocusSetupError(CSC_VALIDATION_ERROR, "CSC de homologação inválido.");
   const context = await resolveStoreFocusCredentials({ storeId: input.storeId, environment: "homologation" });
-  if (!context.providerCompanyId) throw new FocusSetupError(CSC_VALIDATION_ERROR, "Empresa Focus NFe ainda não vinculada à loja.");
+  if (!context.providerCompanyId) throw new FocusSetupError(COMPANY_NOT_LINKED, "Empresa Focus NFe ainda não vinculada à loja.");
   const previous = await getFocusCompanySummary(input.storeId);
   try {
     await (input.client ?? new FocusNfeClient()).request(context, { method: "PUT", path: `/v2/empresas/${encodeURIComponent(context.providerCompanyId)}`, body: { csc_nfce_homologacao: cscSecret, id_token_nfce_homologacao: Number(cscId) } });
-  } catch {
-    throw new FocusSetupError(CSC_VALIDATION_ERROR, "A Focus NFe rejeitou ou não recebeu o CSC de homologação.");
+  } catch (error) {
+    throw classifyFocusError(error, "A Focus NFe rejeitou ou não recebeu o CSC de homologação.");
   }
   try {
-    await db.transaction(async (tx) => {
+    await db.transaction(async (tx: DbExecutor) => {
       await audit(tx, input.storeId, input.actorUserId, "focus_csc_accepted", context.providerCompanyId!, { environment: "homologation", status: "accepted" });
       await saveStoreFiscalCredential({ storeId: input.storeId, provider: "focus_nfe", environment: "homologation", credentialType: "csc_secret", value: cscSecret, executor: tx });
       await tx.insert(storeFiscalSettingsTable).values({ storeId: input.storeId, provider: "focus_nfe", environment: "homologation", providerCompanyId: context.providerCompanyId, cscId, cscSecretReference: "fiscal_provider_credentials:csc_secret:homologation", configuredByUserId: input.actorUserId ?? null }).onConflictDoUpdate({ target: storeFiscalSettingsTable.storeId, set: { cscId, cscSecretReference: "fiscal_provider_credentials:csc_secret:homologation", configuredByUserId: input.actorUserId ?? null, updatedAt: new Date() } });
@@ -141,21 +133,38 @@ function validateCertificate(filename: string, content: Buffer, password: string
   if (password.length > 500) throw new FocusSetupError(CERTIFICATE_VALIDATION_ERROR, "A senha do certificado deve ter no máximo 500 caracteres.");
 }
 
+function classifyFocusError(error: unknown, message: string): FocusSetupError {
+  if (error instanceof FocusNfeError) {
+    if (error.kind === "authentication") return new FocusSetupError(FOCUS_AUTHENTICATION_ERROR, message);
+    if (error.kind === "timeout") return new FocusSetupError(FOCUS_TIMEOUT, message);
+    if (error.kind === "communication" || error.kind === "temporary_unavailable") return new FocusSetupError(FOCUS_UNAVAILABLE, message);
+    if (error.kind === "validation" || error.kind === "unexpected_response") return new FocusSetupError(FOCUS_VALIDATION_ERROR, message);
+  }
+  return new FocusSetupError(FOCUS_UNAVAILABLE, message);
+}
+
 async function getHomologationMissingRequirements(storeId: number, settings: typeof storeFiscalSettingsTable.$inferSelect | undefined, token: boolean, cert: boolean, csc: boolean) {
   const missing: string[] = [];
-  if (!settings?.providerCompanyId) missing.push("companyLinked");
-  if (!token) missing.push("homologationCredentialConfigured");
-  if (!cert) missing.push("certificateConfigured");
-  if (!csc) missing.push("cscConfigured");
-  for (const [ok, key] of [[settings?.cnpj, "cnpj"], [settings?.stateRegistration, "stateRegistration"], [settings?.taxRegime, "taxRegime"], [settings?.state, "state"], [settings?.cityIbgeCode, "cityIbgeCode"], [settings?.series, "series"], [settings?.nextNumber, "nextNumber"]] as const) if (!ok) missing.push(key);
-  const [rule] = await db.select({ id: fiscalGroupRulesTable.id }).from(fiscalGroupRulesTable).innerJoin(fiscalGroupsTable, eq(fiscalGroupRulesTable.fiscalGroupId, fiscalGroupsTable.id)).where(and(eq(fiscalGroupRulesTable.storeId, storeId), eq(fiscalGroupsTable.active, true), isNotNull(fiscalGroupRulesTable.ncm), isNotNull(fiscalGroupRulesTable.cfop))).limit(1);
-  if (!rule) missing.push("fiscalRules");
+  if (!settings?.providerCompanyId) missing.push("company_not_linked");
+  if (!token) missing.push("homologation_token_missing");
+  if (!cert) missing.push("certificate_missing");
+  if (!csc) missing.push("csc_missing");
+  const companyDataComplete = [settings?.cnpj, settings?.stateRegistration, settings?.taxRegime, settings?.state, settings?.cityIbgeCode].every(Boolean);
+  if (!companyDataComplete) missing.push("company_data_incomplete");
+  if (!settings?.series || !settings?.nextNumber) missing.push("numbering_missing");
+  if (settings?.emissionMode === "automatic") {
+    const [rule] = await db.select({ id: productFiscalSettingsTable.id }).from(productFiscalSettingsTable).innerJoin(productsTable, and(eq(productFiscalSettingsTable.productId, productsTable.id), eq(productsTable.storeId, storeId))).where(and(eq(productFiscalSettingsTable.storeId, storeId), eq(productFiscalSettingsTable.active, true), isNotNull(productFiscalSettingsTable.ncm), isNotNull(productFiscalSettingsTable.cfop), isNotNull(productFiscalSettingsTable.commercialUnit), isNotNull(productFiscalSettingsTable.origin), isNotNull(productFiscalSettingsTable.icmsCode), isNotNull(productFiscalSettingsTable.pisCode), isNotNull(productFiscalSettingsTable.cofinsCode))).limit(1);
+    if (!rule) missing.push("complete_product_rules_incomplete");
+  } else {
+    const [rule] = await db.select({ id: fiscalGroupRulesTable.id }).from(fiscalGroupRulesTable).innerJoin(fiscalGroupsTable, eq(fiscalGroupRulesTable.fiscalGroupId, fiscalGroupsTable.id)).where(and(eq(fiscalGroupRulesTable.storeId, storeId), eq(fiscalGroupsTable.storeId, storeId), eq(fiscalGroupsTable.active, true), isNotNull(fiscalGroupRulesTable.ncm), isNotNull(fiscalGroupRulesTable.cfop), isNotNull(fiscalGroupRulesTable.commercialUnit), isNotNull(fiscalGroupRulesTable.origin), isNotNull(fiscalGroupRulesTable.icmsCode), isNotNull(fiscalGroupRulesTable.pisCode), isNotNull(fiscalGroupRulesTable.cofinsCode))).limit(1);
+    if (!rule) missing.push("simplified_rules_incomplete");
+  }
   return missing;
 }
 
 async function markReadyIfComplete(storeId: number, actorUserId: number | null | undefined, providerCompanyId: string | null | undefined) {
   const summary = await getFocusCompanySummary(storeId);
-  if (summary.readyForHomologation && providerCompanyId) await db.transaction(async (tx) => { await tx.update(storeFiscalSettingsTable).set({ setupStatus: "homologation", updatedAt: new Date() }).where(eq(storeFiscalSettingsTable.storeId, storeId)); await audit(tx, storeId, actorUserId, "focus_setup_ready_for_homologation", providerCompanyId, { environment: "homologation", status: "ready" }); });
+  if (summary.readyForHomologation && providerCompanyId) await db.transaction(async (tx: DbExecutor) => { await tx.update(storeFiscalSettingsTable).set({ setupStatus: "homologation", updatedAt: new Date() }).where(eq(storeFiscalSettingsTable.storeId, storeId)); await audit(tx, storeId, actorUserId, "focus_setup_ready_for_homologation", providerCompanyId, { environment: "homologation", status: "ready" }); });
 }
 
 export async function getRegisteredFocusCompany(): Promise<never> { throw new Error("Consulta GET /v2/empresas/{id} desabilitada: a documentação oficial consultada confirmou PUT /v2/empresas/{id}, mas não confirmou GET para este fluxo."); }
