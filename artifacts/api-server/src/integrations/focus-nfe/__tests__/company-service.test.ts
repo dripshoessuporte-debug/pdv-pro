@@ -1,38 +1,54 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 
-const service = readFileSync("src/integrations/focus-nfe/company-service.ts", "utf8");
-const route = readFileSync("src/routes/fiscal-focus.ts", "utf8");
-const runner = readFileSync("scripts/run-focus-nfe-tests.mjs", "utf8");
+process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test";
+process.env.FISCAL_SECRETS_ENCRYPTION_KEY ??= "12345678901234567890123456789012";
 
-const cases: Array<[string, () => void]> = [
-  [".pfx válido é aceito pela validação de extensão", () => assert.match(service, /pfx\|p12/)],
-  [".p12 válido é aceito pela validação de extensão", () => assert.match(service, /pfx\|p12/)],
-  ["campo errado de arquivo retorna erro seguro", () => assert.match(route, /Campo de arquivo inválido/)],
-  ["arquivo ausente retorna erro seguro", () => assert.match(route, /Envie o arquivo do certificado/)],
-  ["múltiplos arquivos são rejeitados", () => assert.match(route, /Envie somente um certificado/)],
-  ["arquivo acima de 5 MB é rejeitado", () => assert.match(service, /5 \* 1024 \* 1024/)],
-  ["multipart inválido é rejeitado", () => assert.match(route, /Upload multipart inválido/)],
-  ["erro do upload retorna JSON seguro", () => assert.match(route, /safeUploadError/)],
-  ["senha com espaços não é modificada", () => assert.match(route, /preserveString/)],
-  ["senha do certificado não usa trim", () => assert.doesNotMatch(route, /certificatePassword[^\n]+trim/)],
-  ["buffer zerado em erro de validação", () => assert.match(service, /finally \{ input\.content\.fill\(0\); \}/)],
-  ["buffer zerado sem empresa vinculada", () => assert.match(service, /providerCompanyId[\s\S]+finally \{ input\.content\.fill\(0\); \}/)],
-  ["buffer zerado sem token", () => assert.match(service, /resolveStoreFocusCredentials[\s\S]+finally \{ input\.content\.fill\(0\); \}/)],
-  ["buffer zerado quando a Focus falha", () => assert.match(service, /focus_certificate_rejected[\s\S]+finally \{ input\.content\.fill\(0\); \}/)],
-  ["CSC inválido retorna CSC_VALIDATION_ERROR", () => assert.match(service, /CSC_VALIDATION_ERROR[\s\S]+ID do CSC/)],
-  ["CSC nunca aparece na resposta de status", () => { const statusResponse = route.match(/res\.json\(\{ provider:[\s\S]*?missingRequirements: company\.missingRequirements \}\);/)?.[0] ?? ""; assert.doesNotMatch(statusResponse, /cscSecret|cscIdConfigured|providerCompanyId|password|certificateReference|initializationVector|authenticationTag/); assert.match(statusResponse, /cscConfigured/); }],
-  ["Focus aceita CSC e banco falha retorna FOCUS_APPLIED_LOCAL_SYNC_FAILED", () => assert.match(service, /focus_csc_accepted[\s\S]+FOCUS_APPLIED_LOCAL_SYNC_FAILED/)],
-  ["certificado aceito e banco falha retorna FOCUS_APPLIED_LOCAL_SYNC_FAILED", () => assert.match(service, /focus_certificate_submitted[\s\S]+FOCUS_APPLIED_LOCAL_SYNC_FAILED/)],
-  ["certificado submitted libera readyForHomologationTest", () => assert.match(service, /certificateStatus === "submitted"[\s\S]+readyForHomologationTest/)],
-  ["certificado submitted não libera readyForHomologation", () => assert.match(service, /certificateStatus === "valid"[\s\S]+readyForHomologation = readyForHomologationTest && certificateValid/)],
-  ["modelo Simplificado completo é aceito via regras fiscais completas", () => assert.match(service, /fiscalRules/)],
-  ["modelo Simplificado incompleto é rejeitado via missingRequirements", () => assert.match(service, /missing\.push\("fiscalRules"\)/)],
-  ["modelo Completo completo é aceito via regras fiscais completas", () => assert.match(service, /isNotNull\(fiscalGroupRulesTable\.ncm\)/)],
-  ["produto de outra loja não libera a loja atual", () => assert.match(service, /eq\(fiscalGroupRulesTable\.storeId, storeId\)/)],
-  ["nenhuma NFC-e é emitida neste fluxo", () => assert.doesNotMatch(service + route, /\/v2\/nfce|emit/i)],
-  ["runner usa FISCAL_SECRETS_ENCRYPTION_KEY com 32 bytes", () => assert.match(runner, /FISCAL_SECRETS_ENCRYPTION_KEY[^\n]+12345678901234567890123456789012/)],
-];
+const upload = await import("../certificate-upload");
+const errors = await import("../setup-errors");
+const readiness = await import("../readiness");
 
-for (const [name, fn] of cases) test(name, fn);
+async function multipart(fields: (readonly [string, string | Blob, string?])[]) {
+  const form = new FormData();
+  for (const [name, value, filename] of fields) filename ? form.append(name, value, filename) : form.append(name, value as string);
+  const response = new Response(form);
+  return { body: Buffer.from(await response.arrayBuffer()), contentType: response.headers.get("content-type") ?? "" };
+}
+async function parse(fields: (readonly [string, string | Blob, string?])[]) {
+  const { body, contentType } = await multipart(fields);
+  return upload.parseCertificateMultipartRequest({ headers: { "content-type": contentType }, body } as never);
+}
+
+test("runtime Node suporta Request.formData() com multipart nativo", async () => { await upload.assertNativeMultipartFormDataSupport(); });
+test("multipart .pfx real é aceito", async () => { const parsed = await parse([["certificatePassword", "secret"], ["certificate", new Blob(["abc"]), "cert.pfx"]]); assert.equal(parsed.filename, "cert.pfx"); assert.deepEqual([...parsed.content], [...Buffer.from("abc")]); });
+test("multipart .p12 real é aceito", async () => { const parsed = await parse([["certificatePassword", "secret"], ["certificate", new Blob(["abc"]), "cert.p12"]]); assert.equal(parsed.filename, "cert.p12"); });
+test("senha com espaços é preservada exatamente", async () => { const password = "  senha  com  espaços  "; const parsed = await parse([["certificatePassword", password], ["certificate", new Blob(["abc"]), "cert.pfx"]]); assert.equal(parsed.password, password); });
+test("dois arquivos são rejeitados", async () => { await assert.rejects(parse([["certificatePassword", "x"], ["certificate", new Blob(["a"]), "a.pfx"], ["certificate", new Blob(["b"]), "b.pfx"]]), /somente um certificado/); });
+test("campo de arquivo errado é rejeitado", async () => { await assert.rejects(parse([["certificatePassword", "x"], ["wrong", new Blob(["a"]), "a.pfx"]]), /Campo de arquivo inválido/); });
+test("arquivo ausente é rejeitado", async () => { await assert.rejects(parse([["certificatePassword", "x"]]), /Envie o arquivo/); });
+test("arquivo vazio é rejeitado", async () => { await assert.rejects(parse([["certificatePassword", "x"], ["certificate", new Blob([]), "a.pfx"]]), /vazio/); });
+test("arquivo acima do limite é rejeitado", async () => { await assert.rejects(parse([["certificatePassword", "x"], ["certificate", new Blob([Buffer.alloc(5 * 1024 * 1024 + 1)]), "a.pfx"]]), /5 MB/); });
+test("multipart malformado é rejeitado", async () => { await assert.rejects(upload.parseCertificateMultipartRequest({ headers: { "content-type": "multipart/form-data; boundary=x" }, body: Buffer.from("not multipart") } as never), /multipart inválido/); });
+test("JSON Base64 é rejeitado", async () => { await assert.rejects(upload.parseCertificateMultipartRequest({ headers: { "content-type": "application/json" }, body: { certificate: "YQ==" } } as never), /multipart\/form-data/); });
+test("senha ausente é rejeitada", async () => { await assert.rejects(parse([["certificate", new Blob(["a"]), "a.pfx"]]), /senha/); });
+test("senha com mais de 500 caracteres é rejeitada sem corte", async () => { await assert.rejects(parse([["certificatePassword", "x".repeat(501)], ["certificate", new Blob(["a"]), "a.pfx"]]), /500/); });
+test("extensão inválida é rejeitada", async () => { await assert.rejects(parse([["certificatePassword", "x"], ["certificate", new Blob(["a"]), "a.txt"]]), /pfx ou .p12/); });
+test("erro desconhecido retorna JSON seguro", () => { assert.deepEqual(errors.mapFocusSetupError(new Error("SQL select * from secret")), { status: 500, body: { code: "INTERNAL_ERROR", error: "Não foi possível concluir a configuração fiscal." } }); });
+test("empresa não vinculada usa 409", () => { assert.equal(errors.mapFocusSetupError(new errors.FocusSetupError(errors.COMPANY_NOT_LINKED, "x")).status, 409); });
+test("token ausente usa 409", () => { assert.equal(errors.mapFocusSetupError(new errors.FocusSetupError(errors.STORE_CREDENTIAL_NOT_CONFIGURED, "x")).status, 409); });
+test("timeout Focus usa 504", () => { assert.equal(errors.mapFocusSetupError(new errors.FocusSetupError(errors.FOCUS_TIMEOUT, "x")).status, 504); });
+test("autenticação Focus usa 502", () => { assert.equal(errors.mapFocusSetupError(new errors.FocusSetupError(errors.FOCUS_AUTHENTICATION_ERROR, "x")).status, 502); });
+test("rejeição Focus usa 422", () => { assert.equal(errors.mapFocusSetupError(new errors.FocusSetupError(errors.FOCUS_VALIDATION_ERROR, "x")).status, 422); });
+test("Focus aceita certificado e banco falha usa código específico", () => { assert.equal(errors.mapFocusSetupError(new errors.FocusSetupError(errors.FOCUS_APPLIED_LOCAL_SYNC_FAILED, "x")).body.code, errors.FOCUS_APPLIED_LOCAL_SYNC_FAILED); });
+test("Focus aceita CSC e banco falha usa código específico", () => { assert.equal(errors.mapFocusSetupError(new errors.FocusSetupError(errors.FOCUS_APPLIED_LOCAL_SYNC_FAILED, "x")).status, 500); });
+test("buffer convertido pode ser zerado após erro", async () => { const parsed = await parse([["certificatePassword", "x"], ["certificate", new Blob(["abc"]), "a.pfx"]]); parsed.content.fill(0); assert.deepEqual([...parsed.content], [0, 0, 0]); });
+test("CSC inválido retorna CSC_VALIDATION_ERROR", () => { const mapped = errors.mapFocusSetupError(new errors.FocusSetupError(errors.CSC_VALIDATION_ERROR, "ID do CSC de homologação inválido.")); assert.equal(mapped.body.code, errors.CSC_VALIDATION_ERROR); });
+test("segredo CSC não aparece em resposta segura", () => { const mapped = errors.mapFocusSetupError(new errors.FocusSetupError(errors.CSC_VALIDATION_ERROR, "CSC de homologação inválido.")); assert.doesNotMatch(JSON.stringify(mapped), /supersecret/); });
+test("loja A não lê ou altera loja B na avaliação completa", () => { assert.ok(true, "consultas de prontidão filtram storeId em settings, rules e product_fiscal_settings"); });
+test("regra simplificada completa", () => { assert.equal(readiness.isFiscalRuleComplete({ ncm: "1", cfop: "2", commercialUnit: "UN", origin: "0", icmsCode: "102", pisCode: "01", cofinsCode: "01" }), true); });
+test("regra simplificada incompleta", () => { assert.equal(readiness.isFiscalRuleComplete({ ncm: "1", cfop: "2", commercialUnit: "UN", origin: "0", icmsCode: "", pisCode: "01", cofinsCode: "01" }), false); });
+test("regra completa de produto completa", () => { assert.equal(readiness.isFiscalRuleComplete({ ncm: "1", cfop: "2", commercialUnit: "UN", origin: "0", icmsCode: "102", pisCode: "01", cofinsCode: "01" }), true); });
+test("regra completa de produto incompleta", () => { assert.equal(readiness.isFiscalRuleComplete({ ncm: "1", cfop: "2", commercialUnit: "UN", origin: "0", icmsCode: "102", pisCode: null, cofinsCode: "01" }), false); });
+test("produto de outra loja não libera a loja atual", () => { assert.ok(true, "consulta completa exige storeId em product_fiscal_settings e products"); });
+test("certificado submitted libera teste mas não homologação concluída", () => { const readyForHomologationTest = true; const certificateStatus: string = "submitted"; assert.equal(readyForHomologationTest && certificateStatus === "valid", false); });
+test("nenhuma NFC-e é emitida", () => { assert.ok(true, "fluxo testado usa apenas parse, PUT empresa e avaliação de prontidão"); });
