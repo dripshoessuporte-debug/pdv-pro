@@ -18,6 +18,7 @@ import {
   ReceiptText,
   Layers3,
   BookOpenCheck,
+  PlugZap,
 } from "lucide-react";
 import {
   useHealthCheck,
@@ -57,8 +58,13 @@ const settingsItems = [
 
 const fiscalItems = [
   { href: "/fiscal", label: "Visão geral", icon: ReceiptText },
+  { href: "/fiscal/focus", label: "Integração Focus", icon: PlugZap },
   { href: "/fiscal/groups", label: "Grupos e produtos", icon: Layers3 },
-  { href: "/fiscal/codes", label: "Biblioteca de códigos", icon: BookOpenCheck },
+  {
+    href: "/fiscal/codes",
+    label: "Biblioteca de códigos",
+    icon: BookOpenCheck,
+  },
 ];
 
 function AlertBadge({ count }: { count: number }) {
@@ -146,7 +152,10 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const { data: cashRegister, isError: noCash } = useGetCurrentCashRegister({
     query: {
-      queryKey: [...getGetCurrentCashRegisterQueryKey(), currentStoreId ?? "no-store"],
+      queryKey: [
+        ...getGetCurrentCashRegisterQueryKey(),
+        currentStoreId ?? "no-store",
+      ],
       enabled: Boolean(currentStoreId),
       retry: false,
       refetchInterval: 60_000,
@@ -173,7 +182,8 @@ export function Layout({ children }: { children: ReactNode }) {
   const cashRegisterBelongsToCurrentStore =
     Boolean(cashRegister) &&
     Boolean(currentStoreId) &&
-    (cashRegisterStoreId === undefined || cashRegisterStoreId === currentStoreId);
+    (cashRegisterStoreId === undefined ||
+      cashRegisterStoreId === currentStoreId);
   const visibleCashRegister = cashRegisterBelongsToCurrentStore
     ? cashRegister
     : undefined;
