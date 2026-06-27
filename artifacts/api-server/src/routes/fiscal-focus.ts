@@ -7,7 +7,7 @@ import express, {
 } from "express";
 import { eq } from "drizzle-orm";
 import { db, storeFiscalSettingsTable } from "@workspace/db";
-import { requireStoreFeature } from "../lib/store-features";
+import { getStoreFeatureAccess, requireStoreFeature } from "../lib/store-features";
 import { requireRole, resolveCurrentActor } from "../middleware/rbac";
 import { resolveFocusNfeToken } from "../integrations/focus-nfe";
 import {
@@ -68,6 +68,29 @@ const certificateUploadLimitErrorHandler: ErrorRequestHandler = (
   }
   next(error);
 };
+
+
+router.get(
+  "/fiscal/access-status",
+  requireRole("max_control"),
+  async (req: Request, res: Response): Promise<void> => {
+    const actor = await resolveCurrentActor(req);
+    const access = await getStoreFeatureAccess({
+      storeId: actor.storeId,
+      feature: "fiscal",
+      preferredUserId: actor.id,
+    });
+
+    res.json({
+      feature: access.feature,
+      allowed: access.allowed,
+      plan: access.plan,
+      status: access.status,
+      code: access.code,
+      billingUserId: access.billingUserId,
+    });
+  },
+);
 
 router.get(
   "/fiscal/focus/status",

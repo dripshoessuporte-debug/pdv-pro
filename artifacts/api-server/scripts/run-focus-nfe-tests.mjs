@@ -11,6 +11,7 @@ const tests = [
   ["src/integrations/focus-nfe/__tests__/client.test.ts", "client.test.mjs"],
   ["src/lib/fiscal-secrets/__tests__.test.ts", "fiscal-secrets.test.mjs"],
   ["src/integrations/focus-nfe/__tests__/company-service.test.ts", "company-service.test.mjs"],
+  ["src/lib/__tests__/store-features.test.ts", "store-features.test.mjs"],
 ];
 for (const [entry, file] of tests) {
   await build({ entryPoints: [entry], bundle: true, platform: "node", format: "esm", outfile: path.join(outdir, file), logLevel: "silent", external: ["pg-native"] });
