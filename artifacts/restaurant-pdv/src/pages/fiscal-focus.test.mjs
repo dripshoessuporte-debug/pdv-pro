@@ -11,7 +11,7 @@ test("página exibe loading, status concluído, pendente e bloqueio PRO", () => 
   assert.match(source, /Carregando status da integração/);
   assert.match(source, /Configuração pronta para o primeiro teste/);
   assert.match(source, /Produção bloqueada/);
-  assert.match(source, /Recurso exclusivo do Gestor Max PRO/);
+  assert.match(source, /Acesso fiscal bloqueado pela assinatura/);
 });
 
 test("missingRequirements são traduzidos sem expor códigos técnicos na UI", () => {
@@ -46,4 +46,33 @@ test("duplo clique é bloqueado, troca de loja limpa campos sensíveis e nenhuma
   assert.match(source, /Emitir NFC-e de teste — disponível na próxima etapa/);
   assert.match(source, /disabled[\s\S]*title=/);
   assert.doesNotMatch(source, /\/api\/.*nfce|emitir.*fetch/i);
+});
+
+test("diagnósticos de acesso fiscal mostram mensagens específicas", () => {
+  assert.match(source, /Faça login novamente para acessar o Fiscal\./);
+  assert.match(source, /Seu usuário não é Max Control nesta loja\./);
+  assert.match(
+    source,
+    /O plano PRO foi encontrado, mas a assinatura não está ativa\./,
+  );
+  assert.match(source, /Código: \{error\.code\}/);
+});
+
+test("endpoint fiscal ausente ou não JSON mostra backend desatualizado", () => {
+  assert.match(source, /FISCAL_ACCESS_ENDPOINT_UNAVAILABLE/);
+  assert.match(
+    source,
+    /O backend ainda não disponibilizou o diagnóstico fiscal/,
+  );
+  assert.match(source, /accessResponse\.status === 404/);
+  assert.match(source, /!contentType\.includes\("application\/json"\)/);
+});
+
+test("allowed true carrega status Focus somente após diagnóstico fiscal", () => {
+  assert.match(source, /if \(!access\.allowed\)/);
+  assert.match(source, /fetch\("\/api\/fiscal\/focus\/status"/);
+  assert.ok(
+    source.indexOf("/api/fiscal/access-status") <
+      source.indexOf("/api/fiscal/focus/status"),
+  );
 });
