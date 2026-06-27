@@ -163,17 +163,17 @@ router.get(
   requireStoreFeature("fiscal"),
   async (req: Request, res: Response): Promise<void> => {
     const actor = await resolveCurrentActor(req);
-    const [settings] = await db
-      .select({ id: storeFiscalSettingsTable.id })
-      .from(storeFiscalSettingsTable)
-      .where(eq(storeFiscalSettingsTable.storeId, actor.storeId))
-      .limit(1);
-    const [presentation] = await db
-      .select({ mode: storeFiscalPresentationTable.mode })
-      .from(storeFiscalPresentationTable)
-      .where(eq(storeFiscalPresentationTable.storeId, actor.storeId))
-      .limit(1);
     try {
+      const [settings] = await db
+        .select({ id: storeFiscalSettingsTable.id })
+        .from(storeFiscalSettingsTable)
+        .where(eq(storeFiscalSettingsTable.storeId, actor.storeId))
+        .limit(1);
+      const [presentation] = await db
+        .select({ mode: storeFiscalPresentationTable.mode })
+        .from(storeFiscalPresentationTable)
+        .where(eq(storeFiscalPresentationTable.storeId, actor.storeId))
+        .limit(1);
       const summary = await getFocusCompanySummary(actor.storeId);
       res.json({
         storeId: actor.storeId,
@@ -189,10 +189,9 @@ router.get(
     } catch {
       res.status(503).json({
         storeId: actor.storeId,
-        hasSettings: Boolean(settings),
-        hasStoreFiscalPresentation: Boolean(presentation),
-        detectedMode:
-          presentation?.mode === "complete" ? "complete" : "simplified",
+        hasSettings: false,
+        hasStoreFiscalPresentation: false,
+        detectedMode: "simplified",
         credentialStatusStage: "unknown",
         rulesStatusStage: "unknown",
         summaryStatus: FOCUS_STATUS_CHECK_FAILED,
