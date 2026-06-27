@@ -50,11 +50,12 @@ type Status = {
   missingRequirements: MissingRequirement[];
 };
 type ApiError = {
-  error?: string;
+  error?: string | null;
   code?: string | null;
   requiredPlan?: string;
   plan?: string | null;
   status?: string | null;
+  diagnosticStage?: string | null;
 };
 type AccessStatus = {
   feature: "fiscal";
@@ -62,6 +63,8 @@ type AccessStatus = {
   plan: string | null;
   status: string | null;
   code: string | null;
+  error?: string | null;
+  diagnosticStage?: string | null;
 };
 
 const missingText: Record<MissingRequirement, string> = {
@@ -109,6 +112,8 @@ const statusText = (status?: string | null) =>
     blocked: "Bloqueada",
   })[status ?? ""] ?? "Não identificada";
 function accessMessage(error: ApiError): string {
+  if (error.code === "AUTH_CONTEXT_FAILED")
+    return "Não foi possível validar sua sessão. Faça login novamente.";
   if (error.code === "AUTH_REQUIRED")
     return "Faça login novamente para acessar o Fiscal.";
   if (error.code === "CURRENT_STORE_REQUIRED")
@@ -119,6 +124,8 @@ function accessMessage(error: ApiError): string {
     return "Esta loja ainda não possui o plano PRO.";
   if (error.code === "SUBSCRIPTION_INACTIVE")
     return "O plano PRO foi encontrado, mas a assinatura não está ativa.";
+  if (error.code === "FEATURE_ACCESS_QUERY_FAILED")
+    return "Não foi possível consultar a assinatura da loja.";
   if (error.code === "FEATURE_ACCESS_CHECK_FAILED")
     return "Não foi possível verificar a assinatura da loja.";
   if (error.code === "FISCAL_ACCESS_ENDPOINT_UNAVAILABLE")
@@ -150,6 +157,11 @@ function AccessBlock({ error }: { error: ApiError }) {
         {error.code && (
           <p className="text-xs text-muted-foreground/80">
             Código: {error.code}
+          </p>
+        )}
+        {error.diagnosticStage && (
+          <p className="text-xs text-muted-foreground/70">
+            Etapa: {error.diagnosticStage}
           </p>
         )}
         {(error.plan || error.status) && (
@@ -246,6 +258,8 @@ export default function FiscalFocusPage() {
           code: access.code,
           plan: access.plan,
           status: access.status,
+          error: access.error,
+          diagnosticStage: access.diagnosticStage,
         });
         return;
       }
@@ -267,6 +281,7 @@ export default function FiscalFocusPage() {
           code: (e as ApiError)?.code ?? "FEATURE_ACCESS_CHECK_FAILED",
           plan: (e as ApiError)?.plan,
           status: (e as ApiError)?.status,
+          diagnosticStage: (e as ApiError)?.diagnosticStage,
         });
     } finally {
       if (id === requestRef.current) setLoading(false);

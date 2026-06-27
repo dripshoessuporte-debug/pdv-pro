@@ -182,3 +182,136 @@ test("endpoint funciona mesmo estando montado antes do rbacRouteGuard", async ()
       source.indexOf("router.use(rbacRouteGuard)"),
   );
 });
+
+test("resolveContext lançando erro retorna AUTH_CONTEXT_FAILED sem vazar dados", async () => {
+  const d: FiscalAccessStatusDependencies = {
+    resolveContext: async () => {
+      throw new Error("select * from users where cookie='secret'\nstack line");
+    },
+    getFeatureAccess: async () => assert.fail("não deve consultar assinatura"),
+  };
+  const result = await resolveFiscalAccessStatus(req, d);
+  const body = JSON.stringify(result.body);
+  assert.equal(result.body.code, "AUTH_CONTEXT_FAILED");
+  assert.equal(result.body.diagnosticStage, "resolve_context");
+  assert.equal(
+    result.body.error,
+    "Não foi possível validar sua sessão. Faça login novamente.",
+  );
+  assert.doesNotMatch(body, /select \*|cookie|stack/i);
+});
+
+test("getStoreFeatureAccess lançando erro retorna FEATURE_ACCESS_QUERY_FAILED", async () => {
+  const d = deps(context("max_control"));
+  d.getFeatureAccess = async () => {
+    throw new Error("select * from user_entitlements stack cookie");
+  };
+  const result = await resolveFiscalAccessStatus(req, d);
+  const body = JSON.stringify(result.body);
+  assert.equal(result.body.code, "FEATURE_ACCESS_QUERY_FAILED");
+  assert.equal(result.body.diagnosticStage, "feature_access_query");
+  assert.equal(
+    result.body.error,
+    "Não foi possível consultar a assinatura da loja.",
+  );
+  assert.doesNotMatch(body, /select \*|stack|cookie/i);
+});
+
+test("fallback libera quando o próprio usuário atual é max_control e PRO active", async () => {
+  const d = deps(context("max_control"));
+  d.getFeatureAccess = async () => {
+    throw new Error("query failed");
+  };
+  d.getCurrentUserFiscalAccess = async ({ storeId, userId }) => ({
+    storeId,
+    feature: "fiscal",
+    allowed: true,
+    plan: "pro",
+    status: "active",
+    billingUserId: userId,
+    code: null,
+  });
+  const result = await resolveFiscalAccessStatus(req, d);
+  assert.equal(result.body.allowed, true);
+  assert.equal(result.body.status, "active");
+  assert.equal(result.body.billingUserId, 1);
+});
+
+test("fallback libera quando o próprio usuário atual é PRO trialing", async () => {
+  const d = deps(context("max_control"));
+  d.getFeatureAccess = async () => {
+    throw new Error("query failed");
+  };
+  d.getCurrentUserFiscalAccess = async ({ storeId, userId }) => ({
+    storeId,
+    feature: "fiscal",
+    allowed: true,
+    plan: "pro",
+    status: "trialing",
+    billingUserId: userId,
+    code: null,
+  });
+  const result = await resolveFiscalAccessStatus(req, d);
+  assert.equal(result.body.allowed, true);
+  assert.equal(result.body.status, "trialing");
+});
+
+test("fallback não libera se usuário atual é atendente", async () => {
+  const d = deps(context("atendente"));
+  d.getCurrentUserFiscalAccess = async () =>
+    assert.fail("atendente não chega no fallback");
+  const result = await resolveFiscalAccessStatus(req, d);
+  assert.equal(result.body.code, "PERMISSION_DENIED");
+});
+
+test("fallback não libera se usuário atual é PRO de outra loja", async () => {
+  const d = deps(context("max_control", 20));
+  d.getFeatureAccess = async () => {
+    throw new Error("query failed");
+  };
+  d.getCurrentUserFiscalAccess = async ({ storeId, userId }) => ({
+    storeId,
+    feature: "fiscal",
+    allowed: false,
+    plan: null,
+    status: null,
+    billingUserId: userId,
+    code: "PLAN_UPGRADE_REQUIRED",
+  });
+  const result = await resolveFiscalAccessStatus(req, d);
+  assert.equal(result.body.allowed, false);
+  assert.equal(result.body.code, "PLAN_UPGRADE_REQUIRED");
+});
+
+test("fallback não libera se PRO está pending", async () => {
+  const d = deps(context("max_control"));
+  d.getFeatureAccess = async () => {
+    throw new Error("query failed");
+  };
+  d.getCurrentUserFiscalAccess = async ({ storeId, userId }) => ({
+    storeId,
+    feature: "fiscal",
+    allowed: false,
+    plan: "pro",
+    status: "pending",
+    billingUserId: userId,
+    code: "SUBSCRIPTION_INACTIVE",
+  });
+  const result = await resolveFiscalAccessStatus(req, d);
+  assert.equal(result.body.allowed, false);
+  assert.equal(result.body.code, "SUBSCRIPTION_INACTIVE");
+});
+
+test("nenhuma chamada Focus é feita e nenhuma NFC-e é emitida pelo diagnóstico", async () => {
+  const result = await resolveFiscalAccessStatus(
+    req,
+    deps(context("max_control"), {
+      allowed: true,
+      plan: "pro",
+      status: "active",
+      code: null,
+    }),
+  );
+  assert.equal(result.body.allowed, true);
+  assert.doesNotMatch(JSON.stringify(result.body), /focus|nfce|nfc-e/i);
+});
