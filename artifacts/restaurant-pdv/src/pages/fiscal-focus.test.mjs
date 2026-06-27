@@ -76,3 +76,19 @@ test("allowed true carrega status Focus somente após diagnóstico fiscal", () =
       source.indexOf("/api/fiscal/focus/status"),
   );
 });
+
+test("frontend mostra FEATURE_ACCESS_QUERY_FAILED e diagnosticStage", () => {
+  assert.match(source, /FEATURE_ACCESS_QUERY_FAILED/);
+  assert.match(source, /Não foi possível consultar a assinatura da loja\./);
+  assert.match(source, /Etapa: \{error\.diagnosticStage\}/);
+  assert.match(source, /diagnosticStage: access\.diagnosticStage/);
+});
+
+test("frontend mostra AUTH_CONTEXT_FAILED sem dados internos", () => {
+  assert.match(source, /AUTH_CONTEXT_FAILED/);
+  assert.match(
+    source,
+    /Não foi possível validar sua sessão\. Faça login novamente\./,
+  );
+  assert.doesNotMatch(source, /stackTrace|sql|cookie:/i);
+});

@@ -25,6 +25,12 @@ const roleSet = new Set<string>([
 ]);
 const platformRoleSet = new Set<string>(platformAdminRoles);
 
+export function isPlatformAdminRole(
+  role: PlatformRole | null | undefined,
+): boolean {
+  return role === "platform_owner" || role === "platform_admin";
+}
+
 export type PlatformRole = (typeof platformAdminRoles)[number];
 
 export type AuthenticatedStore = {
