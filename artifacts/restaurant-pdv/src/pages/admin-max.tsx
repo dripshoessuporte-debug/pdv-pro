@@ -527,6 +527,16 @@ export function AdminMaxDashboardPage() {
   );
 }
 
+function fiscalCandidateText(member: { role: string; active: boolean; entitlementPlan: string | null; entitlementStatus: string | null }): string {
+  if (member.role !== "max_control" || !member.active)
+    return "Não é candidato válido para liberar Fiscal";
+  if (member.entitlementPlan === "pro" && ["active", "trialing"].includes(member.entitlementStatus ?? ""))
+    return "PRO ativo: Fiscal liberado";
+  if (member.entitlementPlan === "pro")
+    return "PRO pendente: assinatura inativa";
+  return "Básico/Médio: upgrade necessário";
+}
+
 type StoreDetails = {
   store: PlatformStore;
   members: Array<{
@@ -837,8 +847,14 @@ export function AdminMaxStoresPage() {
                 key={m.id}
                 className="rounded-xl border border-white/10 p-3 text-sm"
               >
-                {m.name} · {m.email} · {m.role} ·{" "}
-                {m.active ? "ativo" : "inativo"}
+                <div className="font-medium">{m.name} · {m.email}</div>
+                <div className="text-slate-300">
+                  Loja #{details.store.id} · função: {m.role} · {m.active ? "ativo" : "inativo"}
+                </div>
+                <div className="text-slate-300">
+                  Plano: {m.entitlementPlan ?? "—"} · status: {m.entitlementStatus ?? "—"}
+                </div>
+                <div>{fiscalCandidateText(m)}</div>
               </div>
             ))}
           </div>

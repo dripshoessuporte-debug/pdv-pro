@@ -51,10 +51,17 @@ type Status = {
 };
 type ApiError = {
   error?: string;
-  code?: string;
+  code?: string | null;
   requiredPlan?: string;
   plan?: string | null;
   status?: string | null;
+};
+type AccessStatus = {
+  feature: "fiscal";
+  allowed: boolean;
+  plan: string | null;
+  status: string | null;
+  code: string | null;
 };
 
 const missingText: Record<MissingRequirement, string> = {
@@ -90,26 +97,67 @@ function safeError(error: unknown, fallback: string) {
     ? (error as ApiError).error!
     : fallback;
 }
+const planText = (plan?: string | null) =>
+  plan ? plan.toUpperCase() : "Não identificado";
+const statusText = (status?: string | null) =>
+  ({
+    active: "Ativa",
+    trialing: "Em teste",
+    pending: "Pendente",
+    past_due: "Pagamento pendente",
+    cancelled: "Cancelada",
+    blocked: "Bloqueada",
+  })[status ?? ""] ?? "Não identificada";
+function accessMessage(error: ApiError): string {
+  if (error.code === "PLAN_UPGRADE_REQUIRED")
+    return "Esta loja ainda não possui o plano PRO.";
+  if (error.code === "SUBSCRIPTION_INACTIVE")
+    return "O plano PRO foi encontrado, mas a assinatura não está ativa.";
+  if (error.code === "PERMISSION_DENIED" || !error.code)
+    return "Seu usuário não possui permissão Max Control para configurar o Fiscal.";
+  if (error.code === "FEATURE_ACCESS_CHECK_FAILED")
+    return "Não foi possível verificar a assinatura da loja.";
+  return error.error ?? "Não foi possível liberar a configuração fiscal.";
+}
 function AccessBlock({ error }: { error: ApiError }) {
+  const isSubscriptionIssue =
+    error.code === "PLAN_UPGRADE_REQUIRED" ||
+    error.code === "SUBSCRIPTION_INACTIVE";
   return (
     <Card className="border-amber-500/30 bg-amber-500/5">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
           {error.code === "SUBSCRIPTION_INACTIVE" ? (
             <AlertTriangle className="h-5 w-5" />
-          ) : (
+          ) : error.code === "PLAN_UPGRADE_REQUIRED" ? (
             <LockKeyhole className="h-5 w-5" />
+          ) : (
+            <ShieldAlert className="h-5 w-5" />
           )}
-          {error.code === "SUBSCRIPTION_INACTIVE"
-            ? "Plano PRO sem acesso ativo"
-            : "Recurso exclusivo do Gestor Max PRO"}
+          {isSubscriptionIssue
+            ? "Acesso fiscal bloqueado pela assinatura"
+            : "Acesso fiscal bloqueado por permissão"}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
-        <p className="text-sm text-muted-foreground">{error.error}</p>
-        <Button asChild>
-          <Link href="/plans">Conhecer o plano PRO</Link>
-        </Button>
+        <p className="text-sm text-muted-foreground">{accessMessage(error)}</p>
+        {(error.plan || error.status) && (
+          <div className="grid gap-3 text-sm sm:grid-cols-2">
+            <div className="rounded-xl border bg-background/70 p-3">
+              <div className="text-xs text-muted-foreground">Plano detectado</div>
+              <b>{planText(error.plan)}</b>
+            </div>
+            <div className="rounded-xl border bg-background/70 p-3">
+              <div className="text-xs text-muted-foreground">Situação</div>
+              <b>{statusText(error.status)}</b>
+            </div>
+          </div>
+        )}
+        {error.code === "PLAN_UPGRADE_REQUIRED" && (
+          <Button asChild>
+            <Link href="/plans">Conhecer o plano PRO</Link>
+          </Button>
+        )}
       </CardContent>
     </Card>
   );
@@ -161,6 +209,27 @@ export default function FiscalFocusPage() {
     setAccessError(null);
     clearSensitive();
     try {
+      const accessResponse = await fetch("/api/fiscal/access-status", {
+        credentials: "include",
+        headers: { accept: "application/json" },
+      });
+      const accessData = await accessResponse.json().catch(() => ({}));
+      if (id !== requestRef.current) return;
+      if (!accessResponse.ok) {
+        throw {
+          ...accessData,
+          code: accessResponse.status === 403 ? "PERMISSION_DENIED" : accessData.code,
+        };
+      }
+      const access = accessData as AccessStatus;
+      if (!access.allowed) {
+        setAccessError({
+          code: access.code,
+          plan: access.plan,
+          status: access.status,
+        });
+        return;
+      }
       const r = await fetch("/api/fiscal/focus/status", {
         credentials: "include",
         headers: { accept: "application/json" },
@@ -176,7 +245,9 @@ export default function FiscalFocusPage() {
             e,
             "Não foi possível carregar o status da integração Focus NFe.",
           ),
-          code: (e as ApiError)?.code,
+          code: (e as ApiError)?.code ?? "FEATURE_ACCESS_CHECK_FAILED",
+          plan: (e as ApiError)?.plan,
+          status: (e as ApiError)?.status,
         });
     } finally {
       if (id === requestRef.current) setLoading(false);
