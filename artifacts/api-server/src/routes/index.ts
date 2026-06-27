@@ -25,6 +25,7 @@ import onboardingRouter from "./onboarding";
 import billingRouter from "./billing";
 import caktoRouter from "./cakto";
 import teamRouter from "./team";
+import fiscalAccessStatusRouter from "./fiscal-access-status";
 import fiscalAccessRouter from "./fiscal-access";
 import fiscalCatalogRouter from "./fiscal-catalog";
 import fiscalCodeLibraryRouter from "./fiscal-code-library";
@@ -42,6 +43,7 @@ router.use(platformRouter);
 router.use(onboardingRouter);
 router.use(billingRouter);
 router.use(caktoRouter);
+router.use(fiscalAccessStatusRouter);
 
 router.use(attachCurrentActor);
 router.use(rbacRouteGuard);

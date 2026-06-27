@@ -109,14 +109,20 @@ const statusText = (status?: string | null) =>
     blocked: "Bloqueada",
   })[status ?? ""] ?? "Não identificada";
 function accessMessage(error: ApiError): string {
+  if (error.code === "AUTH_REQUIRED")
+    return "Faça login novamente para acessar o Fiscal.";
+  if (error.code === "CURRENT_STORE_REQUIRED")
+    return "Selecione uma loja ativa.";
+  if (error.code === "PERMISSION_DENIED")
+    return "Seu usuário não é Max Control nesta loja.";
   if (error.code === "PLAN_UPGRADE_REQUIRED")
     return "Esta loja ainda não possui o plano PRO.";
   if (error.code === "SUBSCRIPTION_INACTIVE")
     return "O plano PRO foi encontrado, mas a assinatura não está ativa.";
-  if (error.code === "PERMISSION_DENIED" || !error.code)
-    return "Seu usuário não possui permissão Max Control para configurar o Fiscal.";
   if (error.code === "FEATURE_ACCESS_CHECK_FAILED")
     return "Não foi possível verificar a assinatura da loja.";
+  if (error.code === "FISCAL_ACCESS_ENDPOINT_UNAVAILABLE")
+    return "O backend ainda não disponibilizou o diagnóstico fiscal. Verifique se o deploy da API está atualizado.";
   return error.error ?? "Não foi possível liberar a configuração fiscal.";
 }
 function AccessBlock({ error }: { error: ApiError }) {
@@ -141,10 +147,17 @@ function AccessBlock({ error }: { error: ApiError }) {
       </CardHeader>
       <CardContent className="space-y-5">
         <p className="text-sm text-muted-foreground">{accessMessage(error)}</p>
+        {error.code && (
+          <p className="text-xs text-muted-foreground/80">
+            Código: {error.code}
+          </p>
+        )}
         {(error.plan || error.status) && (
           <div className="grid gap-3 text-sm sm:grid-cols-2">
             <div className="rounded-xl border bg-background/70 p-3">
-              <div className="text-xs text-muted-foreground">Plano detectado</div>
+              <div className="text-xs text-muted-foreground">
+                Plano detectado
+              </div>
               <b>{planText(error.plan)}</b>
             </div>
             <div className="rounded-xl border bg-background/70 p-3">
@@ -213,13 +226,19 @@ export default function FiscalFocusPage() {
         credentials: "include",
         headers: { accept: "application/json" },
       });
-      const accessData = await accessResponse.json().catch(() => ({}));
+      const contentType = accessResponse.headers.get("content-type") ?? "";
+      if (
+        accessResponse.status === 404 ||
+        !contentType.includes("application/json")
+      ) {
+        throw { code: "FISCAL_ACCESS_ENDPOINT_UNAVAILABLE" };
+      }
+      const accessData = await accessResponse.json().catch(() => {
+        throw { code: "FISCAL_ACCESS_ENDPOINT_UNAVAILABLE" };
+      });
       if (id !== requestRef.current) return;
       if (!accessResponse.ok) {
-        throw {
-          ...accessData,
-          code: accessResponse.status === 403 ? "PERMISSION_DENIED" : accessData.code,
-        };
+        throw accessData;
       }
       const access = accessData as AccessStatus;
       if (!access.allowed) {
