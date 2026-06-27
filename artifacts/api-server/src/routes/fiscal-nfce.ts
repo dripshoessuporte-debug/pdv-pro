@@ -1,0 +1,11 @@
+import { Router, type IRouter, type Request, type Response } from "express";
+import { requireStoreFeature } from "../lib/store-features";
+import { requireRole, resolveCurrentActor } from "../middleware/rbac";
+import { NfceService, sendNfceError } from "../integrations/focus-nfe/nfce-service";
+const router: IRouter = Router();
+const service = new NfceService();
+const parseOrderId = (value: unknown): number | null => { const id = Number(value); return Number.isSafeInteger(id) && id > 0 ? id : null; };
+router.post("/fiscal/nfce/homologation/orders/:orderId/issue", requireRole("max_control"), requireStoreFeature("fiscal"), async (req: Request, res: Response): Promise<void> => { const actor=await resolveCurrentActor(req); const id=parseOrderId(req.params.orderId); if(id === null) { res.status(404).json({ code:"ORDER_NOT_FOUND", error:"Pedido não encontrado." }); return; } try { res.status(200).json(await service.issueHomologation(actor.storeId,id,(actor.id ?? 0))); } catch(e){ sendNfceError(res,e); } });
+router.get("/fiscal/nfce/orders/:orderId", requireRole("max_control"), requireStoreFeature("fiscal"), async (req: Request, res: Response): Promise<void> => { const actor=await resolveCurrentActor(req); const id=parseOrderId(req.params.orderId); if(id === null) { res.status(404).json({ code:"ORDER_NOT_FOUND", error:"Documento fiscal não encontrado." }); return; } try { res.status(200).json(await service.getLocal(actor.storeId,id)); } catch(e){ sendNfceError(res,e); } });
+router.post("/fiscal/nfce/orders/:orderId/refresh", requireRole("max_control"), requireStoreFeature("fiscal"), async (req: Request, res: Response): Promise<void> => { const actor=await resolveCurrentActor(req); const id=parseOrderId(req.params.orderId); if(id === null) { res.status(404).json({ code:"ORDER_NOT_FOUND", error:"Documento fiscal não encontrado." }); return; } try { res.status(200).json(await service.refresh(actor.storeId,id,(actor.id ?? 0))); } catch(e){ sendNfceError(res,e); } });
+export default router;

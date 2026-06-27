@@ -30,6 +30,19 @@ export const fiscalEmissionModes = ["manual", "automatic"] as const;
 export const fiscalProviders = ["focus_nfe"] as const;
 export const fiscalCredentialTypes = ["api_token", "csc_secret"] as const;
 
+export const fiscalDocumentStatuses = [
+  "draft",
+  "submitting",
+  "processing",
+  "authorized",
+  "rejected",
+  "error",
+  "sync_pending",
+  "cancelled",
+] as const;
+
+export const fiscalDocumentTypes = ["nfce"] as const;
+
 export const storeFiscalSettingsTable = pgTable(
   "store_fiscal_settings",
   {
@@ -252,6 +265,45 @@ export const productFiscalSettingsTable = pgTable(
   ],
 );
 
+export const fiscalDocumentsTable = pgTable(
+  "fiscal_documents",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().references(() => storesTable.id),
+    orderId: integer("order_id").notNull(),
+    provider: text("provider").notNull().default("focus_nfe"),
+    documentType: text("document_type").notNull().default("nfce"),
+    environment: text("environment").notNull().default("homologation"),
+    providerReference: text("provider_reference").notNull(),
+    status: text("status").notNull().default("draft"),
+    series: integer("series").notNull(),
+    number: integer("number").notNull(),
+    payloadVersion: text("payload_version").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    payloadSnapshot: jsonb("payload_snapshot").notNull(),
+    providerStatus: text("provider_status"),
+    accessKey: text("access_key"),
+    protocol: text("protocol"),
+    xmlUrl: text("xml_url"),
+    danfceUrl: text("danfce_url"),
+    rejectionCode: text("rejection_code"),
+    rejectionMessage: text("rejection_message"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    authorizedAt: timestamp("authorized_at", { withTimezone: true }),
+    createdByUserId: integer("created_by_user_id").references(() => usersTable.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("fiscal_documents_store_id_idx").on(table.storeId),
+    uniqueIndex("fiscal_documents_order_unique").on(table.storeId, table.orderId, table.documentType, table.environment),
+    uniqueIndex("fiscal_documents_reference_unique").on(table.provider, table.environment, table.providerReference),
+    uniqueIndex("fiscal_documents_number_unique").on(table.storeId, table.environment, table.series, table.number),
+  ],
+);
+
 export const fiscalAuditLogsTable = pgTable(
   "fiscal_audit_logs",
   {
@@ -312,6 +364,10 @@ export type InsertProductFiscalSettings = z.infer<
 >;
 export type ProductFiscalSettings =
   typeof productFiscalSettingsTable.$inferSelect;
+
+export const insertFiscalDocumentSchema = createInsertSchema(fiscalDocumentsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFiscalDocument = z.infer<typeof insertFiscalDocumentSchema>;
+export type FiscalDocument = typeof fiscalDocumentsTable.$inferSelect;
 
 export const insertFiscalAuditLogSchema = createInsertSchema(
   fiscalAuditLogsTable,
