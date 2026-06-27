@@ -6,7 +6,11 @@ import express, {
   type Response,
 } from "express";
 import { eq } from "drizzle-orm";
-import { db, storeFiscalSettingsTable } from "@workspace/db";
+import {
+  db,
+  storeFiscalPresentationTable,
+  storeFiscalSettingsTable,
+} from "@workspace/db";
 import { requireStoreFeature } from "../lib/store-features";
 import { requireRole, resolveCurrentActor } from "../middleware/rbac";
 import { resolveFocusNfeToken } from "../integrations/focus-nfe";
@@ -28,6 +32,43 @@ const router: IRouter = Router();
 const clean = (value: unknown, maxLength = 250): string =>
   typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 
+const FOCUS_STATUS_CHECK_FAILED = "FOCUS_STATUS_CHECK_FAILED";
+const safeStatusMessage = (error: unknown): string => {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  if (
+    /sql|select|insert|update|delete|token|secret|senha|password|certificate|csc|stack/i.test(
+      raw,
+    )
+  )
+    return "status_summary_unavailable";
+  return raw.slice(0, 160) || "status_summary_unavailable";
+};
+
+function focusStatusFailureBody(
+  environment: "homologation" | "production" = "homologation",
+) {
+  return {
+    code: FOCUS_STATUS_CHECK_FAILED,
+    error: "Não foi possível carregar o status da integração Focus.",
+    diagnosticStage: "focus_status_summary",
+    provider: "focus_nfe",
+    environment,
+    baseIntegrationConfigured: false,
+    companyLinked: false,
+    homologationCredentialConfigured: false,
+    productionCredentialConfigured: false,
+    certificateConfigured: false,
+    certificateStatus: null,
+    certificateExpiresAt: null,
+    cscConfigured: false,
+    setupStatus: "not_configured",
+    readyForHomologationTest: false,
+    readyForHomologation: false,
+    readyForProduction: false,
+    missingRequirements: ["focus_status_unavailable"],
+  };
+}
+
 function sendSetupError(
   res: { status(code: number): { json(body: unknown): void } },
   error: unknown,
@@ -48,12 +89,10 @@ const certificateUploadLimitErrorHandler: ErrorRequestHandler = (
       ? (error as { type: string }).type
       : "";
   if (type === "entity.too.large" || name === "PayloadTooLargeError") {
-    res
-      .status(413)
-      .json({
-        code: CERTIFICATE_VALIDATION_ERROR,
-        error: "O arquivo enviado excede o limite permitido.",
-      });
+    res.status(413).json({
+      code: CERTIFICATE_VALIDATION_ERROR,
+      error: "O arquivo enviado excede o limite permitido.",
+    });
     return;
   }
   if (error instanceof SyntaxError || type.includes("multipart")) {
@@ -69,40 +108,97 @@ const certificateUploadLimitErrorHandler: ErrorRequestHandler = (
   next(error);
 };
 
-
 router.get(
   "/fiscal/focus/status",
   requireRole("max_control"),
   requireStoreFeature("fiscal"),
   async (req: Request, res: Response): Promise<void> => {
     const actor = await resolveCurrentActor(req);
+    let environment: "homologation" | "production" = "homologation";
+    try {
+      const [settings] = await db
+        .select()
+        .from(storeFiscalSettingsTable)
+        .where(eq(storeFiscalSettingsTable.storeId, actor.storeId))
+        .limit(1);
+      environment =
+        settings?.environment === "production" ? "production" : "homologation";
+      const baseToken = resolveFocusNfeToken(environment);
+      const company = await getFocusCompanySummary(actor.storeId);
+      res.json({
+        provider: settings?.provider ?? "focus_nfe",
+        environment,
+        baseIntegrationConfigured: Boolean(baseToken.token),
+        companyLinked: company.companyLinked,
+        homologationCredentialConfigured:
+          company.homologationCredentialConfigured,
+        productionCredentialConfigured: company.productionCredentialConfigured,
+        certificateConfigured: company.certificateConfigured,
+        certificateStatus: company.certificateStatus,
+        certificateExpiresAt: company.certificateExpiresAt,
+        cscConfigured: company.cscConfigured,
+        setupStatus: company.setupStatus,
+        readyForHomologationTest: company.readyForHomologationTest,
+        readyForHomologation: company.readyForHomologation,
+        readyForProduction: company.readyForProduction,
+        missingRequirements: company.missingRequirements,
+      });
+    } catch (error) {
+      console.error("[fiscal/focus/status]", {
+        code: FOCUS_STATUS_CHECK_FAILED,
+        diagnosticStage: "focus_status_summary",
+        errorName: error instanceof Error ? error.name : typeof error,
+        safeMessage: safeStatusMessage(error),
+        storeId: actor.storeId,
+        userId: actor.id,
+      });
+      res.status(503).json(focusStatusFailureBody(environment));
+    }
+  },
+);
+
+router.get(
+  "/fiscal/focus/status/debug",
+  requireRole("max_control"),
+  requireStoreFeature("fiscal"),
+  async (req: Request, res: Response): Promise<void> => {
+    const actor = await resolveCurrentActor(req);
     const [settings] = await db
-      .select()
+      .select({ id: storeFiscalSettingsTable.id })
       .from(storeFiscalSettingsTable)
       .where(eq(storeFiscalSettingsTable.storeId, actor.storeId))
       .limit(1);
-    const environment =
-      settings?.environment === "production" ? "production" : "homologation";
-    const baseToken = resolveFocusNfeToken(environment);
-    const company = await getFocusCompanySummary(actor.storeId);
-    res.json({
-      provider: settings?.provider ?? "focus_nfe",
-      environment,
-      baseIntegrationConfigured: Boolean(baseToken.token),
-      companyLinked: company.companyLinked,
-      homologationCredentialConfigured:
-        company.homologationCredentialConfigured,
-      productionCredentialConfigured: company.productionCredentialConfigured,
-      certificateConfigured: company.certificateConfigured,
-      certificateStatus: company.certificateStatus,
-      certificateExpiresAt: company.certificateExpiresAt,
-      cscConfigured: company.cscConfigured,
-      setupStatus: company.setupStatus,
-      readyForHomologationTest: company.readyForHomologationTest,
-      readyForHomologation: company.readyForHomologation,
-      readyForProduction: company.readyForProduction,
-      missingRequirements: company.missingRequirements,
-    });
+    const [presentation] = await db
+      .select({ mode: storeFiscalPresentationTable.mode })
+      .from(storeFiscalPresentationTable)
+      .where(eq(storeFiscalPresentationTable.storeId, actor.storeId))
+      .limit(1);
+    try {
+      const summary = await getFocusCompanySummary(actor.storeId);
+      res.json({
+        storeId: actor.storeId,
+        hasSettings: Boolean(settings),
+        hasStoreFiscalPresentation: Boolean(presentation),
+        detectedMode:
+          presentation?.mode === "complete" ? "complete" : "simplified",
+        credentialStatusStage: summary.credentialStatusStage,
+        rulesStatusStage: summary.rulesStatusStage,
+        summaryStatus: "ok",
+        missingRequirements: summary.missingRequirements,
+      });
+    } catch {
+      res.status(503).json({
+        storeId: actor.storeId,
+        hasSettings: Boolean(settings),
+        hasStoreFiscalPresentation: Boolean(presentation),
+        detectedMode:
+          presentation?.mode === "complete" ? "complete" : "simplified",
+        credentialStatusStage: "unknown",
+        rulesStatusStage: "unknown",
+        summaryStatus: FOCUS_STATUS_CHECK_FAILED,
+        missingRequirements: ["focus_status_unavailable"],
+      });
+    }
   },
 );
 
@@ -127,26 +223,21 @@ router.post(
     const homologationToken = clean(body.homologationToken, 500);
     const productionToken = clean(body.productionToken, 500);
     if (!providerCompanyId || !homologationToken) {
-      res
-        .status(400)
-        .json({
-          error:
-            "Informe providerCompanyId e token de homologação da Focus NFe.",
-        });
+      res.status(400).json({
+        error: "Informe providerCompanyId e token de homologação da Focus NFe.",
+      });
       return;
     }
     try {
-      res
-        .status(200)
-        .json(
-          await linkExistingFocusCompany({
-            storeId: actor.storeId,
-            actorUserId: actor.id,
-            providerCompanyId,
-            homologationToken,
-            productionToken: productionToken || undefined,
-          }),
-        );
+      res.status(200).json(
+        await linkExistingFocusCompany({
+          storeId: actor.storeId,
+          actorUserId: actor.id,
+          providerCompanyId,
+          homologationToken,
+          productionToken: productionToken || undefined,
+        }),
+      );
     } catch (error) {
       sendSetupError(res, error);
     }
@@ -207,16 +298,14 @@ router.put(
     const actor = await resolveCurrentActor(req);
     const body = (req.body ?? {}) as Record<string, unknown>;
     try {
-      res
-        .status(200)
-        .json(
-          await configureFocusCsc({
-            storeId: actor.storeId,
-            actorUserId: actor.id,
-            cscId: clean(body.cscId, 20),
-            cscSecret: clean(body.cscSecret, 500),
-          }),
-        );
+      res.status(200).json(
+        await configureFocusCsc({
+          storeId: actor.storeId,
+          actorUserId: actor.id,
+          cscId: clean(body.cscId, 20),
+          cscSecret: clean(body.cscSecret, 500),
+        }),
+      );
     } catch (error) {
       sendSetupError(res, error);
     }
@@ -231,12 +320,10 @@ router.post(
     try {
       await registerFocusCompany();
     } catch {
-      res
-        .status(501)
-        .json({
-          code: "INTERNAL_ERROR",
-          error: "Cadastro automático indisponível.",
-        });
+      res.status(501).json({
+        code: "INTERNAL_ERROR",
+        error: "Cadastro automático indisponível.",
+      });
     }
   },
 );

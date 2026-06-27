@@ -92,3 +92,23 @@ test("frontend mostra AUTH_CONTEXT_FAILED sem dados internos", () => {
   );
   assert.doesNotMatch(source, /stackTrace|sql|cookie:/i);
 });
+
+test("frontend não mostra erro de permissão quando /focus/status falha", () => {
+  assert.match(source, /setStatusError/);
+  assert.match(source, /FOCUS_STATUS_CHECK_FAILED/);
+  assert.match(source, /!accessError && statusError/);
+});
+
+test("frontend mostra card de erro de status Focus separado", () => {
+  assert.match(source, /Não foi possível carregar o status da Focus/);
+  assert.match(
+    source,
+    /Seu acesso fiscal foi reconhecido,[\s\S]*carregar os dados da integração Focus\./,
+  );
+  assert.match(source, /focus_status_summary/);
+});
+
+test("botão tentar novamente chama status de novo", () => {
+  assert.match(source, /Tentar novamente/);
+  assert.match(source, /onRetry=\{\(\) => void loadStatus\(\)\}/);
+});
