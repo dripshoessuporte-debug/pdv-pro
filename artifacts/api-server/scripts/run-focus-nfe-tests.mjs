@@ -22,6 +22,10 @@ const tests = [
     "src/routes/__tests__/fiscal-access-status.test.ts",
     "fiscal-access-status.test.mjs",
   ],
+  [
+    "src/routes/__tests__/fiscal-focus-status.test.ts",
+    "fiscal-focus-status.test.mjs",
+  ],
 ];
 for (const [entry, file] of tests) {
   await build({

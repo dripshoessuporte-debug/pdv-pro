@@ -23,9 +23,7 @@ export function isFiscalRuleComplete(rule: FiscalRuleShape): boolean {
 }
 
 export function getHomologationRuleMode(
-  settings:
-    | { itemizationMode?: string | null; emissionMode?: string | null }
-    | undefined,
+  presentation: { mode?: string | null } | undefined,
 ): "complete" | "simplified" {
-  return settings?.itemizationMode === "complete" ? "complete" : "simplified";
+  return presentation?.mode === "complete" ? "complete" : "simplified";
 }

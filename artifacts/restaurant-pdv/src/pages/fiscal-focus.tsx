@@ -31,7 +31,10 @@ type MissingRequirement =
   | "company_data_incomplete"
   | "numbering_missing"
   | "simplified_rules_incomplete"
-  | "complete_product_rules_incomplete";
+  | "complete_product_rules_incomplete"
+  | "credential_status_unavailable"
+  | "fiscal_rules_status_unavailable"
+  | "focus_status_unavailable";
 type Status = {
   provider: string;
   environment: string;
@@ -79,6 +82,11 @@ const missingText: Record<MissingRequirement, string> = {
     "As regras dos grupos fiscais estão incompletas.",
   complete_product_rules_incomplete:
     "Existem produtos sem configuração fiscal completa.",
+  credential_status_unavailable:
+    "Não foi possível verificar as credenciais salvas agora.",
+  fiscal_rules_status_unavailable:
+    "Não foi possível verificar as regras fiscais agora.",
+  focus_status_unavailable: "Status da Focus indisponível no momento.",
 };
 const certText: Record<string, string> = {
   submitted:
@@ -132,6 +140,41 @@ function accessMessage(error: ApiError): string {
     return "O backend ainda não disponibilizou o diagnóstico fiscal. Verifique se o deploy da API está atualizado.";
   return error.error ?? "Não foi possível liberar a configuração fiscal.";
 }
+function FocusStatusErrorCard({
+  error,
+  onRetry,
+}: {
+  error: ApiError;
+  onRetry: () => void;
+}) {
+  return (
+    <Card className="border-red-500/30 bg-red-500/5">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-300">
+          <AlertTriangle className="h-5 w-5" />
+          Não foi possível carregar o status da Focus
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Seu acesso fiscal foi reconhecido, mas o Gestor Max não conseguiu
+          carregar os dados da integração Focus.
+        </p>
+        <p className="text-xs text-muted-foreground/80">
+          Código: {error.code ?? "FOCUS_STATUS_CHECK_FAILED"}
+        </p>
+        <p className="text-xs text-muted-foreground/70">
+          Etapa: {error.diagnosticStage ?? "focus_status_summary"}
+        </p>
+        <Button variant="outline" onClick={onRetry}>
+          <RefreshCcw className="mr-2 h-4 w-4" />
+          Tentar novamente
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 function AccessBlock({ error }: { error: ApiError }) {
   const isSubscriptionIssue =
     error.code === "PLAN_UPGRADE_REQUIRED" ||
@@ -200,7 +243,8 @@ export default function FiscalFocusPage() {
   const storeKey = currentStore?.id ?? actor?.storeId ?? "no-store";
   const [status, setStatus] = useState<Status | null>(null),
     [loading, setLoading] = useState(true),
-    [accessError, setAccessError] = useState<ApiError | null>(null);
+    [accessError, setAccessError] = useState<ApiError | null>(null),
+    [statusError, setStatusError] = useState<ApiError | null>(null);
   const [company, setCompany] = useState(emptyCompany),
     [csc, setCsc] = useState(emptyCsc),
     [certPassword, setCertPassword] = useState(""),
@@ -232,6 +276,7 @@ export default function FiscalFocusPage() {
     setLoading(true);
     setStatus(null);
     setAccessError(null);
+    setStatusError(null);
     clearSensitive();
     try {
       const accessResponse = await fetch("/api/fiscal/access-status", {
@@ -263,21 +308,45 @@ export default function FiscalFocusPage() {
         });
         return;
       }
-      const r = await fetch("/api/fiscal/focus/status", {
-        credentials: "include",
-        headers: { accept: "application/json" },
-      });
-      const data = await r.json().catch(() => ({}));
-      if (id !== requestRef.current) return;
-      if (!r.ok) throw data;
-      setStatus(data as Status);
+      try {
+        const r = await fetch("/api/fiscal/focus/status", {
+          credentials: "include",
+          headers: { accept: "application/json" },
+        });
+        const data = await r.json().catch(() => ({}));
+        if (id !== requestRef.current) return;
+        if (!r.ok) {
+          setStatus(data as Status);
+          setStatusError({
+            error: safeError(
+              data,
+              "Não foi possível carregar o status da integração Focus NFe.",
+            ),
+            code: (data as ApiError)?.code ?? "FOCUS_STATUS_CHECK_FAILED",
+            diagnosticStage:
+              (data as ApiError)?.diagnosticStage ?? "focus_status_summary",
+          });
+          return;
+        }
+        setStatus(data as Status);
+      } catch (statusFailure) {
+        if (id !== requestRef.current) return;
+        setStatusError({
+          error: safeError(
+            statusFailure,
+            "Não foi possível carregar o status da integração Focus NFe.",
+          ),
+          code:
+            (statusFailure as ApiError)?.code ?? "FOCUS_STATUS_CHECK_FAILED",
+          diagnosticStage:
+            (statusFailure as ApiError)?.diagnosticStage ??
+            "focus_status_summary",
+        });
+      }
     } catch (e) {
       if (id === requestRef.current)
         setAccessError({
-          error: safeError(
-            e,
-            "Não foi possível carregar o status da integração Focus NFe.",
-          ),
+          error: safeError(e, "Não foi possível verificar o acesso fiscal."),
           code: (e as ApiError)?.code ?? "FEATURE_ACCESS_CHECK_FAILED",
           plan: (e as ApiError)?.plan,
           status: (e as ApiError)?.status,
@@ -503,7 +572,13 @@ export default function FiscalFocusPage() {
           </Card>
         )}
         {!loading && accessError && <AccessBlock error={accessError} />}
-        {!loading && status && (
+        {!loading && !accessError && statusError && (
+          <FocusStatusErrorCard
+            error={statusError}
+            onRetry={() => void loadStatus()}
+          />
+        )}
+        {!loading && !accessError && status && (
           <>
             <Card>
               <CardHeader>

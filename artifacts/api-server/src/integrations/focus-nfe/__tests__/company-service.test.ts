@@ -318,39 +318,24 @@ test("nenhuma NFC-e é emitida", () => {
     "fluxo testado usa apenas parse, PUT empresa e avaliação de prontidão",
   );
 });
-test("itemizationMode complete seleciona regras de produtos", () => {
+test("store_fiscal_presentation.mode complete seleciona regras de produtos", () => {
   assert.equal(
-    readiness.getHomologationRuleMode({
-      itemizationMode: "complete",
-      emissionMode: "manual",
-    }),
+    readiness.getHomologationRuleMode({ mode: "complete" }),
     "complete",
   );
 });
 
-test("itemizationMode simplified seleciona regras de grupos", () => {
+test("store_fiscal_presentation.mode simplified seleciona regras de grupos", () => {
   assert.equal(
-    readiness.getHomologationRuleMode({
-      itemizationMode: "simplified",
-      emissionMode: "automatic",
-    }),
+    readiness.getHomologationRuleMode({ mode: "simplified" }),
     "simplified",
   );
 });
 
-test("emissionMode não decide o modelo fiscal", () => {
+test("ausência de store_fiscal_presentation assume simplified e emissionMode não decide", () => {
+  assert.equal(readiness.getHomologationRuleMode(undefined), "simplified");
   assert.equal(
-    readiness.getHomologationRuleMode({
-      itemizationMode: "simplified",
-      emissionMode: "automatic",
-    }),
+    readiness.getHomologationRuleMode({ mode: "automatic" }),
     "simplified",
-  );
-  assert.equal(
-    readiness.getHomologationRuleMode({
-      itemizationMode: "complete",
-      emissionMode: "manual",
-    }),
-    "complete",
   );
 });

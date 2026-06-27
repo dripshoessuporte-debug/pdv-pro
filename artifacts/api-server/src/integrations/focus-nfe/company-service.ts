@@ -6,6 +6,7 @@ import {
   fiscalGroupsTable,
   productFiscalSettingsTable,
   productsTable,
+  storeFiscalPresentationTable,
   storeFiscalSettingsTable,
 } from "@workspace/db";
 import { FocusNfeClient } from "./client";
@@ -72,24 +73,37 @@ export async function resolveStoreFocusCredentials(params: {
   };
 }
 
+export type FocusCompanySummaryStage = {
+  credentialStatusStage: "ok" | "credential_status_unavailable";
+  rulesStatusStage: "ok" | "fiscal_rules_status_unavailable";
+};
+
 export async function getFocusCompanySummary(storeId: number) {
   const [settings] = await db
     .select()
     .from(storeFiscalSettingsTable)
     .where(eq(storeFiscalSettingsTable.storeId, storeId))
     .limit(1);
-  const homologationCredentialConfigured = await hasStoreFiscalCredential({
-    storeId,
-    provider: "focus_nfe",
-    environment: "homologation",
-    credentialType: "api_token",
-  });
-  const productionCredentialConfigured = await hasStoreFiscalCredential({
-    storeId,
-    provider: "focus_nfe",
-    environment: "production",
-    credentialType: "api_token",
-  });
+  let credentialStatusStage: FocusCompanySummaryStage["credentialStatusStage"] =
+    "ok";
+  let homologationCredentialConfigured = false;
+  let productionCredentialConfigured = false;
+  try {
+    homologationCredentialConfigured = await hasStoreFiscalCredential({
+      storeId,
+      provider: "focus_nfe",
+      environment: "homologation",
+      credentialType: "api_token",
+    });
+    productionCredentialConfigured = await hasStoreFiscalCredential({
+      storeId,
+      provider: "focus_nfe",
+      environment: "production",
+      credentialType: "api_token",
+    });
+  } catch {
+    credentialStatusStage = "credential_status_unavailable";
+  }
   // O próximo backend fiscal marcará o certificado como valid após uma NFC-e de homologação autorizada,
   // comprovando que certificado, CSC e comunicação com a Focus funcionam em conjunto.
   const certificateStatus = settings?.certificateStatus ?? null;
@@ -104,13 +118,30 @@ export async function getFocusCompanySummary(storeId: number) {
   const cscConfigured = Boolean(
     settings?.cscId && settings?.cscSecretReference,
   );
-  const missingRequirements = await getHomologationMissingRequirements(
-    storeId,
-    settings,
-    homologationCredentialConfigured,
-    certificateSubmittedOrValid,
-    cscConfigured,
-  );
+  let rulesStatusStage: FocusCompanySummaryStage["rulesStatusStage"] = "ok";
+  let missingRequirements: string[] = [];
+  try {
+    missingRequirements = await getHomologationMissingRequirements(
+      storeId,
+      settings,
+      homologationCredentialConfigured,
+      certificateSubmittedOrValid,
+      cscConfigured,
+    );
+  } catch {
+    rulesStatusStage = "fiscal_rules_status_unavailable";
+    missingRequirements = [
+      ...(settings?.providerCompanyId ? [] : ["company_not_linked"]),
+      ...(homologationCredentialConfigured
+        ? []
+        : ["homologation_token_missing"]),
+      ...(certificateSubmittedOrValid ? [] : ["certificate_missing"]),
+      ...(cscConfigured ? [] : ["csc_missing"]),
+      "fiscal_rules_status_unavailable",
+    ];
+  }
+  if (credentialStatusStage !== "ok")
+    missingRequirements.push("credential_status_unavailable");
   const readyForHomologationTest = missingRequirements.length === 0;
   const readyForHomologation = readyForHomologationTest && certificateValid;
   return {
@@ -130,7 +161,9 @@ export async function getFocusCompanySummary(storeId: number) {
     readyForHomologationTest,
     readyForHomologation,
     readyForProduction: false,
-    missingRequirements,
+    missingRequirements: [...new Set(missingRequirements)],
+    credentialStatusStage,
+    rulesStatusStage,
   };
 }
 
@@ -215,16 +248,14 @@ async function audit(
   providerCompanyId: string,
   metadata: Record<string, unknown>,
 ) {
-  await executor
-    .insert(fiscalAuditLogsTable)
-    .values({
-      storeId,
-      actorUserId: actorUserId ?? null,
-      action,
-      targetType: "focus_company",
-      targetId: providerCompanyId,
-      metadata: { providerCompanyId, ...metadata },
-    });
+  await executor.insert(fiscalAuditLogsTable).values({
+    storeId,
+    actorUserId: actorUserId ?? null,
+    action,
+    targetType: "focus_company",
+    targetId: providerCompanyId,
+    metadata: { providerCompanyId, ...metadata },
+  });
 }
 
 function certMeta(providerCompanyId: string, data: FocusCompanyUpdateResponse) {
@@ -537,7 +568,12 @@ export async function getHomologationMissingRequirements(
   if (!companyDataComplete) missing.push("company_data_incomplete");
   if (!settings?.series || !settings?.nextNumber)
     missing.push("numbering_missing");
-  if (getHomologationRuleMode(settings) === "complete") {
+  const [presentation] = await db
+    .select({ mode: storeFiscalPresentationTable.mode })
+    .from(storeFiscalPresentationTable)
+    .where(eq(storeFiscalPresentationTable.storeId, storeId))
+    .limit(1);
+  if (getHomologationRuleMode(presentation) === "complete") {
     const [rule] = await db
       .select({ id: productFiscalSettingsTable.id })
       .from(productFiscalSettingsTable)
