@@ -112,3 +112,57 @@ test("botão tentar novamente chama status de novo", () => {
   assert.match(source, /Tentar novamente/);
   assert.match(source, /onRetry=\{\(\) => void loadStatus\(\)\}/);
 });
+
+
+const orderDetailSource = readFileSync(
+  new URL("../components/order-detail-dialog.tsx", import.meta.url),
+  "utf8",
+);
+
+test("pedido pago max_control PRO mostra emissão NFC-e de teste somente homologação", () => {
+  assert.match(orderDetailSource, /Emitir NFC-e de teste/);
+  assert.match(orderDetailSource, /currentStore\?\.role === "max_control"/);
+  assert.match(orderDetailSource, /entitlement\?\.plan === "pro"/);
+  assert.match(orderDetailSource, /isPaidOrder\(order\)/);
+  assert.match(orderDetailSource, /\["cancelled", "canceled"\]/);
+  assert.match(orderDetailSource, /next\.environment === "homologation"/);
+  assert.match(orderDetailSource, /\/api\/fiscal\/nfce\/homologation\/orders\/\$\{order\.id\}\/issue/);
+  assert.doesNotMatch(orderDetailSource, /production\/orders|\/api\/fiscal\/nfce\/production/);
+});
+
+test("emissão exige modal de confirmação e cancelamento não chama API", () => {
+  assert.match(orderDetailSource, /Emitir NFC-e de teste\?/);
+  assert.match(orderDetailSource, /Esta emissão será feita em homologação/);
+  assert.match(orderDetailSource, /Cancelar/);
+  assert.match(orderDetailSource, /Emitir teste/);
+  assert.match(orderDetailSource, /onClick=\{\(\) => setConfirmOpen\(false\)\}/);
+  assert.doesNotMatch(orderDetailSource, /window\.alert|confirm\(/);
+});
+
+test("duplo clique não duplica POST e frontend nunca envia storeId", () => {
+  assert.match(orderDetailSource, /if \(issuing \|\| !canIssue\) return/);
+  assert.match(orderDetailSource, /disabled=\{issuing\}/);
+  assert.match(orderDetailSource, /method: "POST"/);
+  assert.doesNotMatch(orderDetailSource, /storeId|currentStore\.id/);
+});
+
+test("status fiscal mostra sem documento, processando, autorizado, rejeitado e sync pending", () => {
+  assert.match(orderDetailSource, /Nenhuma NFC-e emitida para este pedido\./);
+  assert.match(orderDetailSource, /Emitindo NFC-e de homologação/);
+  assert.match(orderDetailSource, /A Focus está processando a NFC-e\./);
+  assert.match(orderDetailSource, /NFC-e de homologação autorizada\./);
+  assert.match(orderDetailSource, /Chave de acesso/);
+  assert.match(orderDetailSource, /Protocolo/);
+  assert.match(orderDetailSource, /NFC-e rejeitada\./);
+  assert.match(orderDetailSource, /Código da rejeição/);
+  assert.match(orderDetailSource, /Não foi possível confirmar a situação da NFC-e na Focus\./);
+});
+
+test("atualizar status chama refresh e erros fiscais são traduzidos sem segredos", () => {
+  assert.match(orderDetailSource, /Atualizar status/);
+  assert.match(orderDetailSource, /\/api\/fiscal\/nfce\/orders\/\$\{order\.id\}\/refresh/);
+  assert.match(orderDetailSource, /FISCAL_SETUP_NOT_READY: "A configuração fiscal ainda não está pronta para homologação\."/);
+  assert.match(orderDetailSource, /ORDER_NOT_PAID: "O pedido ainda não está pago\."/);
+  assert.match(orderDetailSource, /FOCUS_NFCE_UNAVAILABLE: "A Focus NFe está indisponível no momento\."/);
+  assert.doesNotMatch(orderDetailSource, /token Focus|CSC|certificado.*senha|payloadSnapshot|rawResponse|encrypted|stack|SQL/i);
+});
