@@ -103,17 +103,18 @@ function fiscalErrorMessage(error: unknown): string {
   return "Não foi possível concluir a ação fiscal com segurança.";
 }
 
+type FiscalAccessStatus = { allowed?: boolean | null };
+
 function hasFiscalIssueAccess(input: {
   isAuthenticated: boolean;
   currentStore: ReturnType<typeof useAuth>["currentStore"];
-  entitlement: ReturnType<typeof useAuth>["entitlement"];
+  accessStatus: FiscalAccessStatus | null;
 }) {
   return (
     input.isAuthenticated &&
     Boolean(input.currentStore) &&
     input.currentStore?.role === "max_control" &&
-    input.entitlement?.plan === "pro" &&
-    (input.entitlement.status === "active" || input.entitlement.status === "trialing")
+    input.accessStatus?.allowed === true
   );
 }
 
@@ -122,19 +123,42 @@ function isPaidOrder(order: Order) {
 }
 
 function FiscalNfcePanel({ order }: { order: Order }) {
-  const { isAuthenticated, currentStore, entitlement } = useAuth();
+  const { isAuthenticated, currentStore } = useAuth();
   const { toast } = useToast();
   const [document, setDocument] = useState<NfceDocument | null>(null);
+  const [accessStatus, setAccessStatus] = useState<FiscalAccessStatus | null>(null);
+  const [accessLoading, setAccessLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [issuing, setIssuing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const allowedByAccess = hasFiscalIssueAccess({ isAuthenticated, currentStore, entitlement });
   const validOrder = isPaidOrder(order) && !(["cancelled", "canceled"] as string[]).includes(String(order.status));
+  const canCheckFiscalAccess = isAuthenticated && Boolean(currentStore) && currentStore?.role === "max_control" && validOrder;
+  const allowedByAccess = hasFiscalIssueAccess({ isAuthenticated, currentStore, accessStatus });
   const shouldShow = allowedByAccess && validOrder;
-  const authorized = document?.status === "authorized";
-  const canIssue = shouldShow && !authorized && !document && !issuing;
+  const issuableStatuses = ["draft", "error"] as const;
+  const canIssue = shouldShow && !issuing && (!document || issuableStatuses.includes(document.status as "draft" | "error"));
 
+
+  const loadAccessStatus = useCallback(async () => {
+    if (!canCheckFiscalAccess) {
+      setAccessStatus(null);
+      return;
+    }
+    setAccessLoading(true);
+    try {
+      const next = await authFetchJson<FiscalAccessStatus>("/api/fiscal/access-status");
+      setAccessStatus(next);
+    } catch {
+      setAccessStatus(null);
+    } finally {
+      setAccessLoading(false);
+    }
+  }, [canCheckFiscalAccess]);
+
+  useEffect(() => {
+    void loadAccessStatus();
+  }, [loadAccessStatus]);
   const loadDocument = useCallback(async () => {
     if (!shouldShow) return;
     setLoading(true);
@@ -153,7 +177,7 @@ function FiscalNfcePanel({ order }: { order: Order }) {
     void loadDocument();
   }, [loadDocument]);
 
-  if (!shouldShow) return null;
+  if (!shouldShow || accessLoading) return null;
 
   async function issue() {
     if (issuing || !canIssue) return;
@@ -189,6 +213,8 @@ function FiscalNfcePanel({ order }: { order: Order }) {
       <div className="space-y-3 rounded-xl border border-blue-200 bg-white p-4 text-sm" data-testid="nfce-homologation-panel">
         {loading ? <p className="font-semibold text-slate-600">Carregando situação fiscal...</p> : null}
         {status === "none" && <p className="font-semibold text-slate-700">Nenhuma NFC-e emitida para este pedido.</p>}
+        {status === "draft" && <p className="font-semibold text-amber-700">NFC-e reservada, mas ainda não enviada para a Focus.</p>}
+        {status === "error" && <p className="font-semibold text-red-700">A emissão anterior falhou antes da autorização. Você pode tentar emitir novamente em homologação.</p>}
         {status === "submitting" && <p className="flex items-center gap-2 font-semibold text-blue-700"><Loader2 className="h-4 w-4 animate-spin" />Emitindo NFC-e de homologação...</p>}
         {status === "processing" && <p className="font-semibold text-blue-700">A Focus está processando a NFC-e.</p>}
         {status === "sync_pending" && <p className="font-semibold text-amber-700">Não foi possível confirmar a situação da NFC-e na Focus.</p>}
@@ -215,7 +241,7 @@ function FiscalNfcePanel({ order }: { order: Order }) {
             </div>
           </div>
         )}
-        {(status === "none" || status === "draft") && (
+        {(status === "none" || status === "draft" || status === "error") && (
           <Button type="button" onClick={() => setConfirmOpen(true)} disabled={!canIssue} className="bg-[#D91F16] text-white hover:bg-[#b91c1c]">
             Emitir NFC-e de teste
           </Button>
