@@ -1,0 +1,89 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { buildFocusNfceFiscalLineForTests, stableNfceReference } from "../nfce-payload";
+import { FOCUS_NFCE_ENDPOINTS, FOCUS_NFCE_PAYMENT_CODES, FOCUS_NFCE_REF_PATTERN, normalizeFocusNfceStatus } from "../nfce-contract";
+
+const payloadSource = readFileSync(resolve("src/integrations/focus-nfe/nfce-payload.ts"), "utf8");
+const serviceSource = readFileSync(resolve("src/integrations/focus-nfe/nfce-service.ts"), "utf8");
+const contractSource = readFileSync(resolve("src/integrations/focus-nfe/nfce-contract.ts"), "utf8");
+const smokeSource = readFileSync(resolve("scripts/focus-nfce-contract-smoke.mjs"), "utf8");
+const sampleRule = { ncm: "19059090", cest: null, cfop: "5102", commercialUnit: "UN", origin: "0", icmsCode: "102", pisCode: "49", cofinsCode: "49" };
+
+test("endpoints oficiais de NFC-e usam POST /v2/nfce?ref e GET/DELETE /v2/nfce/{referencia}", () => {
+  assert.equal(FOCUS_NFCE_ENDPOINTS.createMethod, "POST");
+  assert.equal(FOCUS_NFCE_ENDPOINTS.createPath, "/v2/nfce");
+  assert.equal(FOCUS_NFCE_ENDPOINTS.createRefQueryParam, "ref");
+  assert.equal(FOCUS_NFCE_ENDPOINTS.consultMethod, "GET");
+  assert.equal(FOCUS_NFCE_ENDPOINTS.consultPath("abc-123"), "/v2/nfce/abc-123");
+  assert.equal(FOCUS_NFCE_ENDPOINTS.cancelMethod, "DELETE");
+});
+
+test("referência local fica no limite e caracteres auditados", () => {
+  const ref = stableNfceReference(123456789, 987654321);
+  assert.ok(ref.length <= 60);
+  assert.match(ref, FOCUS_NFCE_REF_PATTERN);
+});
+
+test("payload usa items oficial e não produtos/itens antigos", () => {
+  assert.match(payloadSource, /items: itemsPayload/);
+  assert.doesNotMatch(payloadSource, /\bprodutos\b/);
+  assert.doesNotMatch(payloadSource, /\bitens\s*:/);
+  assert.doesNotMatch(payloadSource, /codigo_ncm/);
+});
+
+test("item completo possui campos oficiais obrigatórios auditados", () => {
+  const item = buildFocusNfceFiscalLineForTests(1, 10, "Produto", 2, 1000, sampleRule) as Record<string, unknown>;
+  for (const field of ["numero_item", "codigo_produto", "descricao", "ncm", "cfop", "unidade_comercial", "quantidade_comercial", "valor_unitario_comercial", "valor_bruto", "unidade_tributavel", "quantidade_tributavel", "valor_unitario_tributavel", "inclui_no_total", "icms_origem", "icms_situacao_tributaria", "pis_situacao_tributaria", "cofins_situacao_tributaria"]) {
+    assert.ok(field in item, field);
+  }
+});
+
+test("códigos oficiais de pagamento permanecem mapeados", () => {
+  assert.equal(FOCUS_NFCE_PAYMENT_CODES.pix, "17");
+  assert.equal(FOCUS_NFCE_PAYMENT_CODES.cash, "01");
+  assert.equal(FOCUS_NFCE_PAYMENT_CODES.credit_card, "03");
+  assert.equal(FOCUS_NFCE_PAYMENT_CODES.debit_card, "04");
+  assert.equal(FOCUS_NFCE_PAYMENT_CODES.voucher, "10");
+});
+
+test("plataforma, iFood e taxa de entrega seguem bloqueados", () => {
+  assert.match(payloadSource, /ifood_online/);
+  assert.match(payloadSource, /platform/);
+  assert.match(payloadSource, /DELIVERY_FEE_FISCAL_MAPPING_REQUIRED/);
+  assert.doesNotMatch(payloadSource, /platform[\s\S]{0,80}pix|pix[\s\S]{0,80}platform/);
+});
+
+test("dados mínimos do emitente são enviados e ausência bloqueia antes da Focus", () => {
+  assert.match(payloadSource, /cnpj_emitente: settings\.cnpj/);
+  assert.match(payloadSource, /issuer_data_incomplete/);
+  assert.match(payloadSource, /FISCAL_SETUP_NOT_READY/);
+});
+
+test("status oficial autorizado exige status, status_sefaz, chave, protocolo e artefato fiscal", () => {
+  const n = normalizeFocusNfceStatus({ status: "autorizado", status_sefaz: "100", chave_nfe: "123", protocolo: "999", caminho_xml_nota_fiscal: "/arquivos/xml.xml", caminho_danfe: "/arquivos/danfe.pdf" });
+  assert.equal(n.status, "authorized");
+  assert.equal(n.xmlUrl, "/arquivos/xml.xml");
+  assert.equal(n.danfceUrl, "/arquivos/danfe.pdf");
+});
+
+test("status rejeitado vira rejected e resposta ambígua não autoriza", () => {
+  assert.equal(normalizeFocusNfceStatus({ status: "erro_autorizacao", status_sefaz: "539", mensagem_sefaz: "Rejeição" }).status, "rejected");
+  assert.equal(normalizeFocusNfceStatus({ status: "autorizado", status_sefaz: "100" }).status, "processing");
+  assert.equal(normalizeFocusNfceStatus({ status: "processando" }).status, "processing");
+});
+
+test("XML/DANFCE são mapeados dos campos oficiais e consulta é segurança, sem retry automático de POST", () => {
+  assert.match(contractSource, /caminho_xml_nota_fiscal/);
+  assert.match(contractSource, /caminho_danfe/);
+  assert.doesNotMatch(serviceSource, /method:"POST"[\s\S]*method:"POST"/);
+  assert.match(serviceSource, /FOCUS_NFCE_ENDPOINTS\.consultPath/);
+});
+
+test("script smoke é manual, protegido por variáveis e testes não chamam Focus real", () => {
+  assert.match(smokeSource, /FOCUS_NFE_SMOKE_ENABLED/);
+  assert.match(smokeSource, /FOCUS_NFE_SMOKE_TOKEN/);
+  assert.match(smokeSource, /FOCUS_NFE_SMOKE_REF/);
+  assert.doesNotMatch(smokeSource.replace(/reason: .*$/gm, "reason redacted"), /console\.log\([^)]*TOKEN|console\.log\([^)]*token/);
+});
