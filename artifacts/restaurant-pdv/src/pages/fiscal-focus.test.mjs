@@ -119,15 +119,13 @@ const orderDetailSource = readFileSync(
   "utf8",
 );
 
-test("pedido pago max_control PRO mostra emissão NFC-e de teste somente homologação", () => {
-  assert.match(orderDetailSource, /Emitir NFC-e de teste/);
+test("painel NFC-e usa access-status e não depende apenas do entitlement PRO", () => {
+  assert.match(orderDetailSource, /\/api\/fiscal\/access-status/);
+  assert.match(orderDetailSource, /accessStatus\?\.allowed === true/);
   assert.match(orderDetailSource, /currentStore\?\.role === "max_control"/);
-  assert.match(orderDetailSource, /entitlement\?\.plan === "pro"/);
   assert.match(orderDetailSource, /isPaidOrder\(order\)/);
   assert.match(orderDetailSource, /\["cancelled", "canceled"\]/);
-  assert.match(orderDetailSource, /next\.environment === "homologation"/);
-  assert.match(orderDetailSource, /\/api\/fiscal\/nfce\/homologation\/orders\/\$\{order\.id\}\/issue/);
-  assert.doesNotMatch(orderDetailSource, /production\/orders|\/api\/fiscal\/nfce\/production/);
+  assert.doesNotMatch(orderDetailSource, /entitlement\?\.plan === "pro"/);
 });
 
 test("emissão exige modal de confirmação e cancelamento não chama API", () => {
@@ -143,11 +141,15 @@ test("duplo clique não duplica POST e frontend nunca envia storeId", () => {
   assert.match(orderDetailSource, /if \(issuing \|\| !canIssue\) return/);
   assert.match(orderDetailSource, /disabled=\{issuing\}/);
   assert.match(orderDetailSource, /method: "POST"/);
+  assert.match(orderDetailSource, /\/api\/fiscal\/nfce\/orders\/\$\{order\.id\}/);
+  assert.match(orderDetailSource, /\/api\/fiscal\/nfce\/homologation\/orders\/\$\{order\.id\}\/issue/);
+  assert.match(orderDetailSource, /\/api\/fiscal\/nfce\/orders\/\$\{order\.id\}\/refresh/);
   assert.doesNotMatch(orderDetailSource, /storeId|currentStore\.id/);
 });
 
-test("status fiscal mostra sem documento, processando, autorizado, rejeitado e sync pending", () => {
+test("status fiscal mostra draft, processando, autorizado, rejeitado e sync pending", () => {
   assert.match(orderDetailSource, /Nenhuma NFC-e emitida para este pedido\./);
+  assert.match(orderDetailSource, /NFC-e reservada, mas ainda não enviada para a Focus\./);
   assert.match(orderDetailSource, /Emitindo NFC-e de homologação/);
   assert.match(orderDetailSource, /A Focus está processando a NFC-e\./);
   assert.match(orderDetailSource, /NFC-e de homologação autorizada\./);
@@ -158,9 +160,24 @@ test("status fiscal mostra sem documento, processando, autorizado, rejeitado e s
   assert.match(orderDetailSource, /Não foi possível confirmar a situação da NFC-e na Focus\./);
 });
 
-test("atualizar status chama refresh e erros fiscais são traduzidos sem segredos", () => {
+test("draft e error permitem emitir; authorized e rejected não reemitem", () => {
+  assert.match(orderDetailSource, /const issuableStatuses = \["draft", "error"\] as const/);
+  assert.match(orderDetailSource, /!document \|\| issuableStatuses\.includes\(document\.status as "draft" \| "error"\)/);
+  assert.match(orderDetailSource, /status === "none" \|\| status === "draft" \|\| status === "error"/);
+  assert.match(orderDetailSource, /Emitir NFC-e de teste/);
+  assert.match(orderDetailSource, /status === "authorized" && document/);
+  assert.match(orderDetailSource, /status === "rejected" && document/);
+});
+
+test("processing e sync_pending mostram atualizar status sem emitir", () => {
+  assert.match(orderDetailSource, /status === "processing" \|\| status === "sync_pending"/);
   assert.match(orderDetailSource, /Atualizar status/);
   assert.match(orderDetailSource, /\/api\/fiscal\/nfce\/orders\/\$\{order\.id\}\/refresh/);
+});
+
+test("não existe rota de produção e erros fiscais são traduzidos sem segredos", () => {
+  assert.match(orderDetailSource, /next\.environment === "homologation"/);
+  assert.doesNotMatch(orderDetailSource, /production\/orders|\/api\/fiscal\/nfce\/production|\/api\/fiscal\/nfce\/orders\/\$\{order\.id\}\/issue/);
   assert.match(orderDetailSource, /FISCAL_SETUP_NOT_READY: "A configuração fiscal ainda não está pronta para homologação\."/);
   assert.match(orderDetailSource, /ORDER_NOT_PAID: "O pedido ainda não está pago\."/);
   assert.match(orderDetailSource, /FOCUS_NFCE_UNAVAILABLE: "A Focus NFe está indisponível no momento\."/);
