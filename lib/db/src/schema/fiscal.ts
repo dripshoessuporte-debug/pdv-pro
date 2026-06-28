@@ -14,6 +14,7 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { productsTable } from "./menu";
+import { ordersTable } from "./orders";
 import { storesTable, usersTable } from "./tenancy";
 
 export const fiscalSetupStatuses = [
@@ -270,7 +271,7 @@ export const fiscalDocumentsTable = pgTable(
   {
     id: serial("id").primaryKey(),
     storeId: integer("store_id").notNull().references(() => storesTable.id),
-    orderId: integer("order_id").notNull(),
+    orderId: integer("order_id").notNull().references(() => ordersTable.id),
     provider: text("provider").notNull().default("focus_nfe"),
     documentType: text("document_type").notNull().default("nfce"),
     environment: text("environment").notNull().default("homologation"),
