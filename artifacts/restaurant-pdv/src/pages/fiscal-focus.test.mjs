@@ -114,72 +114,104 @@ test("botão tentar novamente chama status de novo", () => {
 });
 
 
-const orderDetailSource = readFileSync(
+const orderDetailDialogSource = readFileSync(
   new URL("../components/order-detail-dialog.tsx", import.meta.url),
   "utf8",
 );
+const orderDetailPageSource = readFileSync(
+  new URL("./order-detail.tsx", import.meta.url),
+  "utf8",
+);
+const fiscalNfcePanelSource = readFileSync(
+  new URL("../components/fiscal-nfce-panel.tsx", import.meta.url),
+  "utf8",
+);
+
+test("FiscalNfcePanel existe como componente reutilizável e é usado no dialog e na página do pedido", () => {
+  assert.match(fiscalNfcePanelSource, /export function FiscalNfcePanel\(\{ order \}: \{ order: Order \}\)/);
+  assert.match(orderDetailDialogSource, /import \{ FiscalNfcePanel \} from "@\/components\/fiscal-nfce-panel"/);
+  assert.match(orderDetailDialogSource, /<FiscalNfcePanel order=\{order\} \/>/);
+  assert.match(orderDetailPageSource, /import \{ FiscalNfcePanel \} from "@\/components\/fiscal-nfce-panel"/);
+  assert.match(orderDetailPageSource, /<FiscalNfcePanel order=\{order\} \/>/);
+  assert.match(fiscalNfcePanelSource, /Fiscal NFC-e/);
+});
 
 test("painel NFC-e usa access-status e não depende apenas do entitlement PRO", () => {
-  assert.match(orderDetailSource, /\/api\/fiscal\/access-status/);
-  assert.match(orderDetailSource, /accessStatus\?\.allowed === true/);
-  assert.match(orderDetailSource, /currentStore\?\.role === "max_control"/);
-  assert.match(orderDetailSource, /isPaidOrder\(order\)/);
-  assert.match(orderDetailSource, /\["cancelled", "canceled"\]/);
-  assert.doesNotMatch(orderDetailSource, /entitlement\?\.plan === "pro"/);
+  assert.match(fiscalNfcePanelSource, /\/api\/fiscal\/access-status/);
+  assert.match(fiscalNfcePanelSource, /accessStatus\?\.allowed === true/);
+  assert.match(fiscalNfcePanelSource, /currentStore\?\.role === "max_control"/);
+  assert.match(fiscalNfcePanelSource, /isPaidOrder\(order\)/);
+  assert.match(fiscalNfcePanelSource, /\["cancelled", "canceled"\]/);
+  assert.doesNotMatch(fiscalNfcePanelSource, /entitlement\?\.plan === "pro"/);
 });
 
 test("emissão exige modal de confirmação e cancelamento não chama API", () => {
-  assert.match(orderDetailSource, /Emitir NFC-e de teste\?/);
-  assert.match(orderDetailSource, /Esta emissão será feita em homologação/);
-  assert.match(orderDetailSource, /Cancelar/);
-  assert.match(orderDetailSource, /Emitir teste/);
-  assert.match(orderDetailSource, /onClick=\{\(\) => setConfirmOpen\(false\)\}/);
-  assert.doesNotMatch(orderDetailSource, /window\.alert|confirm\(/);
+  assert.match(fiscalNfcePanelSource, /Emitir NFC-e de teste\?/);
+  assert.match(fiscalNfcePanelSource, /Esta emissão será feita em homologação/);
+  assert.match(fiscalNfcePanelSource, /Cancelar/);
+  assert.match(fiscalNfcePanelSource, /Emitir teste/);
+  assert.match(fiscalNfcePanelSource, /onClick=\{\(\) => setConfirmOpen\(false\)\}/);
+  assert.doesNotMatch(fiscalNfcePanelSource, /window\.alert|confirm\(/);
 });
 
 test("duplo clique não duplica POST e frontend nunca envia storeId", () => {
-  assert.match(orderDetailSource, /if \(issuing \|\| !canIssue\) return/);
-  assert.match(orderDetailSource, /disabled=\{issuing\}/);
-  assert.match(orderDetailSource, /method: "POST"/);
-  assert.match(orderDetailSource, /\/api\/fiscal\/nfce\/orders\/\$\{order\.id\}/);
-  assert.match(orderDetailSource, /\/api\/fiscal\/nfce\/homologation\/orders\/\$\{order\.id\}\/issue/);
-  assert.match(orderDetailSource, /\/api\/fiscal\/nfce\/orders\/\$\{order\.id\}\/refresh/);
-  assert.doesNotMatch(orderDetailSource, /storeId|currentStore\.id/);
+  assert.match(fiscalNfcePanelSource, /if \(issuing \|\| !canIssue\) return/);
+  assert.match(fiscalNfcePanelSource, /disabled=\{issuing\}/);
+  assert.match(fiscalNfcePanelSource, /method: "POST"/);
+  assert.match(fiscalNfcePanelSource, /\/api\/fiscal\/nfce\/orders\/\$\{order\.id\}/);
+  assert.match(fiscalNfcePanelSource, /\/api\/fiscal\/nfce\/homologation\/orders\/\$\{order\.id\}\/issue/);
+  assert.match(fiscalNfcePanelSource, /\/api\/fiscal\/nfce\/orders\/\$\{order\.id\}\/refresh/);
+  assert.doesNotMatch(fiscalNfcePanelSource, /storeId|currentStore\.id/);
 });
 
 test("status fiscal mostra draft, processando, autorizado, rejeitado e sync pending", () => {
-  assert.match(orderDetailSource, /Nenhuma NFC-e emitida para este pedido\./);
-  assert.match(orderDetailSource, /NFC-e reservada, mas ainda não enviada para a Focus\./);
-  assert.match(orderDetailSource, /Emitindo NFC-e de homologação/);
-  assert.match(orderDetailSource, /A Focus está processando a NFC-e\./);
-  assert.match(orderDetailSource, /NFC-e de homologação autorizada\./);
-  assert.match(orderDetailSource, /Chave de acesso/);
-  assert.match(orderDetailSource, /Protocolo/);
-  assert.match(orderDetailSource, /NFC-e rejeitada\./);
-  assert.match(orderDetailSource, /Código da rejeição/);
-  assert.match(orderDetailSource, /Não foi possível confirmar a situação da NFC-e na Focus\./);
+  assert.match(fiscalNfcePanelSource, /Nenhuma NFC-e emitida para este pedido\./);
+  assert.match(fiscalNfcePanelSource, /NFC-e reservada, mas ainda não enviada para a Focus\./);
+  assert.match(fiscalNfcePanelSource, /Emitindo NFC-e de homologação/);
+  assert.match(fiscalNfcePanelSource, /A Focus está processando a NFC-e\./);
+  assert.match(fiscalNfcePanelSource, /NFC-e de homologação autorizada\./);
+  assert.match(fiscalNfcePanelSource, /Chave de acesso/);
+  assert.match(fiscalNfcePanelSource, /Protocolo/);
+  assert.match(fiscalNfcePanelSource, /NFC-e rejeitada\./);
+  assert.match(fiscalNfcePanelSource, /Código da rejeição/);
+  assert.match(fiscalNfcePanelSource, /Não foi possível confirmar a situação da NFC-e na Focus\./);
 });
 
 test("draft e error permitem emitir; authorized e rejected não reemitem", () => {
-  assert.match(orderDetailSource, /const issuableStatuses = \["draft", "error"\] as const/);
-  assert.match(orderDetailSource, /!document \|\| issuableStatuses\.includes\(document\.status as "draft" \| "error"\)/);
-  assert.match(orderDetailSource, /status === "none" \|\| status === "draft" \|\| status === "error"/);
-  assert.match(orderDetailSource, /Emitir NFC-e de teste/);
-  assert.match(orderDetailSource, /status === "authorized" && document/);
-  assert.match(orderDetailSource, /status === "rejected" && document/);
+  assert.match(fiscalNfcePanelSource, /const issuableStatuses = \["draft", "error"\] as const/);
+  assert.match(fiscalNfcePanelSource, /!document \|\| issuableStatuses\.includes\(document\.status as "draft" \| "error"\)/);
+  assert.match(fiscalNfcePanelSource, /status === "none" \|\| status === "draft" \|\| status === "error"/);
+  assert.match(fiscalNfcePanelSource, /Emitir NFC-e de teste/);
+  assert.match(fiscalNfcePanelSource, /status === "authorized" && document/);
+  assert.match(fiscalNfcePanelSource, /status === "rejected" && document/);
 });
 
 test("processing e sync_pending mostram atualizar status sem emitir", () => {
-  assert.match(orderDetailSource, /status === "processing" \|\| status === "sync_pending"/);
-  assert.match(orderDetailSource, /Atualizar status/);
-  assert.match(orderDetailSource, /\/api\/fiscal\/nfce\/orders\/\$\{order\.id\}\/refresh/);
+  assert.match(fiscalNfcePanelSource, /status === "processing" \|\| status === "sync_pending"/);
+  assert.match(fiscalNfcePanelSource, /Atualizar status/);
+  assert.match(fiscalNfcePanelSource, /\/api\/fiscal\/nfce\/orders\/\$\{order\.id\}\/refresh/);
 });
 
 test("não existe rota de produção e erros fiscais são traduzidos sem segredos", () => {
-  assert.match(orderDetailSource, /next\.environment === "homologation"/);
-  assert.doesNotMatch(orderDetailSource, /production\/orders|\/api\/fiscal\/nfce\/production|\/api\/fiscal\/nfce\/orders\/\$\{order\.id\}\/issue/);
-  assert.match(orderDetailSource, /FISCAL_SETUP_NOT_READY: "A configuração fiscal ainda não está pronta para homologação\."/);
-  assert.match(orderDetailSource, /ORDER_NOT_PAID: "O pedido ainda não está pago\."/);
-  assert.match(orderDetailSource, /FOCUS_NFCE_UNAVAILABLE: "A Focus NFe está indisponível no momento\."/);
-  assert.doesNotMatch(orderDetailSource, /token Focus|CSC|certificado.*senha|payloadSnapshot|rawResponse|encrypted|stack|SQL/i);
+  assert.match(fiscalNfcePanelSource, /next\.environment === "homologation"/);
+  assert.doesNotMatch(fiscalNfcePanelSource, /production\/orders|\/api\/fiscal\/nfce\/production|\/api\/fiscal\/nfce\/orders\/\$\{order\.id\}\/issue/);
+  assert.match(fiscalNfcePanelSource, /FISCAL_SETUP_NOT_READY: "A configuração fiscal ainda não está pronta para homologação\."/);
+  assert.match(fiscalNfcePanelSource, /ORDER_NOT_PAID: "O pedido ainda não está pago\."/);
+  assert.match(fiscalNfcePanelSource, /FOCUS_NFCE_UNAVAILABLE: "A Focus NFe está indisponível no momento\."/);
+  assert.doesNotMatch(fiscalNfcePanelSource, /token Focus|CSC|certificado.*senha|payloadSnapshot|rawResponse|encrypted|stack|SQL/i);
+});
+
+test("painel NFC-e informa bloqueios esperados sem esconder por falta de Focus", () => {
+  assert.match(fiscalNfcePanelSource, /\(order\.deliveryFee \?\? 0\) > 0/);
+  assert.match(fiscalNfcePanelSource, /Este pedido possui taxa de entrega\. A emissão NFC-e será bloqueada até configurarmos o mapeamento fiscal da entrega\./);
+  assert.match(fiscalNfcePanelSource, /order\.paymentTiming === "on_delivery"/);
+  assert.match(fiscalNfcePanelSource, /Pedido marcado como pagar na entrega\. A emissão fiscal depende de pagamento aprovado no backend\./);
+  assert.match(fiscalNfcePanelSource, /FISCAL_SETUP_NOT_READY: "A configuração fiscal ainda não está pronta para homologação\."/);
+  assert.doesNotMatch(fiscalNfcePanelSource, /focus\/(status|company)|focusStatus|certificate|csc/i);
+});
+
+test("página /orders/:id renderiza o painel NFC-e após o resumo financeiro", () => {
+  assert.ok(orderDetailPageSource.indexOf("Resumo financeiro") < orderDetailPageSource.indexOf("<FiscalNfcePanel order={order} />"));
+  assert.ok(orderDetailPageSource.indexOf("<FiscalNfcePanel order={order} />") < orderDetailPageSource.lastIndexOf("Dados de Entrega"));
+  assert.match(fiscalNfcePanelSource, /Fiscal NFC-e/);
 });
