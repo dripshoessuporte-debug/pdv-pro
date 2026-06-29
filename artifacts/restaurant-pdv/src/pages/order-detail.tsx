@@ -44,6 +44,7 @@ import {
   Smartphone,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { FiscalNfcePanel } from "@/components/fiscal-nfce-panel";
 
 const STATUS_LABELS: Record<string, string> = {
   open: "Aberto",
@@ -687,6 +688,8 @@ export default function OrderDetail() {
                 </div>
               </CardContent>
             </Card>
+
+            <FiscalNfcePanel order={order} />
 
             {/* Seção de Entrega */}
             {isDelivery && (
