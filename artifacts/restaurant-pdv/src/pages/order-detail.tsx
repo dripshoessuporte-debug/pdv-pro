@@ -127,6 +127,14 @@ const DELIVERY_ACTIONS: { status: string; label: string }[] = [
   { status: "delivered", label: "📦 Entregue" },
 ];
 
+const translatePizzaApiError = (message: string) => {
+  if (/Pizza size not found|Tamanho inválido/i.test(message)) return "Tamanho de pizza não encontrado ou inativo.";
+  if (/Flavor not found|Sabor sem classificação|sabor/i.test(message)) return "Um dos sabores escolhidos não está disponível.";
+  if (/Missing price|Classificação sem preço|preço/i.test(message)) return "Falta preço para esse tamanho e classificação.";
+  if (/Product not found|Produto base inválido/i.test(message)) return "Produto base não encontrado.";
+  return "Não foi possível montar a pizza. Revise os dados e tente novamente.";
+};
+
 export default function OrderDetail() {
   const { id } = useParams<{ id: string }>();
   const orderId = parseInt(id!);
@@ -158,22 +166,48 @@ export default function OrderDetail() {
   });
 
   const addPizzaToExistingOrder = async () => {
-    const [sizesRes, flavorsRes] = await Promise.all([fetch("/api/menu/pizza/sizes"), fetch("/api/menu/pizza/flavors")]);
+    const [sizesRes, tiersRes, pricesRes, flavorsRes] = await Promise.all([
+      fetch("/api/menu/pizza/sizes"),
+      fetch("/api/menu/pizza/tiers"),
+      fetch("/api/menu/pizza/prices"),
+      fetch("/api/menu/pizza/flavors"),
+    ]);
     const sizes = sizesRes.ok ? await sizesRes.json() : [];
+    const tiers = tiersRes.ok ? await tiersRes.json() : [];
+    const prices = pricesRes.ok ? await pricesRes.json() : [];
     const flavors = flavorsRes.ok ? await flavorsRes.json() : [];
-    if (!sizes.length || !flavors.length) { toast({ title: "Configure tamanhos, classificações, preços e sabores em Cardápio > Pizzas multissabor.", variant: "destructive" }); return; }
-    const baseProductId = Number(window.prompt("ID do produto base fiscal (ex: Pizza Montada):"));
-    const pizzaSizeId = Number(window.prompt(`ID do tamanho:
+    if (!sizes.length) { toast({ title: "Cadastre pelo menos um tamanho antes de montar pizza.", variant: "destructive" }); return; }
+    if (!tiers.length) { toast({ title: "Cadastre pelo menos uma classificação antes de montar pizza.", variant: "destructive" }); return; }
+    if (!prices.length) { toast({ title: "Cadastre pelo menos um preço por tamanho e classificação antes de montar pizza.", variant: "destructive" }); return; }
+    if (!flavors.length) { toast({ title: "Vincule pelo menos um sabor antes de montar pizza.", variant: "destructive" }); return; }
+
+    const baseProductId = Number(window.prompt("Escolha produto base fiscal: Pizza Montada (informe o ID do produto base):"));
+    if (!baseProductId) { toast({ title: "Escolha o produto base fiscal antes de montar pizza.", variant: "destructive" }); return; }
+    const pizzaSizeId = Number(window.prompt(`Escolha o tamanho:
 ${sizes.map((s: any) => `${s.id} - ${s.name} (máx. ${s.maxFlavors})`).join("\n")}`));
     const selectedSize = sizes.find((s: any) => s.id === pizzaSizeId);
-    const flavorText = window.prompt(`IDs dos sabores separados por vírgula (máx. ${selectedSize?.maxFlavors ?? "?"}):
-${flavors.map((f: any) => `${f.productId} - ${f.productName} — ${f.tierName}`).join("\n")}`) ?? "";
+    if (!selectedSize) { toast({ title: "Escolha um tamanho de pizza válido.", variant: "destructive" }); return; }
+    const allowedFlavors = flavors.filter((f: any) => prices.some((p: any) => p.sizeId === pizzaSizeId && p.tierId === f.tierId));
+    if (!allowedFlavors.length) { toast({ title: "Este tamanho ainda não possui preço para as classificações dos sabores.", variant: "destructive" }); return; }
+    const flavorText = window.prompt(`Escolha sabores permitidos pelo tamanho ${selectedSize.name} (IDs separados por vírgula, máx. ${selectedSize.maxFlavors}):
+${allowedFlavors.map((f: any) => `${f.productId} - ${f.productName} — ${f.tierName}`).join("\n")}`) ?? "";
     const flavorProductIds = flavorText.split(",").map((v) => Number(v.trim())).filter(Boolean);
+    if (!flavorProductIds.length) { toast({ title: "Escolha pelo menos um sabor para montar a pizza.", variant: "destructive" }); return; }
+    if (flavorProductIds.length > selectedSize.maxFlavors) { toast({ title: `Este tamanho permite no máximo ${selectedSize.maxFlavors} sabor(es).`, variant: "destructive" }); return; }
+    const selectedFlavors = flavorProductIds.map((pid) => allowedFlavors.find((f: any) => f.productId === pid));
+    const missingFlavor = selectedFlavors.find((f) => !f);
+    if (missingFlavor) { toast({ title: "Um dos sabores escolhidos não está disponível para este tamanho.", variant: "destructive" }); return; }
+    const missingPriceFlavor = selectedFlavors.find((f: any) => !prices.some((p: any) => p.sizeId === pizzaSizeId && p.tierId === f.tierId));
+    if (missingPriceFlavor) { toast({ title: `Este tamanho ainda não possui preço para a classificação ${(missingPriceFlavor as any).tierName}.`, variant: "destructive" }); return; }
+    const pricedFlavors = selectedFlavors.map((f: any) => ({ ...f, finalPrice: Number(prices.find((p: any) => p.sizeId === pizzaSizeId && p.tierId === f.tierId)?.price ?? 0) }));
+    const highest = pricedFlavors.reduce((max: any, f: any) => f.finalPrice > max.finalPrice ? f : max, pricedFlavors[0]);
+    const finalPrice = highest.finalPrice;
+    setPizzaPreview(`Tamanho selecionado: ${selectedSize.name} • Máximo de sabores: ${selectedSize.maxFlavors} • Sabores selecionados: ${pricedFlavors.map((f: any) => `${f.productName} (${f.tierName})`).join(", ")} • Preço final calculado: R$ ${finalPrice.toFixed(2)} • Regra: cobra pela maior classificação`);
+    if (!window.confirm(`Preço final: R$ ${finalPrice.toFixed(2)}\nRegra: cobra pela maior classificação (${highest.tierName}).\nAdicionar ao pedido?`)) return;
     const quantity = Number(window.prompt("Quantidade:", "1") ?? "1");
     const notes = window.prompt("Observação (opcional):") ?? undefined;
-    setPizzaPreview(`${selectedSize?.name ?? "Pizza"}: ${flavorProductIds.length} sabor(es) — regra: maior classificação selecionada`);
     const res = await fetch(`/api/orders/${orderId}/pizza-items`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ baseProductId, pizzaSizeId, flavorProductIds, quantity, notes }) });
-    if (!res.ok) { toast({ title: (await res.json()).error ?? "Erro ao adicionar pizza.", variant: "destructive" }); return; }
+    if (!res.ok) { const body = await res.json().catch(() => ({})); toast({ title: translatePizzaApiError(body.error ?? ""), variant: "destructive" }); return; }
     toast({ title: "Pizza multissabor adicionada." }); setAddItemOpen(false); invalidateOrder();
   };
 
