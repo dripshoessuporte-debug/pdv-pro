@@ -37,7 +37,7 @@ import {
 
 const router: IRouter = Router();
 
-type ImportMode = "upsert" | "skip" | "create_only";
+type ImportMode = "upsert" | "skip" | "create_only" | "update_only";
 type ImportError = { rowNumber: number; field: string; message: string };
 type ImportWarning = { rowNumber: number; field?: string; message: string };
 type ParsedVariant = { name: string; price: number };
@@ -69,6 +69,12 @@ type ParsedImportRow = {
   imageAlt: string | null;
   variants: ParsedVariant[];
   addons: ParsedAddonGroup[];
+  pizzaConfigs: {
+    size: string;
+    price: number;
+    classification: string;
+    maxFlavors: number;
+  }[];
 };
 
 const IMPORT_MAX_BYTES = 1024 * 1024;
@@ -77,63 +83,88 @@ const IMPORT_TEMPLATE_HEADERS = [
   "categoria",
   "produto",
   "descricao",
-  "preco_base",
-  "serve_quantas_pessoas",
-  "tempo_preparo_min",
-  "disponivel",
+  "preco",
   "sku",
-  "codigo_barras",
-  "unidade",
-  "preco_custo",
-  "controlar_estoque",
-  "estoque_atual",
-  "estoque_minimo",
-  "vender_sem_estoque",
-  "imagem_url",
-  "tamanhos",
-  "bordas",
-  "complementos",
-  "observacoes_internas",
+  "ativo",
 ];
 const IMPORT_TEMPLATE_ROWS = [
   [
     "Pizzas",
     "Pizza Calabresa",
-    "Calabresa com cebola",
-    "49.90",
-    "3",
-    "25",
-    "sim",
+    "Molho, mussarela, calabresa e cebola",
+    "49,90",
     "PIZ-CAL",
-    "",
-    "unidade",
-    "25.00",
-    "não",
-    "",
-    "",
-    "não",
-    "",
-    "Broto:29.90|Média:39.90|Grande:49.90",
-    "Sem borda:0|Catupiry:8|Cheddar:8|Chocolate:10",
-    "Extras|obrigatorio:false|min:0|max:5|Bacon:6|Milho:3|Queijo extra:7",
-    "Exemplo para pizzarias",
+    "sim",
+  ],
+  [
+    "Pizzas",
+    "Pizza Mussarela",
+    "Molho, mussarela e orégano",
+    "44,90",
+    "PIZ-MUS",
+    "sim",
   ],
   [
     "Bebidas",
     "Coca-Cola 2L",
     "Refrigerante 2 litros",
-    "12.00",
+    "12,00",
+    "COCA-2L",
+    "sim",
+  ],
+];
+const ADVANCED_TEMPLATE_HEADERS = [
+  "tipo",
+  "categoria",
+  "produto",
+  "descricao",
+  "preco",
+  "sku",
+  "ativo",
+  "tamanho",
+  "preco_tamanho",
+  "grupo_complemento",
+  "complemento",
+  "preco_complemento",
+  "obrigatorio",
+  "max_escolhas",
+  "multissabor",
+  "classificacao",
+  "max_sabores",
+];
+const ADVANCED_TEMPLATE_ROWS = [
+  [
+    "produto",
+    "Pizzas",
+    "Pizza Calabresa",
+    "Molho, mussarela, calabresa e cebola",
+    "49,90",
+    "PIZ-CAL",
+    "sim",
     "",
-    "0",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "Salgada",
+    "",
+  ],
+  [
+    "tamanho",
+    "Pizzas",
+    "Pizza Calabresa",
+    "",
+    "",
+    "PIZ-CAL",
     "sim",
-    "COCA2L",
-    "7890000000000",
-    "unidade",
-    "7.00",
-    "sim",
-    "20",
-    "5",
-    "não",
+    "Grande",
+    "59,90",
+    "",
+    "",
+    "",
     "",
     "",
     "",
@@ -141,26 +172,42 @@ const IMPORT_TEMPLATE_ROWS = [
     "",
   ],
   [
-    "Lanches",
-    "X-Burger",
-    "Pão, hambúrguer e queijo",
-    "24.90",
-    "1",
-    "15",
+    "complemento",
+    "Pizzas",
+    "Pizza Calabresa",
+    "",
+    "",
+    "PIZ-CAL",
     "sim",
-    "XBURGER",
     "",
-    "unidade",
-    "12.00",
+    "",
+    "Bordas",
+    "Catupiry",
+    "8,00",
     "não",
+    "1",
     "",
     "",
-    "não",
-    "https://exemplo.com/xburger.jpg",
+    "",
+  ],
+  [
+    "multissabor",
+    "Pizzas",
+    "Pizza Calabresa",
     "",
     "",
-    "Bebidas|obrigatorio:false|min:0|max:2|Coca lata:6.00|Suco:8.00",
+    "PIZ-CAL",
+    "sim",
+    "Grande",
+    "59,90",
     "",
+    "",
+    "",
+    "",
+    "",
+    "sim",
+    "Salgada",
+    "2",
   ],
 ];
 const HEADER_ALIASES: Record<string, string[]> = {
@@ -186,6 +233,17 @@ const HEADER_ALIASES: Record<string, string[]> = {
   ativo: ["ativo", "active"],
   imagem_url: ["imagem_url", "image_url"],
   imagem_alt: ["imagem_alt", "image_alt"],
+  tipo: ["tipo", "type"],
+  tamanho: ["tamanho", "size"],
+  preco_tamanho: ["preco_tamanho", "preço_tamanho", "size_price"],
+  grupo_complemento: ["grupo_complemento", "grupo", "addon_group"],
+  complemento: ["complemento", "addon", "option"],
+  preco_complemento: ["preco_complemento", "preço_complemento", "addon_price"],
+  obrigatorio: ["obrigatorio", "obrigatório", "required"],
+  max_escolhas: ["max_escolhas", "max", "max_selected"],
+  multissabor: ["multissabor"],
+  classificacao: ["classificacao", "classificação", "tier"],
+  max_sabores: ["max_sabores", "max_flavors"],
   tamanhos: ["tamanhos", "variacoes", "variações", "variants"],
   bordas: ["bordas"],
   complementos: ["complementos", "adicionais", "addons"],
@@ -207,7 +265,42 @@ function csvEscape(value: string) {
   return /[",;\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 function toCsv(rows: string[][]) {
-  return rows.map((r) => r.map(csvEscape).join(",")).join("\n") + "\n";
+  return rows.map((r) => r.map(csvEscape).join(";")).join("\n") + "\n";
+}
+function normalizePriceValue(value: string): {
+  value: number | null;
+  error?: string;
+} {
+  const original = value;
+  let v = value
+    .trim()
+    .replace(/^R\$\s*/i, "")
+    .replace(/\s/g, "");
+  if (!v) return { value: null, error: "vazio" };
+  const hasComma = v.includes(",");
+  const hasDot = v.includes(".");
+  if (hasComma && hasDot) {
+    v =
+      v.lastIndexOf(",") > v.lastIndexOf(".")
+        ? v.replace(/\./g, "").replace(",", ".")
+        : v.replace(/,/g, "");
+  } else if (hasComma) {
+    v = v.replace(/\./g, "").replace(",", ".");
+  }
+  if (!/^\d+(?:\.\d{1,2})?$/.test(v)) {
+    return {
+      value: null,
+      error: `preço inválido "${original}". Use exemplo: 49,90.`,
+    };
+  }
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) {
+    return {
+      value: null,
+      error: `preço inválido "${original}". Use exemplo: 49,90.`,
+    };
+  }
+  return { value: n };
 }
 function parseNumberValue(
   value: string,
@@ -215,30 +308,28 @@ function parseNumberValue(
   rowNumber: number,
   errors: ImportError[],
   required = false,
+  productName?: string,
 ): number | null {
   const trimmed = value.trim();
-  const raw = trimmed.includes(",")
-    ? trimmed.replace(/\./g, "").replace(",", ".")
-    : trimmed;
-  if (!raw) {
+  if (!trimmed) {
     if (required)
       errors.push({
         rowNumber,
         field,
-        message: `Linha ${rowNumber}: ${field} inválido.`,
+        message: `Linha ${rowNumber}: coluna "${field}" está vazia${productName ? ` para o produto "${productName}"` : ""}.`,
       });
     return null;
   }
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n < 0) {
+  const parsed = normalizePriceValue(trimmed);
+  if (parsed.error) {
     errors.push({
       rowNumber,
       field,
-      message: `Linha ${rowNumber}: ${field} inválido.`,
+      message: `Linha ${rowNumber}: ${parsed.error}`,
     });
     return null;
   }
-  return n;
+  return parsed.value;
 }
 function parseIntegerValue(
   value: string,
@@ -258,12 +349,22 @@ function parseBooleanValue(value: string, fallback: boolean): boolean {
   const v = normalizeHeader(value);
   if (!v) return fallback;
   if (
-    ["true", "sim", "s", "1", "ativo", "disponivel", "disponível"].includes(v)
+    [
+      "true",
+      "yes",
+      "sim",
+      "s",
+      "1",
+      "ativo",
+      "disponivel",
+      "disponível",
+    ].includes(v)
   )
     return true;
   if (
     [
       "false",
+      "no",
       "nao",
       "não",
       "n",
@@ -276,8 +377,16 @@ function parseBooleanValue(value: string, fallback: boolean): boolean {
     return false;
   return fallback;
 }
+function detectDelimiter(text: string) {
+  const firstLine = text.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0] ?? "";
+  return (firstLine.match(/;/g)?.length ?? 0) >=
+    (firstLine.match(/,/g)?.length ?? 0)
+    ? ";"
+    : ",";
+}
 function parseCsv(text: string): string[][] {
   const input = text.replace(/^\uFEFF/, "");
+  const delimiter = detectDelimiter(input);
   const rows: string[][] = [];
   let row: string[] = [],
     field = "",
@@ -289,12 +398,10 @@ function parseCsv(text: string): string[][] {
       if (c === '"' && next === '"') {
         field += '"';
         i++;
-      } else if (c === '"') {
-        quoted = false;
-      } else field += c;
-    } else if (c === '"') {
-      quoted = true;
-    } else if (c === "," || c === ";") {
+      } else if (c === '"') quoted = false;
+      else field += c;
+    } else if (c === '"') quoted = true;
+    else if (c === delimiter) {
       row.push(field);
       field = "";
     } else if (c === "\n") {
@@ -302,8 +409,7 @@ function parseCsv(text: string): string[][] {
       rows.push(row);
       row = [];
       field = "";
-    } else if (c === "\r") {
-    } else field += c;
+    } else if (c !== "\r") field += c;
   }
   row.push(field);
   if (row.some((v) => v.trim())) rows.push(row);
@@ -496,6 +602,7 @@ async function buildImportPreview(
       id: productsTable.id,
       name: productsTable.name,
       categoryId: productsTable.categoryId,
+      sku: productsTable.sku,
     })
     .from(productsTable)
     .where(eq(productsTable.storeId, storeId));
@@ -509,6 +616,7 @@ async function buildImportPreview(
   let newProducts = 0,
     updateProducts = 0,
     variantsToCreate = 0,
+    multissaborToConfigure = 0,
     addonGroupsToCreate = 0,
     addonOptionsToCreate = 0,
     bordersToCreate = 0;
@@ -518,24 +626,31 @@ async function buildImportPreview(
     const before = errors.length;
     const category = cell(row, map, "categoria"),
       product = cell(row, map, "produto");
+    const tipo = normalizeHeader(cell(row, map, "tipo") || "produto");
+    const sku = cell(row, map, "sku") || null;
+    const isAdvancedChild = ["tamanho", "complemento", "multissabor"].includes(
+      tipo,
+    );
     if (!category)
       errors.push({
         rowNumber,
         field: "categoria",
-        message: `Linha ${rowNumber}: categoria obrigatória.`,
+        message: `Linha ${rowNumber}: categoria obrigatória não informada.`,
       });
     if (!product)
       errors.push({
         rowNumber,
         field: "produto",
-        message: `Linha ${rowNumber}: produto sem nome.`,
+        message: `Linha ${rowNumber}: produto obrigatório não informado.`,
       });
     const price = parseNumberValue(
-      cell(row, map, "preco"),
-      "preco_base",
+      cell(row, map, "preco") ||
+        (isAdvancedChild ? cell(row, map, "preco_tamanho") || "0" : ""),
+      "preco",
       rowNumber,
       errors,
-      true,
+      !isAdvancedChild,
+      product,
     );
     const costPrice = parseNumberValue(
       cell(row, map, "preco_custo"),
@@ -566,6 +681,25 @@ async function buildImportPreview(
       rowNumber,
       errors,
     );
+    if (["tamanho", "multissabor"].includes(tipo)) {
+      const sizeName = cell(row, map, "tamanho");
+      const sizePrice = parseNumberValue(
+        cell(row, map, "preco_tamanho"),
+        "preco_tamanho",
+        rowNumber,
+        errors,
+        true,
+        product,
+      );
+      if (!sizeName)
+        errors.push({
+          rowNumber,
+          field: "tamanho",
+          message: `Linha ${rowNumber}: tamanho obrigatório não informado.`,
+        });
+      if (sizeName && sizePrice !== null)
+        variants.push({ name: sizeName, price: sizePrice });
+    }
     const bordas = parseAddons(
       cell(row, map, "bordas"),
       rowNumber,
@@ -578,6 +712,43 @@ async function buildImportPreview(
       rowNumber,
       errors,
     );
+    if (tipo === "complemento") {
+      const groupName = cell(row, map, "grupo_complemento");
+      const optionName = cell(row, map, "complemento");
+      const optionPrice = parseNumberValue(
+        cell(row, map, "preco_complemento") || "0",
+        "preco_complemento",
+        rowNumber,
+        errors,
+        true,
+        product,
+      );
+      if (!groupName)
+        errors.push({
+          rowNumber,
+          field: "grupo_complemento",
+          message: `Linha ${rowNumber}: grupo de complemento obrigatório não informado.`,
+        });
+      if (!optionName)
+        errors.push({
+          rowNumber,
+          field: "complemento",
+          message: `Linha ${rowNumber}: complemento obrigatório não informado.`,
+        });
+      if (groupName && optionName && optionPrice !== null)
+        complementos.push({
+          name: groupName,
+          required: parseBooleanValue(cell(row, map, "obrigatorio"), false),
+          minSelected: 0,
+          maxSelected: parseIntegerValue(
+            cell(row, map, "max_escolhas"),
+            "max_escolhas",
+            rowNumber,
+            errors,
+          ),
+          options: [{ name: optionName, price: optionPrice }],
+        });
+    }
     const addons = [...bordas, ...complementos];
     if (cell(row, map, "observacoes_internas"))
       warnings.push({
@@ -585,23 +756,29 @@ async function buildImportPreview(
         field: "observacoes_internas",
         message: "observacoes_internas é informativa e não será importada.",
       });
-    const key = `${normalizeHeader(category)}::${normalizeHeader(product)}`;
-    if (seen.has(key))
+    const key = sku
+      ? `sku::${normalizeHeader(sku)}`
+      : `${normalizeHeader(category)}::${normalizeHeader(product)}`;
+    if (!isAdvancedChild && seen.has(key))
       errors.push({
         rowNumber,
         field: "produto",
         message: "Produto duplicado na mesma categoria dentro da planilha.",
       });
-    seen.add(key);
+    if (!isAdvancedChild) seen.add(key);
     const cat = categoryByName.get(normalizeHeader(category));
     if (category && !cat) newCat.add(normalizeHeader(category));
-    const existing = cat
+    const existing = sku
       ? products.find(
-          (p) =>
-            p.categoryId === cat.id &&
-            normalizeHeader(p.name) === normalizeHeader(product),
+          (p) => p.sku && normalizeHeader(p.sku) === normalizeHeader(sku),
         )
-      : undefined;
+      : cat
+        ? products.find(
+            (p) =>
+              p.categoryId === cat.id &&
+              normalizeHeader(p.name) === normalizeHeader(product),
+          )
+        : undefined;
     let action: "create_product" | "update_product" | "skip_duplicate" =
       "create_product";
     if (existing) {
@@ -613,6 +790,12 @@ async function buildImportPreview(
         });
       else if (mode === "skip") action = "skip_duplicate";
       else action = "update_product";
+    } else if (mode === "update_only") {
+      errors.push({
+        rowNumber,
+        field: "produto",
+        message: "Produto não encontrado para atualização nesta loja.",
+      });
     }
     if (errors.length === before) {
       validRows.push({
@@ -624,7 +807,7 @@ async function buildImportPreview(
           cell(row, map, "serve_quantas_pessoas"),
         ),
         price: price!,
-        sku: cell(row, map, "sku") || null,
+        sku,
         barcode: cell(row, map, "codigo_barras") || null,
         costPrice,
         unit: cell(row, map, "unidade") || "unidade",
@@ -645,10 +828,36 @@ async function buildImportPreview(
         imageAlt: cell(row, map, "imagem_alt") || null,
         variants,
         addons,
+        pizzaConfigs:
+          tipo === "multissabor" && cell(row, map, "tamanho")
+            ? [
+                {
+                  size: cell(row, map, "tamanho"),
+                  price:
+                    parseNumberValue(
+                      cell(row, map, "preco_tamanho"),
+                      "preco_tamanho",
+                      rowNumber,
+                      errors,
+                    ) ??
+                    price ??
+                    0,
+                  classification: cell(row, map, "classificacao") || "Padrão",
+                  maxFlavors:
+                    parseIntegerValue(
+                      cell(row, map, "max_sabores"),
+                      "max_sabores",
+                      rowNumber,
+                      errors,
+                    ) ?? 2,
+                },
+              ]
+            : [],
       });
       if (action === "create_product") newProducts++;
       if (action === "update_product") updateProducts++;
       variantsToCreate += variants.length;
+      if (tipo === "multissabor") multissaborToConfigure++;
       for (const g of bordas) {
         bordersToCreate += g.options.length;
         addonOptionsToCreate += g.options.length;
@@ -681,6 +890,7 @@ async function buildImportPreview(
       bordersToCreate,
       addonGroupsToCreate,
       addonOptionsToCreate,
+      multissaborToConfigure,
     },
     rows,
     errors,
@@ -698,13 +908,28 @@ router.get("/menu/import-template", async (_req, res): Promise<void> => {
   res.send(toCsv([IMPORT_TEMPLATE_HEADERS, ...IMPORT_TEMPLATE_ROWS]));
 });
 
+router.get(
+  "/menu/import-template/advanced",
+  async (_req, res): Promise<void> => {
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="modelo-avancado-importacao-cardapio.csv"',
+    );
+    res.send(toCsv([ADVANCED_TEMPLATE_HEADERS, ...ADVANCED_TEMPLATE_ROWS]));
+  },
+);
+
 router.post("/menu/import-preview", async (req, res): Promise<void> => {
   const { storeId } = await getCurrentActor(req);
   const body = req.body as { csv?: unknown; mode?: ImportMode };
   const csv = typeof body.csv === "string" ? body.csv : "";
-  const mode: ImportMode = ["upsert", "skip", "create_only"].includes(
-    String(body.mode),
-  )
+  const mode: ImportMode = [
+    "upsert",
+    "skip",
+    "create_only",
+    "update_only",
+  ].includes(String(body.mode))
     ? body.mode!
     : "upsert";
   const preview = await buildImportPreview(csv, storeId, mode);
@@ -715,9 +940,12 @@ router.post("/menu/import", async (req, res): Promise<void> => {
   const { storeId } = await getCurrentActor(req);
   const body = req.body as { csv?: unknown; mode?: ImportMode };
   const csv = typeof body.csv === "string" ? body.csv : "";
-  const mode: ImportMode = ["upsert", "skip", "create_only"].includes(
-    String(body.mode),
-  )
+  const mode: ImportMode = [
+    "upsert",
+    "skip",
+    "create_only",
+    "update_only",
+  ].includes(String(body.mode))
     ? body.mode!
     : "upsert";
   const preview = await buildImportPreview(csv, storeId, mode);
@@ -737,6 +965,7 @@ router.post("/menu/import", async (req, res): Promise<void> => {
     createdAddonGroups: 0,
     createdAddonOptions: 0,
     linkedAddonGroups: 0,
+    configuredMultisabor: 0,
   };
   await db.transaction(async (tx) => {
     const categories = await tx
@@ -760,11 +989,16 @@ router.post("/menu/import", async (req, res): Promise<void> => {
         .select()
         .from(productsTable)
         .where(
-          and(
-            eq(productsTable.storeId, storeId),
-            eq(productsTable.categoryId, category.id),
-            ilike(productsTable.name, row.product),
-          ),
+          row.sku
+            ? and(
+                eq(productsTable.storeId, storeId),
+                ilike(productsTable.sku, row.sku),
+              )
+            : and(
+                eq(productsTable.storeId, storeId),
+                eq(productsTable.categoryId, category.id),
+                ilike(productsTable.name, row.product),
+              ),
         )
         .limit(1);
       if (existingProduct && mode === "skip") {
@@ -846,6 +1080,110 @@ router.post("/menu/import", async (req, res): Promise<void> => {
           });
           summary.createdVariants++;
         }
+      }
+
+      for (const [configIndex, config] of row.pizzaConfigs.entries()) {
+        let [size] = await tx
+          .select()
+          .from(pizzaSizesTable)
+          .where(
+            and(
+              eq(pizzaSizesTable.storeId, storeId),
+              ilike(pizzaSizesTable.name, config.size),
+            ),
+          )
+          .limit(1);
+        if (!size) {
+          [size] = await tx
+            .insert(pizzaSizesTable)
+            .values({
+              storeId,
+              name: config.size,
+              maxFlavors: config.maxFlavors,
+              sortOrder: configIndex,
+            })
+            .returning();
+        } else {
+          await tx
+            .update(pizzaSizesTable)
+            .set({
+              maxFlavors: config.maxFlavors,
+              active: true,
+              updatedAt: new Date(),
+            })
+            .where(eq(pizzaSizesTable.id, size.id));
+        }
+
+        let [tier] = await tx
+          .select()
+          .from(pizzaPriceTiersTable)
+          .where(
+            and(
+              eq(pizzaPriceTiersTable.storeId, storeId),
+              ilike(pizzaPriceTiersTable.name, config.classification),
+            ),
+          )
+          .limit(1);
+        if (!tier) {
+          [tier] = await tx
+            .insert(pizzaPriceTiersTable)
+            .values({
+              storeId,
+              name: config.classification,
+              sortOrder: configIndex,
+            })
+            .returning();
+        }
+
+        const [existingPrice] = await tx
+          .select()
+          .from(pizzaSizeTierPricesTable)
+          .where(
+            and(
+              eq(pizzaSizeTierPricesTable.storeId, storeId),
+              eq(pizzaSizeTierPricesTable.sizeId, size.id),
+              eq(pizzaSizeTierPricesTable.tierId, tier.id),
+            ),
+          )
+          .limit(1);
+        if (existingPrice) {
+          await tx
+            .update(pizzaSizeTierPricesTable)
+            .set({ price: String(config.price), updatedAt: new Date() })
+            .where(eq(pizzaSizeTierPricesTable.id, existingPrice.id));
+        } else {
+          await tx.insert(pizzaSizeTierPricesTable).values({
+            storeId,
+            sizeId: size.id,
+            tierId: tier.id,
+            price: String(config.price),
+          });
+        }
+
+        const [existingFlavor] = await tx
+          .select()
+          .from(pizzaFlavorsTable)
+          .where(
+            and(
+              eq(pizzaFlavorsTable.storeId, storeId),
+              eq(pizzaFlavorsTable.productId, product.id),
+            ),
+          )
+          .limit(1);
+        if (!existingFlavor) {
+          await tx.insert(pizzaFlavorsTable).values({
+            storeId,
+            productId: product.id,
+            tierId: tier.id,
+            sortOrder: configIndex,
+          });
+        } else {
+          await tx
+            .update(pizzaFlavorsTable)
+            .set({ tierId: tier.id, active: true, updatedAt: new Date() })
+            .where(eq(pizzaFlavorsTable.id, existingFlavor.id));
+        }
+        summary.configuredMultisabor++;
       }
       for (const [groupIndex, group] of row.addons.entries()) {
         let [addonGroup] = await tx
@@ -2302,7 +2640,6 @@ router.put(
   },
 );
 
-
 function pizzaNumber(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -2310,30 +2647,335 @@ function pizzaNumber(value: unknown) {
 
 router.get("/menu/pizza/sizes", async (req, res) => {
   const actor = await getCurrentActor(req);
-  res.json(await db.select().from(pizzaSizesTable).where(eq(pizzaSizesTable.storeId, actor.storeId)).orderBy(asc(pizzaSizesTable.sortOrder), asc(pizzaSizesTable.name)));
+  res.json(
+    await db
+      .select()
+      .from(pizzaSizesTable)
+      .where(eq(pizzaSizesTable.storeId, actor.storeId))
+      .orderBy(asc(pizzaSizesTable.sortOrder), asc(pizzaSizesTable.name)),
+  );
 });
 router.post("/menu/pizza/sizes", async (req, res) => {
   const actor = await getCurrentActor(req);
   const maxFlavors = Number(req.body.maxFlavors ?? 1);
-  if (!req.body.name || !Number.isInteger(maxFlavors) || maxFlavors < 1) { res.status(400).json({ error: "Informe nome e máximo de sabores válido." }); return; }
-  const [row] = await db.insert(pizzaSizesTable).values({ storeId: actor.storeId, name: String(req.body.name), maxFlavors, active: req.body.active ?? true, sortOrder: Number(req.body.sortOrder ?? 0) }).returning();
+  if (!req.body.name || !Number.isInteger(maxFlavors) || maxFlavors < 1) {
+    res.status(400).json({ error: "Informe nome e máximo de sabores válido." });
+    return;
+  }
+  const [row] = await db
+    .insert(pizzaSizesTable)
+    .values({
+      storeId: actor.storeId,
+      name: String(req.body.name),
+      maxFlavors,
+      active: req.body.active ?? true,
+      sortOrder: Number(req.body.sortOrder ?? 0),
+    })
+    .returning();
   res.status(201).json(row);
 });
 router.patch("/menu/pizza/sizes/:id", async (req, res) => {
-  const actor = await getCurrentActor(req); const id = Number(req.params.id);
-  const patch: any = { updatedAt: new Date() }; if (req.body.name !== undefined) patch.name = String(req.body.name); if (req.body.maxFlavors !== undefined) { const n=Number(req.body.maxFlavors); if(!Number.isInteger(n)||n<1){res.status(400).json({error:"Máximo de sabores inválido."});return;} patch.maxFlavors=n; } if (req.body.active !== undefined) patch.active = Boolean(req.body.active); if (req.body.sortOrder !== undefined) patch.sortOrder = Number(req.body.sortOrder);
-  const [row] = await db.update(pizzaSizesTable).set(patch).where(and(eq(pizzaSizesTable.id, id), eq(pizzaSizesTable.storeId, actor.storeId))).returning();
-  if (!row) { res.status(404).json({ error: "Tamanho não encontrado." }); return; } res.json(row);
+  const actor = await getCurrentActor(req);
+  const id = Number(req.params.id);
+  const patch: any = { updatedAt: new Date() };
+  if (req.body.name !== undefined) patch.name = String(req.body.name);
+  if (req.body.maxFlavors !== undefined) {
+    const n = Number(req.body.maxFlavors);
+    if (!Number.isInteger(n) || n < 1) {
+      res.status(400).json({ error: "Máximo de sabores inválido." });
+      return;
+    }
+    patch.maxFlavors = n;
+  }
+  if (req.body.active !== undefined) patch.active = Boolean(req.body.active);
+  if (req.body.sortOrder !== undefined)
+    patch.sortOrder = Number(req.body.sortOrder);
+  const [row] = await db
+    .update(pizzaSizesTable)
+    .set(patch)
+    .where(
+      and(
+        eq(pizzaSizesTable.id, id),
+        eq(pizzaSizesTable.storeId, actor.storeId),
+      ),
+    )
+    .returning();
+  if (!row) {
+    res.status(404).json({ error: "Tamanho não encontrado." });
+    return;
+  }
+  res.json(row);
 });
-router.get("/menu/pizza/tiers", async (req, res) => { const actor=await getCurrentActor(req); res.json(await db.select().from(pizzaPriceTiersTable).where(eq(pizzaPriceTiersTable.storeId, actor.storeId)).orderBy(asc(pizzaPriceTiersTable.sortOrder), asc(pizzaPriceTiersTable.name))); });
-router.post("/menu/pizza/tiers", async (req, res) => { const actor=await getCurrentActor(req); if(!req.body.name){res.status(400).json({error:"Informe o nome da classificação."});return;} const [row]=await db.insert(pizzaPriceTiersTable).values({storeId:actor.storeId,name:String(req.body.name),active:req.body.active??true,sortOrder:Number(req.body.sortOrder??0)}).returning(); res.status(201).json(row); });
-router.patch("/menu/pizza/tiers/:id", async (req,res)=>{ const actor=await getCurrentActor(req); const id=Number(req.params.id); const patch:any={updatedAt:new Date()}; if(req.body.name!==undefined)patch.name=String(req.body.name); if(req.body.active!==undefined)patch.active=Boolean(req.body.active); if(req.body.sortOrder!==undefined)patch.sortOrder=Number(req.body.sortOrder); const [row]=await db.update(pizzaPriceTiersTable).set(patch).where(and(eq(pizzaPriceTiersTable.id,id),eq(pizzaPriceTiersTable.storeId,actor.storeId))).returning(); if(!row){res.status(404).json({error:"Classificação não encontrada."});return;} res.json(row); });
-router.get("/menu/pizza/prices", async (req,res)=>{ const actor=await getCurrentActor(req); res.json(await db.select().from(pizzaSizeTierPricesTable).where(eq(pizzaSizeTierPricesTable.storeId,actor.storeId))); });
-router.put("/menu/pizza/prices", async (req,res)=>{ const actor=await getCurrentActor(req); const entries=Array.isArray(req.body.prices)?req.body.prices:[]; const saved=[]; for(const entry of entries){ const sizeId=Number(entry.sizeId), tierId=Number(entry.tierId), price=pizzaNumber(entry.price); if(!sizeId||!tierId||price==null||price<0){res.status(400).json({error:"Preço inválido."});return;} const [size]=await db.select({id:pizzaSizesTable.id}).from(pizzaSizesTable).where(and(eq(pizzaSizesTable.id,sizeId),eq(pizzaSizesTable.storeId,actor.storeId))).limit(1); const [tier]=await db.select({id:pizzaPriceTiersTable.id}).from(pizzaPriceTiersTable).where(and(eq(pizzaPriceTiersTable.id,tierId),eq(pizzaPriceTiersTable.storeId,actor.storeId))).limit(1); if(!size||!tier){res.status(400).json({error:"Tamanho ou classificação não pertence à loja."});return;} const [row]=await db.insert(pizzaSizeTierPricesTable).values({storeId:actor.storeId,sizeId,tierId,price:String(price)}).onConflictDoUpdate({target:[pizzaSizeTierPricesTable.storeId,pizzaSizeTierPricesTable.sizeId,pizzaSizeTierPricesTable.tierId],set:{price:String(price),updatedAt:new Date()}}).returning(); saved.push(row); } res.json(saved); });
-router.get("/menu/pizza/flavors", async (req,res)=>{ const actor=await getCurrentActor(req); const rows=await db.select({id:pizzaFlavorsTable.id,storeId:pizzaFlavorsTable.storeId,productId:pizzaFlavorsTable.productId,productName:productsTable.name,tierId:pizzaFlavorsTable.tierId,tierName:pizzaPriceTiersTable.name,active:pizzaFlavorsTable.active,sortOrder:pizzaFlavorsTable.sortOrder}).from(pizzaFlavorsTable).innerJoin(productsTable,eq(pizzaFlavorsTable.productId,productsTable.id)).innerJoin(pizzaPriceTiersTable,eq(pizzaFlavorsTable.tierId,pizzaPriceTiersTable.id)).where(and(eq(pizzaFlavorsTable.storeId,actor.storeId),eq(productsTable.storeId,actor.storeId),eq(pizzaPriceTiersTable.storeId,actor.storeId))).orderBy(asc(pizzaFlavorsTable.sortOrder),asc(productsTable.name)); res.json(rows); });
-async function validatePizzaFlavor(actorStoreId:number, productId:number, tierId:number){ const [product]=await db.select({id:productsTable.id}).from(productsTable).where(and(eq(productsTable.id,productId),eq(productsTable.storeId,actorStoreId))).limit(1); const [tier]=await db.select({id:pizzaPriceTiersTable.id}).from(pizzaPriceTiersTable).where(and(eq(pizzaPriceTiersTable.id,tierId),eq(pizzaPriceTiersTable.storeId,actorStoreId))).limit(1); return Boolean(product&&tier); }
-router.post("/menu/pizza/flavors", async (req,res)=>{ const actor=await getCurrentActor(req); const productId=Number(req.body.productId), tierId=Number(req.body.tierId); if(!(await validatePizzaFlavor(actor.storeId,productId,tierId))){res.status(400).json({error:"Produto ou classificação inválida para esta loja."});return;} const [row]=await db.insert(pizzaFlavorsTable).values({storeId:actor.storeId,productId,tierId,active:req.body.active??true,sortOrder:Number(req.body.sortOrder??0)}).onConflictDoUpdate({target:[pizzaFlavorsTable.storeId,pizzaFlavorsTable.productId],set:{tierId,active:req.body.active??true,sortOrder:Number(req.body.sortOrder??0),updatedAt:new Date()}}).returning(); res.status(201).json(row); });
-router.patch("/menu/pizza/flavors/:id", async (req,res)=>{ const actor=await getCurrentActor(req); const id=Number(req.params.id); const [old]=await db.select().from(pizzaFlavorsTable).where(and(eq(pizzaFlavorsTable.id,id),eq(pizzaFlavorsTable.storeId,actor.storeId))).limit(1); if(!old){res.status(404).json({error:"Sabor não encontrado."});return;} const productId=req.body.productId!==undefined?Number(req.body.productId):old.productId, tierId=req.body.tierId!==undefined?Number(req.body.tierId):old.tierId; if(!(await validatePizzaFlavor(actor.storeId,productId,tierId))){res.status(400).json({error:"Produto ou classificação inválida para esta loja."});return;} const [row]=await db.update(pizzaFlavorsTable).set({productId,tierId,active:req.body.active??old.active,sortOrder:req.body.sortOrder!==undefined?Number(req.body.sortOrder):old.sortOrder,updatedAt:new Date()}).where(and(eq(pizzaFlavorsTable.id,id),eq(pizzaFlavorsTable.storeId,actor.storeId))).returning(); res.json(row); });
-router.delete("/menu/pizza/flavors/:id", async (req,res)=>{ const actor=await getCurrentActor(req); const deleted=await db.delete(pizzaFlavorsTable).where(and(eq(pizzaFlavorsTable.id,Number(req.params.id)),eq(pizzaFlavorsTable.storeId,actor.storeId))).returning({id:pizzaFlavorsTable.id}); if(!deleted.length){res.status(404).json({error:"Sabor não encontrado."});return;} res.status(204).end(); });
+router.get("/menu/pizza/tiers", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  res.json(
+    await db
+      .select()
+      .from(pizzaPriceTiersTable)
+      .where(eq(pizzaPriceTiersTable.storeId, actor.storeId))
+      .orderBy(
+        asc(pizzaPriceTiersTable.sortOrder),
+        asc(pizzaPriceTiersTable.name),
+      ),
+  );
+});
+router.post("/menu/pizza/tiers", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  if (!req.body.name) {
+    res.status(400).json({ error: "Informe o nome da classificação." });
+    return;
+  }
+  const [row] = await db
+    .insert(pizzaPriceTiersTable)
+    .values({
+      storeId: actor.storeId,
+      name: String(req.body.name),
+      active: req.body.active ?? true,
+      sortOrder: Number(req.body.sortOrder ?? 0),
+    })
+    .returning();
+  res.status(201).json(row);
+});
+router.patch("/menu/pizza/tiers/:id", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const id = Number(req.params.id);
+  const patch: any = { updatedAt: new Date() };
+  if (req.body.name !== undefined) patch.name = String(req.body.name);
+  if (req.body.active !== undefined) patch.active = Boolean(req.body.active);
+  if (req.body.sortOrder !== undefined)
+    patch.sortOrder = Number(req.body.sortOrder);
+  const [row] = await db
+    .update(pizzaPriceTiersTable)
+    .set(patch)
+    .where(
+      and(
+        eq(pizzaPriceTiersTable.id, id),
+        eq(pizzaPriceTiersTable.storeId, actor.storeId),
+      ),
+    )
+    .returning();
+  if (!row) {
+    res.status(404).json({ error: "Classificação não encontrada." });
+    return;
+  }
+  res.json(row);
+});
+router.get("/menu/pizza/prices", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  res.json(
+    await db
+      .select()
+      .from(pizzaSizeTierPricesTable)
+      .where(eq(pizzaSizeTierPricesTable.storeId, actor.storeId)),
+  );
+});
+router.put("/menu/pizza/prices", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const entries = Array.isArray(req.body.prices) ? req.body.prices : [];
+  const saved = [];
+  for (const entry of entries) {
+    const sizeId = Number(entry.sizeId),
+      tierId = Number(entry.tierId),
+      price = pizzaNumber(entry.price);
+    if (!sizeId || !tierId || price == null || price < 0) {
+      res.status(400).json({ error: "Preço inválido." });
+      return;
+    }
+    const [size] = await db
+      .select({ id: pizzaSizesTable.id })
+      .from(pizzaSizesTable)
+      .where(
+        and(
+          eq(pizzaSizesTable.id, sizeId),
+          eq(pizzaSizesTable.storeId, actor.storeId),
+        ),
+      )
+      .limit(1);
+    const [tier] = await db
+      .select({ id: pizzaPriceTiersTable.id })
+      .from(pizzaPriceTiersTable)
+      .where(
+        and(
+          eq(pizzaPriceTiersTable.id, tierId),
+          eq(pizzaPriceTiersTable.storeId, actor.storeId),
+        ),
+      )
+      .limit(1);
+    if (!size || !tier) {
+      res
+        .status(400)
+        .json({ error: "Tamanho ou classificação não pertence à loja." });
+      return;
+    }
+    const [row] = await db
+      .insert(pizzaSizeTierPricesTable)
+      .values({ storeId: actor.storeId, sizeId, tierId, price: String(price) })
+      .onConflictDoUpdate({
+        target: [
+          pizzaSizeTierPricesTable.storeId,
+          pizzaSizeTierPricesTable.sizeId,
+          pizzaSizeTierPricesTable.tierId,
+        ],
+        set: { price: String(price), updatedAt: new Date() },
+      })
+      .returning();
+    saved.push(row);
+  }
+  res.json(saved);
+});
+router.get("/menu/pizza/flavors", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const rows = await db
+    .select({
+      id: pizzaFlavorsTable.id,
+      storeId: pizzaFlavorsTable.storeId,
+      productId: pizzaFlavorsTable.productId,
+      productName: productsTable.name,
+      tierId: pizzaFlavorsTable.tierId,
+      tierName: pizzaPriceTiersTable.name,
+      active: pizzaFlavorsTable.active,
+      sortOrder: pizzaFlavorsTable.sortOrder,
+    })
+    .from(pizzaFlavorsTable)
+    .innerJoin(productsTable, eq(pizzaFlavorsTable.productId, productsTable.id))
+    .innerJoin(
+      pizzaPriceTiersTable,
+      eq(pizzaFlavorsTable.tierId, pizzaPriceTiersTable.id),
+    )
+    .where(
+      and(
+        eq(pizzaFlavorsTable.storeId, actor.storeId),
+        eq(productsTable.storeId, actor.storeId),
+        eq(pizzaPriceTiersTable.storeId, actor.storeId),
+      ),
+    )
+    .orderBy(asc(pizzaFlavorsTable.sortOrder), asc(productsTable.name));
+  res.json(rows);
+});
+async function validatePizzaFlavor(
+  actorStoreId: number,
+  productId: number,
+  tierId: number,
+) {
+  const [product] = await db
+    .select({ id: productsTable.id })
+    .from(productsTable)
+    .where(
+      and(
+        eq(productsTable.id, productId),
+        eq(productsTable.storeId, actorStoreId),
+      ),
+    )
+    .limit(1);
+  const [tier] = await db
+    .select({ id: pizzaPriceTiersTable.id })
+    .from(pizzaPriceTiersTable)
+    .where(
+      and(
+        eq(pizzaPriceTiersTable.id, tierId),
+        eq(pizzaPriceTiersTable.storeId, actorStoreId),
+      ),
+    )
+    .limit(1);
+  return Boolean(product && tier);
+}
+router.post("/menu/pizza/flavors", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const productId = Number(req.body.productId),
+    tierId = Number(req.body.tierId);
+  if (!(await validatePizzaFlavor(actor.storeId, productId, tierId))) {
+    res
+      .status(400)
+      .json({ error: "Produto ou classificação inválida para esta loja." });
+    return;
+  }
+  const [row] = await db
+    .insert(pizzaFlavorsTable)
+    .values({
+      storeId: actor.storeId,
+      productId,
+      tierId,
+      active: req.body.active ?? true,
+      sortOrder: Number(req.body.sortOrder ?? 0),
+    })
+    .onConflictDoUpdate({
+      target: [pizzaFlavorsTable.storeId, pizzaFlavorsTable.productId],
+      set: {
+        tierId,
+        active: req.body.active ?? true,
+        sortOrder: Number(req.body.sortOrder ?? 0),
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+  res.status(201).json(row);
+});
+router.patch("/menu/pizza/flavors/:id", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const id = Number(req.params.id);
+  const [old] = await db
+    .select()
+    .from(pizzaFlavorsTable)
+    .where(
+      and(
+        eq(pizzaFlavorsTable.id, id),
+        eq(pizzaFlavorsTable.storeId, actor.storeId),
+      ),
+    )
+    .limit(1);
+  if (!old) {
+    res.status(404).json({ error: "Sabor não encontrado." });
+    return;
+  }
+  const productId =
+      req.body.productId !== undefined
+        ? Number(req.body.productId)
+        : old.productId,
+    tierId =
+      req.body.tierId !== undefined ? Number(req.body.tierId) : old.tierId;
+  if (!(await validatePizzaFlavor(actor.storeId, productId, tierId))) {
+    res
+      .status(400)
+      .json({ error: "Produto ou classificação inválida para esta loja." });
+    return;
+  }
+  const [row] = await db
+    .update(pizzaFlavorsTable)
+    .set({
+      productId,
+      tierId,
+      active: req.body.active ?? old.active,
+      sortOrder:
+        req.body.sortOrder !== undefined
+          ? Number(req.body.sortOrder)
+          : old.sortOrder,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(pizzaFlavorsTable.id, id),
+        eq(pizzaFlavorsTable.storeId, actor.storeId),
+      ),
+    )
+    .returning();
+  res.json(row);
+});
+router.delete("/menu/pizza/flavors/:id", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const deleted = await db
+    .delete(pizzaFlavorsTable)
+    .where(
+      and(
+        eq(pizzaFlavorsTable.id, Number(req.params.id)),
+        eq(pizzaFlavorsTable.storeId, actor.storeId),
+      ),
+    )
+    .returning({ id: pizzaFlavorsTable.id });
+  if (!deleted.length) {
+    res.status(404).json({ error: "Sabor não encontrado." });
+    return;
+  }
+  res.status(204).end();
+});
 
 export default router;
