@@ -1,4 +1,5 @@
-import { pgTable, serial, text, integer, numeric, boolean, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { pgTable, serial, text, integer, numeric, boolean, timestamp, index, uniqueIndex, check, foreignKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { storesTable } from "./tenancy";
@@ -222,6 +223,142 @@ export const pizzaFlavorsTable = pgTable(
   ],
 );
 
+
+export const multiflavorGroupsTable = pgTable(
+  "multiflavor_groups",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().references(() => storesTable.id),
+    categoryId: integer("category_id").references(() => categoriesTable.id),
+    name: text("name").notNull(),
+    description: text("description"),
+    quantityStepLabel: text("quantity_step_label").notNull().default("Quantidade de sabores"),
+    optionsStepLabel: text("options_step_label").notNull().default("Sabores"),
+    pricingMode: text("pricing_mode").notNull().default("highest_classification"),
+    active: boolean("active").notNull().default(true),
+    available: boolean("available").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("multiflavor_groups_store_id_idx").on(table.storeId),
+    index("multiflavor_groups_category_id_idx").on(table.categoryId),
+    uniqueIndex("multiflavor_groups_store_id_id_unique_idx").on(table.storeId, table.id),
+    check("multiflavor_groups_pricing_mode_check", sql`${table.pricingMode} IN ('highest_classification')`),
+  ],
+);
+
+export const multiflavorSizesTable = pgTable(
+  "multiflavor_sizes",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().references(() => storesTable.id),
+    groupId: integer("group_id").notNull(),
+    name: text("name").notNull(),
+    minFlavors: integer("min_flavors").notNull().default(1),
+    maxFlavors: integer("max_flavors").notNull(),
+    active: boolean("active").notNull().default(true),
+    available: boolean("available").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("multiflavor_sizes_store_id_idx").on(table.storeId),
+    index("multiflavor_sizes_group_id_idx").on(table.groupId),
+    uniqueIndex("multiflavor_sizes_store_id_id_unique_idx").on(table.storeId, table.id),
+    foreignKey({ columns: [table.storeId, table.groupId], foreignColumns: [multiflavorGroupsTable.storeId, multiflavorGroupsTable.id], name: "multiflavor_sizes_group_store_fk" }).onDelete("cascade"),
+    check("multiflavor_sizes_min_flavors_check", sql`${table.minFlavors} >= 1`),
+    check("multiflavor_sizes_max_flavors_check", sql`${table.maxFlavors} >= ${table.minFlavors}`),
+  ],
+);
+
+export const multiflavorClassificationsTable = pgTable(
+  "multiflavor_classifications",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().references(() => storesTable.id),
+    groupId: integer("group_id").notNull(),
+    name: text("name").notNull(),
+    rank: integer("rank").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("multiflavor_classifications_store_id_idx").on(table.storeId),
+    index("multiflavor_classifications_group_id_idx").on(table.groupId),
+    uniqueIndex("multiflavor_classifications_store_id_id_unique_idx").on(table.storeId, table.id),
+    foreignKey({ columns: [table.storeId, table.groupId], foreignColumns: [multiflavorGroupsTable.storeId, multiflavorGroupsTable.id], name: "multiflavor_classifications_group_store_fk" }).onDelete("cascade"),
+  ],
+);
+
+export const multiflavorSizeClassificationPricesTable = pgTable(
+  "multiflavor_size_classification_prices",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().references(() => storesTable.id),
+    groupId: integer("group_id").notNull(),
+    sizeId: integer("size_id").notNull(),
+    classificationId: integer("classification_id").notNull(),
+    price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("multiflavor_size_classification_prices_store_id_idx").on(table.storeId),
+    index("multiflavor_size_classification_prices_group_id_idx").on(table.groupId),
+    uniqueIndex("multiflavor_size_classification_prices_unique_idx").on(table.storeId, table.sizeId, table.classificationId),
+    foreignKey({ columns: [table.storeId, table.groupId], foreignColumns: [multiflavorGroupsTable.storeId, multiflavorGroupsTable.id], name: "multiflavor_size_classification_prices_group_store_fk" }).onDelete("cascade"),
+    foreignKey({ columns: [table.storeId, table.sizeId], foreignColumns: [multiflavorSizesTable.storeId, multiflavorSizesTable.id], name: "multiflavor_size_classification_prices_size_store_fk" }).onDelete("cascade"),
+    foreignKey({ columns: [table.storeId, table.classificationId], foreignColumns: [multiflavorClassificationsTable.storeId, multiflavorClassificationsTable.id], name: "multiflavor_size_classification_prices_classification_store_fk" }).onDelete("cascade"),
+    check("multiflavor_size_classification_prices_price_check", sql`${table.price} >= 0`),
+  ],
+);
+
+export const multiflavorFlavorsTable = pgTable(
+  "multiflavor_flavors",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().references(() => storesTable.id),
+    groupId: integer("group_id").notNull(),
+    productId: integer("product_id").notNull().references(() => productsTable.id),
+    classificationId: integer("classification_id").notNull(),
+    active: boolean("active").notNull().default(true),
+    available: boolean("available").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("multiflavor_flavors_store_id_idx").on(table.storeId),
+    index("multiflavor_flavors_group_id_idx").on(table.groupId),
+    index("multiflavor_flavors_product_id_idx").on(table.productId),
+    uniqueIndex("multiflavor_flavors_unique_idx").on(table.storeId, table.groupId, table.productId),
+    foreignKey({ columns: [table.storeId, table.groupId], foreignColumns: [multiflavorGroupsTable.storeId, multiflavorGroupsTable.id], name: "multiflavor_flavors_group_store_fk" }).onDelete("cascade"),
+    foreignKey({ columns: [table.storeId, table.classificationId], foreignColumns: [multiflavorClassificationsTable.storeId, multiflavorClassificationsTable.id], name: "multiflavor_flavors_classification_store_fk" }).onDelete("restrict"),
+  ],
+);
+
+export const multiflavorGroupAddonGroupsTable = pgTable(
+  "multiflavor_group_addon_groups",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().references(() => storesTable.id),
+    groupId: integer("group_id").notNull(),
+    addonGroupId: integer("addon_group_id").notNull().references(() => addonGroupsTable.id),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (table) => [
+    index("multiflavor_group_addon_groups_store_id_idx").on(table.storeId),
+    index("multiflavor_group_addon_groups_group_id_idx").on(table.groupId),
+    uniqueIndex("multiflavor_group_addon_groups_unique_idx").on(table.storeId, table.groupId, table.addonGroupId),
+    foreignKey({ columns: [table.storeId, table.groupId], foreignColumns: [multiflavorGroupsTable.storeId, multiflavorGroupsTable.id], name: "multiflavor_group_addon_groups_group_store_fk" }).onDelete("cascade"),
+  ],
+);
+
 export const insertCategorySchema = createInsertSchema(categoriesTable).omit({ id: true });
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type Category = typeof categoriesTable.$inferSelect;
@@ -259,3 +396,10 @@ export type PizzaSize = typeof pizzaSizesTable.$inferSelect;
 export type PizzaPriceTier = typeof pizzaPriceTiersTable.$inferSelect;
 export type PizzaSizeTierPrice = typeof pizzaSizeTierPricesTable.$inferSelect;
 export type PizzaFlavor = typeof pizzaFlavorsTable.$inferSelect;
+
+export type MultiflavorGroup = typeof multiflavorGroupsTable.$inferSelect;
+export type MultiflavorSize = typeof multiflavorSizesTable.$inferSelect;
+export type MultiflavorClassification = typeof multiflavorClassificationsTable.$inferSelect;
+export type MultiflavorSizeClassificationPrice = typeof multiflavorSizeClassificationPricesTable.$inferSelect;
+export type MultiflavorFlavor = typeof multiflavorFlavorsTable.$inferSelect;
+export type MultiflavorGroupAddonGroup = typeof multiflavorGroupAddonGroupsTable.$inferSelect;
