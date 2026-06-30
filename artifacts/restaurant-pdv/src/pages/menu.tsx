@@ -183,6 +183,7 @@ export default function Menu() {
   const [pizzaTierName, setPizzaTierName] = useState("");
   const [pizzaPriceForm, setPizzaPriceForm] = useState({ sizeId: "", tierId: "", price: "" });
   const [pizzaFlavorForm, setPizzaFlavorForm] = useState({ productId: "", tierId: "" });
+  const [showPizzaExample, setShowPizzaExample] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -750,6 +751,9 @@ export default function Menu() {
             <Button variant="outline" onClick={() => setAddonDialog(true)} data-testid="button-manage-addons">
               <Plus className="w-4 h-4 mr-2" /> Adicionais
             </Button>
+            <Button variant="outline" onClick={() => document.getElementById("pizza-multiflavor-config")?.scrollIntoView({ behavior: "smooth", block: "start" })} data-testid="button-pizza-multiflavor-tab">
+              Pizzas multissabor
+            </Button>
             <Button
               onClick={() => { setEditingId(null); setForm(emptyProduct); setProductDialog(true); }}
               data-testid="button-new-product"
@@ -760,17 +764,21 @@ export default function Menu() {
         </div>
 
 
-        <Card data-testid="pizza-multiflavor-config">
-          <CardContent className="p-4 space-y-4">
-            <div>
-              <h2 className="font-semibold text-lg">Pizzas multissabor</h2>
-              <p className="text-sm text-muted-foreground">Configure Tamanhos, Classificações, Preços e Sabores sem enviar storeId pelo frontend.</p>
+        <Card id="pizza-multiflavor-config" data-testid="pizza-multiflavor-config">
+          <CardContent className="p-5 space-y-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="font-semibold text-xl">Pizzas multissabor</h2>
+                <p className="text-sm text-muted-foreground">Produtos | Categorias | Variações | Adicionais | Pizzas multissabor</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowPizzaExample(!showPizzaExample)}>Ver exemplo de configuração</Button>
             </div>
-            <div className="grid md:grid-cols-4 gap-4">
-              <div className="space-y-2"><Label>Tamanhos</Label><Input placeholder="Grande" value={pizzaSizeForm.name} onChange={(e)=>setPizzaSizeForm({...pizzaSizeForm,name:e.target.value})}/><Input placeholder="Máx. sabores" value={pizzaSizeForm.maxFlavors} onChange={(e)=>setPizzaSizeForm({...pizzaSizeForm,maxFlavors:e.target.value})}/><Button size="sm" onClick={createPizzaSize}>Cadastrar tamanho</Button><div className="text-xs text-muted-foreground">{pizzaSizes.map(s=>`${s.name} (${s.maxFlavors})`).join(", ")}</div></div>
-              <div className="space-y-2"><Label>Classificações</Label><Input placeholder="Nobres" value={pizzaTierName} onChange={(e)=>setPizzaTierName(e.target.value)}/><Button size="sm" onClick={createPizzaTier}>Cadastrar classificação</Button><div className="text-xs text-muted-foreground">{pizzaTiers.map(t=>t.name).join(", ")}</div></div>
-              <div className="space-y-2"><Label>Preços</Label><Select value={pizzaPriceForm.sizeId} onValueChange={(v)=>setPizzaPriceForm({...pizzaPriceForm,sizeId:v})}><SelectTrigger><SelectValue placeholder="Tamanho" /></SelectTrigger><SelectContent>{pizzaSizes.map(s=><SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent></Select><Select value={pizzaPriceForm.tierId} onValueChange={(v)=>setPizzaPriceForm({...pizzaPriceForm,tierId:v})}><SelectTrigger><SelectValue placeholder="Classificação" /></SelectTrigger><SelectContent>{pizzaTiers.map(t=><SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent></Select><Input placeholder="Preço" value={pizzaPriceForm.price} onChange={(e)=>setPizzaPriceForm({...pizzaPriceForm,price:e.target.value})}/><Button size="sm" onClick={savePizzaPrice}>Salvar preço</Button><div className="text-xs text-muted-foreground">{pizzaPrices.length} preço(s)</div></div>
-              <div className="space-y-2"><Label>Sabores</Label><Select value={pizzaFlavorForm.productId} onValueChange={(v)=>setPizzaFlavorForm({...pizzaFlavorForm,productId:v})}><SelectTrigger><SelectValue placeholder="Produto sabor" /></SelectTrigger><SelectContent>{products?.map(p=><SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent></Select><Select value={pizzaFlavorForm.tierId} onValueChange={(v)=>setPizzaFlavorForm({...pizzaFlavorForm,tierId:v})}><SelectTrigger><SelectValue placeholder="Classificação" /></SelectTrigger><SelectContent>{pizzaTiers.map(t=><SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent></Select><Button size="sm" onClick={savePizzaFlavor}>Vincular sabor</Button><div className="text-xs text-muted-foreground">{pizzaFlavors.map(f=>`${f.productName} — ${f.tierName}`).join(", ")}</div></div>
+            {showPizzaExample && <div className="rounded-lg border bg-amber-50 p-3 text-sm text-amber-950" data-testid="pizza-config-example"><p className="font-semibold">Exemplo de regra pela maior classificação</p><p>Grande Tradicional = R$ 54,90</p><p>Grande Nobre = R$ 64,90</p><p className="mt-2">1/2 Calabresa + 1/2 Quatro Queijos</p><p className="font-bold">Preço final: R$ 64,90</p></div>}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <section className="rounded-xl border p-4 space-y-3" data-testid="pizza-section-sizes"><div><h3 className="font-bold">1. Tamanhos</h3><p className="text-sm text-muted-foreground">Defina o nome do tamanho e o máximo de sabores permitido.</p></div><Input placeholder="Grande" value={pizzaSizeForm.name} onChange={(e)=>setPizzaSizeForm({...pizzaSizeForm,name:e.target.value})}/><Input placeholder="Máx. sabores" value={pizzaSizeForm.maxFlavors} onChange={(e)=>setPizzaSizeForm({...pizzaSizeForm,maxFlavors:e.target.value})}/><Button size="sm" onClick={createPizzaSize}>Criar tamanho</Button>{pizzaSizes.length ? <div className="space-y-1 text-sm">{pizzaSizes.map(s=><div key={s.id} className="rounded border px-2 py-1">{s.name} — até {s.maxFlavors} sabor(es)</div>)}</div> : <p className="text-sm text-muted-foreground">Cadastre pelo menos um tamanho antes de montar pizza.</p>}</section>
+              <section className="rounded-xl border p-4 space-y-3" data-testid="pizza-section-tiers"><div><h3 className="font-bold">2. Classificações</h3><p className="text-sm text-muted-foreground">Agrupe sabores por faixa de preço, como Tradicional e Nobre.</p></div><Input placeholder="Nobre" value={pizzaTierName} onChange={(e)=>setPizzaTierName(e.target.value)}/><Button size="sm" onClick={createPizzaTier}>Criar classificação</Button>{pizzaTiers.length ? <div className="flex flex-wrap gap-2">{pizzaTiers.map(t=><Badge key={t.id} variant="secondary">{t.name}</Badge>)}</div> : <p className="text-sm text-muted-foreground">Cadastre pelo menos uma classificação para precificar os sabores.</p>}</section>
+              <section className="rounded-xl border p-4 space-y-3" data-testid="pizza-section-prices"><div><h3 className="font-bold">3. Preços por tamanho</h3><p className="text-sm text-muted-foreground">Informe o preço de cada classificação em cada tamanho.</p></div><Select value={pizzaPriceForm.sizeId} onValueChange={(v)=>setPizzaPriceForm({...pizzaPriceForm,sizeId:v})}><SelectTrigger><SelectValue placeholder="Tamanho" /></SelectTrigger><SelectContent>{pizzaSizes.map(s=><SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent></Select><Select value={pizzaPriceForm.tierId} onValueChange={(v)=>setPizzaPriceForm({...pizzaPriceForm,tierId:v})}><SelectTrigger><SelectValue placeholder="Classificação" /></SelectTrigger><SelectContent>{pizzaTiers.map(t=><SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent></Select><Input placeholder="Preço" value={pizzaPriceForm.price} onChange={(e)=>setPizzaPriceForm({...pizzaPriceForm,price:e.target.value})}/><Button size="sm" onClick={savePizzaPrice}>Criar preço</Button>{pizzaPrices.length ? <div className="space-y-1 text-sm">{pizzaPrices.map(p=><div key={p.id} className="rounded border px-2 py-1">{pizzaSizes.find(s=>s.id===p.sizeId)?.name} / {pizzaTiers.find(t=>t.id===p.tierId)?.name}: R$ {Number(p.price).toFixed(2)}</div>)}</div> : <p className="text-sm text-muted-foreground">Cadastre preços para evitar bloqueio ao montar pizza.</p>}</section>
+              <section className="rounded-xl border p-4 space-y-3" data-testid="pizza-section-flavors"><div><h3 className="font-bold">4. Sabores vinculados</h3><p className="text-sm text-muted-foreground">Vincule produtos do cardápio como sabores e escolha a classificação.</p></div><Select value={pizzaFlavorForm.productId} onValueChange={(v)=>setPizzaFlavorForm({...pizzaFlavorForm,productId:v})}><SelectTrigger><SelectValue placeholder="Produto sabor" /></SelectTrigger><SelectContent>{products?.map(p=><SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent></Select><Select value={pizzaFlavorForm.tierId} onValueChange={(v)=>setPizzaFlavorForm({...pizzaFlavorForm,tierId:v})}><SelectTrigger><SelectValue placeholder="Classificação" /></SelectTrigger><SelectContent>{pizzaTiers.map(t=><SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent></Select><Button size="sm" onClick={savePizzaFlavor}>Criar vínculo de sabor</Button>{pizzaFlavors.length ? <div className="space-y-1 text-sm">{pizzaFlavors.map(f=><div key={f.id} className="rounded border px-2 py-1">{f.productName} — {f.tierName}</div>)}</div> : <p className="text-sm text-muted-foreground">Vincule pelo menos um sabor antes de montar pizza.</p>}</section>
             </div>
           </CardContent>
         </Card>
