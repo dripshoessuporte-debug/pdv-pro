@@ -7,15 +7,18 @@ const menuSource = readFileSync(fileURLToPath(new URL("./menu.tsx", import.meta.
 const orderSource = readFileSync(fileURLToPath(new URL("./order-detail.tsx", import.meta.url)), "utf8");
 const kitchenSource = readFileSync(fileURLToPath(new URL("./kitchen.tsx", import.meta.url)), "utf8");
 
-test("aba Pizzas multissabor aparece no menu superior do Cardápio", () => {
-  assert.match(menuSource, /Produtos \| Categorias \| Variações \| Adicionais \| Pizzas multissabor/);
+test("aba Multisabor aparece no menu superior do Cardápio", () => {
+  assert.match(menuSource, /Produtos \| Categorias \| Variações \| Adicionais \| Multisabor/);
   assert.match(menuSource, /button-pizza-multiflavor-tab/);
+  assert.match(menuSource, /const \[showPizzaMultiflavorConfig, setShowPizzaMultiflavorConfig\] = useState\(false\)/);
+  assert.match(menuSource, /\{showPizzaMultiflavorConfig && <Card id="pizza-multiflavor-config"/);
+  assert.match(menuSource, /\{!showPizzaMultiflavorConfig && \(/);
 });
 
 test("tela possui seções Tamanhos, Classificações, Preços e Sabores com estados vazios", () => {
   for (const expected of ["1. Tamanhos", "2. Classificações", "3. Preços por tamanho", "4. Sabores vinculados"]) assert.ok(menuSource.includes(expected));
-  assert.match(menuSource, /Cadastre pelo menos um tamanho antes de montar pizza/);
-  assert.match(menuSource, /Vincule pelo menos um sabor antes de montar pizza/);
+  assert.match(menuSource, /Cadastre pelo menos um tamanho antes de montar multisabor/);
+  assert.match(menuSource, /Vincule pelo menos um sabor antes de montar multisabor/);
 });
 
 test("botão de exemplo rápido mostra preço final pela maior classificação", () => {
