@@ -184,8 +184,18 @@ export default function Menu() {
   const [pizzaPriceForm, setPizzaPriceForm] = useState({ sizeId: "", tierId: "", price: "" });
   const [pizzaFlavorForm, setPizzaFlavorForm] = useState({ productId: "", tierId: "" });
   const [showPizzaExample, setShowPizzaExample] = useState(false);
+  const [showPizzaMultiflavorConfig, setShowPizzaMultiflavorConfig] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  const hidePizzaMultiflavorConfig = () => setShowPizzaMultiflavorConfig(false);
+
+  const openPizzaMultiflavorConfig = () => {
+    setShowPizzaMultiflavorConfig(true);
+    window.requestAnimationFrame(() => {
+      document.getElementById("pizza-multiflavor-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
 
   const loadPizzaConfig = async () => {
     const [sizesRes, tiersRes, pricesRes, flavorsRes] = await Promise.all([
@@ -739,23 +749,23 @@ export default function Menu() {
               {showInactive ? <EyeOff className="w-4 h-4 mr-1.5" /> : <Eye className="w-4 h-4 mr-1.5" />}
               {showInactive ? "Ocultar inativos" : "Ver inativos"}
             </Button>
-            <Button variant="outline" onClick={() => { setEditingCategoryId(null); setCategoryForm({ name: "", description: "" }); setCategoryDialog(true); }} data-testid="button-new-category">
+            <Button variant="outline" onClick={() => { hidePizzaMultiflavorConfig(); setEditingCategoryId(null); setCategoryForm({ name: "", description: "" }); setCategoryDialog(true); }} data-testid="button-new-category">
               <Tag className="w-4 h-4 mr-2" /> Categorias
             </Button>
-            <Button variant="outline" onClick={() => setImportDialog(true)} data-testid="button-import-menu">
+            <Button variant="outline" onClick={() => { hidePizzaMultiflavorConfig(); setImportDialog(true); }} data-testid="button-import-menu">
               <Upload className="w-4 h-4 mr-2" /> Importar planilha
             </Button>
-            <Button variant="outline" onClick={() => setVariantTemplatesDialog(true)}>
+            <Button variant="outline" onClick={() => { hidePizzaMultiflavorConfig(); setVariantTemplatesDialog(true); }}>
               Variações gerais
             </Button>
-            <Button variant="outline" onClick={() => setAddonDialog(true)} data-testid="button-manage-addons">
+            <Button variant="outline" onClick={() => { hidePizzaMultiflavorConfig(); setAddonDialog(true); }} data-testid="button-manage-addons">
               <Plus className="w-4 h-4 mr-2" /> Adicionais
             </Button>
-            <Button variant="outline" onClick={() => document.getElementById("pizza-multiflavor-config")?.scrollIntoView({ behavior: "smooth", block: "start" })} data-testid="button-pizza-multiflavor-tab">
+            <Button variant="outline" onClick={openPizzaMultiflavorConfig} data-testid="button-pizza-multiflavor-tab">
               Pizzas multissabor
             </Button>
             <Button
-              onClick={() => { setEditingId(null); setForm(emptyProduct); setProductDialog(true); }}
+              onClick={() => { hidePizzaMultiflavorConfig(); setEditingId(null); setForm(emptyProduct); setProductDialog(true); }}
               data-testid="button-new-product"
             >
               <Plus className="w-4 h-4 mr-2" /> Produto
@@ -764,7 +774,7 @@ export default function Menu() {
         </div>
 
 
-        <Card id="pizza-multiflavor-config" data-testid="pizza-multiflavor-config">
+        {showPizzaMultiflavorConfig && <Card id="pizza-multiflavor-config" data-testid="pizza-multiflavor-config">
           <CardContent className="p-5 space-y-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -781,7 +791,7 @@ export default function Menu() {
               <section className="rounded-xl border p-4 space-y-3" data-testid="pizza-section-flavors"><div><h3 className="font-bold">4. Sabores vinculados</h3><p className="text-sm text-muted-foreground">Vincule produtos do cardápio como sabores e escolha a classificação.</p></div><Select value={pizzaFlavorForm.productId} onValueChange={(v)=>setPizzaFlavorForm({...pizzaFlavorForm,productId:v})}><SelectTrigger><SelectValue placeholder="Produto sabor" /></SelectTrigger><SelectContent>{products?.map(p=><SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent></Select><Select value={pizzaFlavorForm.tierId} onValueChange={(v)=>setPizzaFlavorForm({...pizzaFlavorForm,tierId:v})}><SelectTrigger><SelectValue placeholder="Classificação" /></SelectTrigger><SelectContent>{pizzaTiers.map(t=><SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent></Select><Button size="sm" onClick={savePizzaFlavor}>Criar vínculo de sabor</Button>{pizzaFlavors.length ? <div className="space-y-1 text-sm">{pizzaFlavors.map(f=><div key={f.id} className="rounded border px-2 py-1">{f.productName} — {f.tierName}</div>)}</div> : <p className="text-sm text-muted-foreground">Vincule pelo menos um sabor antes de montar pizza.</p>}</section>
             </div>
           </CardContent>
-        </Card>
+        </Card>}
 
         <div className="flex gap-3 flex-wrap items-center">
           <div className="relative flex-1 min-w-48">
