@@ -86,6 +86,8 @@ type KitchenTicketItemAddon = {
 type KitchenTicketItem = {
   id: number;
   productName: string | null;
+  displayName?: string | null;
+  flavors?: Array<{ productName: string; fractionNumerator: number; fractionDenominator: number }>;
   quantity: number;
   totalPrice: number;
   notes?: string | null;
@@ -532,12 +534,21 @@ export default function Kitchen() {
                             <div className="min-w-0 flex-1">
                               <div className="flex items-start justify-between gap-2">
                                 <p className="font-bold text-foreground text-base leading-snug">
-                                  {item.productName ?? "Item sem nome"}
+                                  {item.displayName ?? item.productName ?? "Item sem nome"}
                                 </p>
                                 <span className="shrink-0 text-xs font-semibold text-muted-foreground">
                                   R$ {item.totalPrice.toFixed(2)}
                                 </span>
                               </div>
+                              {Array.isArray(item.flavors) && item.flavors.length > 0 && (
+                                <div className="text-sm text-muted-foreground space-y-1">
+                                  {item.flavors.map((flavor, flavorIndex) => (
+                                    <div key={`${item.id}-flavor-${flavorIndex}`}>
+                                      {flavor.fractionNumerator}/{flavor.fractionDenominator} {flavor.productName}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                               {item.variantName && (
                                 <p className="mt-1 text-sm font-semibold text-slate-700">
                                   Variação: {item.variantName}

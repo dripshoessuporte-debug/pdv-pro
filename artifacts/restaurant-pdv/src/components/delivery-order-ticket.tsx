@@ -14,6 +14,8 @@ export type TicketPaperWidth = "80mm" | "58mm";
 export interface DeliveryTicketOrderItem {
   productId: number | null;
   productName: string;
+  displayName?: string | null;
+  flavors?: Array<{ productName: string; fractionNumerator: number; fractionDenominator: number }>;
   quantity: number;
   unitPrice: number;
 }
@@ -270,7 +272,7 @@ export function DeliveryOrderTicket({
                 <div className="flex gap-2">
                   <span className="shrink-0 font-black">{item.quantity}×</span>
                   <span className="min-w-0 flex-1 break-words font-bold">
-                    {item.productName}
+                    {item.displayName ?? item.productName}
                   </span>
                 </div>
                 <div className="flex justify-between pl-5 text-[11px] text-slate-600">
@@ -365,7 +367,7 @@ function renderTicketHtml({ order, route, storeName }: TicketProps): string {
             : order.items
                 .map(
                   (item) =>
-                    `<div class="item"><div><b>${escapeHtml(item.quantity)}×</b> ${escapeHtml(item.productName)}</div><div class="item-total"><span>${escapeHtml(formatMoney(item.unitPrice))} un.</span><strong>${escapeHtml(formatMoney(item.quantity * item.unitPrice))}</strong></div></div>`,
+                    `<div class="item"><div><b>${escapeHtml(item.quantity)}×</b> ${escapeHtml(item.displayName ?? item.productName)}</div><div class="item-total"><span>${escapeHtml(formatMoney(item.unitPrice))} un.</span><strong>${escapeHtml(formatMoney(item.quantity * item.unitPrice))}</strong></div></div>`,
                 )
                 .join("")
         }

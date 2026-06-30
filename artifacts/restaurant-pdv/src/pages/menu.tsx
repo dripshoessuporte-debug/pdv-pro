@@ -115,6 +115,10 @@ type VariantTemplate = { id: number; name: string; description: string | null; a
 type VariantTemplateOption = { id: number; templateId: number; name: string; price: number; available: boolean; sortOrder: number };
 type AddonOption = { id: number; groupId: number; name: string; price: number; available: boolean; sortOrder: number };
 type AddonGroup = { id: number; name: string; description?: string | null; required: boolean; minSelected: number; maxSelected?: number | null; active: boolean; options: AddonOption[] };
+type PizzaSize = { id: number; name: string; maxFlavors: number; active: boolean };
+type PizzaTier = { id: number; name: string; active: boolean };
+type PizzaPrice = { id: number; sizeId: number; tierId: number; price: string };
+type PizzaFlavor = { id: number; productId: number; productName: string; tierId: number; tierName: string; active: boolean };
 
 type ApiErrorLike = {
   data?: { error?: unknown; message?: unknown } | null;
@@ -171,8 +175,31 @@ export default function Menu() {
   const [editingAddonGroupId, setEditingAddonGroupId] = useState<number>(0);
   const [addonOptionForm, setAddonOptionForm] = useState({ groupId: 0, name: "", price: "", available: true });
   const [editingAddonOptionId, setEditingAddonOptionId] = useState<number>(0);
+  const [pizzaSizes, setPizzaSizes] = useState<PizzaSize[]>([]);
+  const [pizzaTiers, setPizzaTiers] = useState<PizzaTier[]>([]);
+  const [pizzaPrices, setPizzaPrices] = useState<PizzaPrice[]>([]);
+  const [pizzaFlavors, setPizzaFlavors] = useState<PizzaFlavor[]>([]);
+  const [pizzaSizeForm, setPizzaSizeForm] = useState({ name: "", maxFlavors: "2" });
+  const [pizzaTierName, setPizzaTierName] = useState("");
+  const [pizzaPriceForm, setPizzaPriceForm] = useState({ sizeId: "", tierId: "", price: "" });
+  const [pizzaFlavorForm, setPizzaFlavorForm] = useState({ productId: "", tierId: "" });
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  const loadPizzaConfig = async () => {
+    const [sizesRes, tiersRes, pricesRes, flavorsRes] = await Promise.all([
+      fetch("/api/menu/pizza/sizes"), fetch("/api/menu/pizza/tiers"), fetch("/api/menu/pizza/prices"), fetch("/api/menu/pizza/flavors"),
+    ]);
+    if (sizesRes.ok) setPizzaSizes(await sizesRes.json());
+    if (tiersRes.ok) setPizzaTiers(await tiersRes.json());
+    if (pricesRes.ok) setPizzaPrices(await pricesRes.json());
+    if (flavorsRes.ok) setPizzaFlavors(await flavorsRes.json());
+  };
+  useEffect(() => { void loadPizzaConfig(); }, []);
+  const createPizzaSize = async () => { const res = await fetch("/api/menu/pizza/sizes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: pizzaSizeForm.name, maxFlavors: Number(pizzaSizeForm.maxFlavors) }) }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Erro ao criar tamanho."), variant: "destructive" }); return; } setPizzaSizeForm({ name: "", maxFlavors: "2" }); await loadPizzaConfig(); };
+  const createPizzaTier = async () => { const res = await fetch("/api/menu/pizza/tiers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: pizzaTierName }) }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Erro ao criar classificação."), variant: "destructive" }); return; } setPizzaTierName(""); await loadPizzaConfig(); };
+  const savePizzaPrice = async () => { const res = await fetch("/api/menu/pizza/prices", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prices: [{ sizeId: Number(pizzaPriceForm.sizeId), tierId: Number(pizzaPriceForm.tierId), price: Number(pizzaPriceForm.price) }] }) }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Erro ao salvar preço."), variant: "destructive" }); return; } setPizzaPriceForm({ sizeId: "", tierId: "", price: "" }); await loadPizzaConfig(); };
+  const savePizzaFlavor = async () => { const res = await fetch("/api/menu/pizza/flavors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ productId: Number(pizzaFlavorForm.productId), tierId: Number(pizzaFlavorForm.tierId) }) }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Erro ao vincular sabor."), variant: "destructive" }); return; } setPizzaFlavorForm({ productId: "", tierId: "" }); await loadPizzaConfig(); };
 
   const params = useMemo(() => {
     const query: Record<string, unknown> = {};
@@ -731,6 +758,22 @@ export default function Menu() {
             </Button>
           </div>
         </div>
+
+
+        <Card data-testid="pizza-multiflavor-config">
+          <CardContent className="p-4 space-y-4">
+            <div>
+              <h2 className="font-semibold text-lg">Pizzas multissabor</h2>
+              <p className="text-sm text-muted-foreground">Configure Tamanhos, Classificações, Preços e Sabores sem enviar storeId pelo frontend.</p>
+            </div>
+            <div className="grid md:grid-cols-4 gap-4">
+              <div className="space-y-2"><Label>Tamanhos</Label><Input placeholder="Grande" value={pizzaSizeForm.name} onChange={(e)=>setPizzaSizeForm({...pizzaSizeForm,name:e.target.value})}/><Input placeholder="Máx. sabores" value={pizzaSizeForm.maxFlavors} onChange={(e)=>setPizzaSizeForm({...pizzaSizeForm,maxFlavors:e.target.value})}/><Button size="sm" onClick={createPizzaSize}>Cadastrar tamanho</Button><div className="text-xs text-muted-foreground">{pizzaSizes.map(s=>`${s.name} (${s.maxFlavors})`).join(", ")}</div></div>
+              <div className="space-y-2"><Label>Classificações</Label><Input placeholder="Nobres" value={pizzaTierName} onChange={(e)=>setPizzaTierName(e.target.value)}/><Button size="sm" onClick={createPizzaTier}>Cadastrar classificação</Button><div className="text-xs text-muted-foreground">{pizzaTiers.map(t=>t.name).join(", ")}</div></div>
+              <div className="space-y-2"><Label>Preços</Label><Select value={pizzaPriceForm.sizeId} onValueChange={(v)=>setPizzaPriceForm({...pizzaPriceForm,sizeId:v})}><SelectTrigger><SelectValue placeholder="Tamanho" /></SelectTrigger><SelectContent>{pizzaSizes.map(s=><SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent></Select><Select value={pizzaPriceForm.tierId} onValueChange={(v)=>setPizzaPriceForm({...pizzaPriceForm,tierId:v})}><SelectTrigger><SelectValue placeholder="Classificação" /></SelectTrigger><SelectContent>{pizzaTiers.map(t=><SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent></Select><Input placeholder="Preço" value={pizzaPriceForm.price} onChange={(e)=>setPizzaPriceForm({...pizzaPriceForm,price:e.target.value})}/><Button size="sm" onClick={savePizzaPrice}>Salvar preço</Button><div className="text-xs text-muted-foreground">{pizzaPrices.length} preço(s)</div></div>
+              <div className="space-y-2"><Label>Sabores</Label><Select value={pizzaFlavorForm.productId} onValueChange={(v)=>setPizzaFlavorForm({...pizzaFlavorForm,productId:v})}><SelectTrigger><SelectValue placeholder="Produto sabor" /></SelectTrigger><SelectContent>{products?.map(p=><SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent></Select><Select value={pizzaFlavorForm.tierId} onValueChange={(v)=>setPizzaFlavorForm({...pizzaFlavorForm,tierId:v})}><SelectTrigger><SelectValue placeholder="Classificação" /></SelectTrigger><SelectContent>{pizzaTiers.map(t=><SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent></Select><Button size="sm" onClick={savePizzaFlavor}>Vincular sabor</Button><div className="text-xs text-muted-foreground">{pizzaFlavors.map(f=>`${f.productName} — ${f.tierName}`).join(", ")}</div></div>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="flex gap-3 flex-wrap items-center">
           <div className="relative flex-1 min-w-48">

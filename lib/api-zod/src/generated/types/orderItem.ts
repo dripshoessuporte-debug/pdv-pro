@@ -7,6 +7,15 @@
  */
 import type { OrderItemAddon } from './orderItemAddon';
 
+export interface OrderItemFlavor {
+  productId?: number | null;
+  productName: string;
+  tierId?: number | null;
+  tierName: string;
+  fractionNumerator: number;
+  fractionDenominator: number;
+}
+
 export interface OrderItem {
   id: number;
   orderId: number;
@@ -25,5 +34,11 @@ export interface OrderItem {
   variantName?: string | null;
   /** @nullable */
   variantPrice?: number | null;
+  itemType?: "normal" | "pizza_multi_flavor";
+  displayName?: string | null;
+  pizzaSizeName?: string | null;
+  pricingMode?: "highest_tier" | "weighted_average" | "custom" | null;
+  basePizzaTierName?: string | null;
+  flavors?: OrderItemFlavor[];
   addons?: OrderItemAddon[];
 }

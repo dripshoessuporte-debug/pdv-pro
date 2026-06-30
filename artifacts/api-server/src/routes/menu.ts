@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, ilike, and, ne, inArray } from "drizzle-orm";
+import { eq, ilike, and, ne, inArray, asc } from "drizzle-orm";
 import { getCurrentActor } from "../middleware/rbac";
 import {
   db,
@@ -12,6 +12,10 @@ import {
   addonGroupsTable,
   addonOptionsTable,
   productAddonGroupsTable,
+  pizzaSizesTable,
+  pizzaPriceTiersTable,
+  pizzaSizeTierPricesTable,
+  pizzaFlavorsTable,
 } from "@workspace/db";
 import {
   CreateCategoryBody,
@@ -2297,5 +2301,39 @@ router.put(
     res.json(groups.map((g) => serializeAddonGroup(g)));
   },
 );
+
+
+function pizzaNumber(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+router.get("/menu/pizza/sizes", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  res.json(await db.select().from(pizzaSizesTable).where(eq(pizzaSizesTable.storeId, actor.storeId)).orderBy(asc(pizzaSizesTable.sortOrder), asc(pizzaSizesTable.name)));
+});
+router.post("/menu/pizza/sizes", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const maxFlavors = Number(req.body.maxFlavors ?? 1);
+  if (!req.body.name || !Number.isInteger(maxFlavors) || maxFlavors < 1) { res.status(400).json({ error: "Informe nome e máximo de sabores válido." }); return; }
+  const [row] = await db.insert(pizzaSizesTable).values({ storeId: actor.storeId, name: String(req.body.name), maxFlavors, active: req.body.active ?? true, sortOrder: Number(req.body.sortOrder ?? 0) }).returning();
+  res.status(201).json(row);
+});
+router.patch("/menu/pizza/sizes/:id", async (req, res) => {
+  const actor = await getCurrentActor(req); const id = Number(req.params.id);
+  const patch: any = { updatedAt: new Date() }; if (req.body.name !== undefined) patch.name = String(req.body.name); if (req.body.maxFlavors !== undefined) { const n=Number(req.body.maxFlavors); if(!Number.isInteger(n)||n<1){res.status(400).json({error:"Máximo de sabores inválido."});return;} patch.maxFlavors=n; } if (req.body.active !== undefined) patch.active = Boolean(req.body.active); if (req.body.sortOrder !== undefined) patch.sortOrder = Number(req.body.sortOrder);
+  const [row] = await db.update(pizzaSizesTable).set(patch).where(and(eq(pizzaSizesTable.id, id), eq(pizzaSizesTable.storeId, actor.storeId))).returning();
+  if (!row) { res.status(404).json({ error: "Tamanho não encontrado." }); return; } res.json(row);
+});
+router.get("/menu/pizza/tiers", async (req, res) => { const actor=await getCurrentActor(req); res.json(await db.select().from(pizzaPriceTiersTable).where(eq(pizzaPriceTiersTable.storeId, actor.storeId)).orderBy(asc(pizzaPriceTiersTable.sortOrder), asc(pizzaPriceTiersTable.name))); });
+router.post("/menu/pizza/tiers", async (req, res) => { const actor=await getCurrentActor(req); if(!req.body.name){res.status(400).json({error:"Informe o nome da classificação."});return;} const [row]=await db.insert(pizzaPriceTiersTable).values({storeId:actor.storeId,name:String(req.body.name),active:req.body.active??true,sortOrder:Number(req.body.sortOrder??0)}).returning(); res.status(201).json(row); });
+router.patch("/menu/pizza/tiers/:id", async (req,res)=>{ const actor=await getCurrentActor(req); const id=Number(req.params.id); const patch:any={updatedAt:new Date()}; if(req.body.name!==undefined)patch.name=String(req.body.name); if(req.body.active!==undefined)patch.active=Boolean(req.body.active); if(req.body.sortOrder!==undefined)patch.sortOrder=Number(req.body.sortOrder); const [row]=await db.update(pizzaPriceTiersTable).set(patch).where(and(eq(pizzaPriceTiersTable.id,id),eq(pizzaPriceTiersTable.storeId,actor.storeId))).returning(); if(!row){res.status(404).json({error:"Classificação não encontrada."});return;} res.json(row); });
+router.get("/menu/pizza/prices", async (req,res)=>{ const actor=await getCurrentActor(req); res.json(await db.select().from(pizzaSizeTierPricesTable).where(eq(pizzaSizeTierPricesTable.storeId,actor.storeId))); });
+router.put("/menu/pizza/prices", async (req,res)=>{ const actor=await getCurrentActor(req); const entries=Array.isArray(req.body.prices)?req.body.prices:[]; const saved=[]; for(const entry of entries){ const sizeId=Number(entry.sizeId), tierId=Number(entry.tierId), price=pizzaNumber(entry.price); if(!sizeId||!tierId||price==null||price<0){res.status(400).json({error:"Preço inválido."});return;} const [size]=await db.select({id:pizzaSizesTable.id}).from(pizzaSizesTable).where(and(eq(pizzaSizesTable.id,sizeId),eq(pizzaSizesTable.storeId,actor.storeId))).limit(1); const [tier]=await db.select({id:pizzaPriceTiersTable.id}).from(pizzaPriceTiersTable).where(and(eq(pizzaPriceTiersTable.id,tierId),eq(pizzaPriceTiersTable.storeId,actor.storeId))).limit(1); if(!size||!tier){res.status(400).json({error:"Tamanho ou classificação não pertence à loja."});return;} const [row]=await db.insert(pizzaSizeTierPricesTable).values({storeId:actor.storeId,sizeId,tierId,price:String(price)}).onConflictDoUpdate({target:[pizzaSizeTierPricesTable.storeId,pizzaSizeTierPricesTable.sizeId,pizzaSizeTierPricesTable.tierId],set:{price:String(price),updatedAt:new Date()}}).returning(); saved.push(row); } res.json(saved); });
+router.get("/menu/pizza/flavors", async (req,res)=>{ const actor=await getCurrentActor(req); const rows=await db.select({id:pizzaFlavorsTable.id,storeId:pizzaFlavorsTable.storeId,productId:pizzaFlavorsTable.productId,productName:productsTable.name,tierId:pizzaFlavorsTable.tierId,tierName:pizzaPriceTiersTable.name,active:pizzaFlavorsTable.active,sortOrder:pizzaFlavorsTable.sortOrder}).from(pizzaFlavorsTable).innerJoin(productsTable,eq(pizzaFlavorsTable.productId,productsTable.id)).innerJoin(pizzaPriceTiersTable,eq(pizzaFlavorsTable.tierId,pizzaPriceTiersTable.id)).where(and(eq(pizzaFlavorsTable.storeId,actor.storeId),eq(productsTable.storeId,actor.storeId),eq(pizzaPriceTiersTable.storeId,actor.storeId))).orderBy(asc(pizzaFlavorsTable.sortOrder),asc(productsTable.name)); res.json(rows); });
+async function validatePizzaFlavor(actorStoreId:number, productId:number, tierId:number){ const [product]=await db.select({id:productsTable.id}).from(productsTable).where(and(eq(productsTable.id,productId),eq(productsTable.storeId,actorStoreId))).limit(1); const [tier]=await db.select({id:pizzaPriceTiersTable.id}).from(pizzaPriceTiersTable).where(and(eq(pizzaPriceTiersTable.id,tierId),eq(pizzaPriceTiersTable.storeId,actorStoreId))).limit(1); return Boolean(product&&tier); }
+router.post("/menu/pizza/flavors", async (req,res)=>{ const actor=await getCurrentActor(req); const productId=Number(req.body.productId), tierId=Number(req.body.tierId); if(!(await validatePizzaFlavor(actor.storeId,productId,tierId))){res.status(400).json({error:"Produto ou classificação inválida para esta loja."});return;} const [row]=await db.insert(pizzaFlavorsTable).values({storeId:actor.storeId,productId,tierId,active:req.body.active??true,sortOrder:Number(req.body.sortOrder??0)}).onConflictDoUpdate({target:[pizzaFlavorsTable.storeId,pizzaFlavorsTable.productId],set:{tierId,active:req.body.active??true,sortOrder:Number(req.body.sortOrder??0),updatedAt:new Date()}}).returning(); res.status(201).json(row); });
+router.patch("/menu/pizza/flavors/:id", async (req,res)=>{ const actor=await getCurrentActor(req); const id=Number(req.params.id); const [old]=await db.select().from(pizzaFlavorsTable).where(and(eq(pizzaFlavorsTable.id,id),eq(pizzaFlavorsTable.storeId,actor.storeId))).limit(1); if(!old){res.status(404).json({error:"Sabor não encontrado."});return;} const productId=req.body.productId!==undefined?Number(req.body.productId):old.productId, tierId=req.body.tierId!==undefined?Number(req.body.tierId):old.tierId; if(!(await validatePizzaFlavor(actor.storeId,productId,tierId))){res.status(400).json({error:"Produto ou classificação inválida para esta loja."});return;} const [row]=await db.update(pizzaFlavorsTable).set({productId,tierId,active:req.body.active??old.active,sortOrder:req.body.sortOrder!==undefined?Number(req.body.sortOrder):old.sortOrder,updatedAt:new Date()}).where(and(eq(pizzaFlavorsTable.id,id),eq(pizzaFlavorsTable.storeId,actor.storeId))).returning(); res.json(row); });
+router.delete("/menu/pizza/flavors/:id", async (req,res)=>{ const actor=await getCurrentActor(req); const deleted=await db.delete(pizzaFlavorsTable).where(and(eq(pizzaFlavorsTable.id,Number(req.params.id)),eq(pizzaFlavorsTable.storeId,actor.storeId))).returning({id:pizzaFlavorsTable.id}); if(!deleted.length){res.status(404).json({error:"Sabor não encontrado."});return;} res.status(204).end(); });
 
 export default router;

@@ -136,6 +136,7 @@ export default function OrderDetail() {
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
+  const [pizzaPreview, setPizzaPreview] = useState<string>("");
 
   const invalidateOrder = () => {
     queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderId) });
@@ -155,6 +156,26 @@ export default function OrderDetail() {
       refetchInterval: 15_000,
     },
   });
+
+  const addPizzaToExistingOrder = async () => {
+    const [sizesRes, flavorsRes] = await Promise.all([fetch("/api/menu/pizza/sizes"), fetch("/api/menu/pizza/flavors")]);
+    const sizes = sizesRes.ok ? await sizesRes.json() : [];
+    const flavors = flavorsRes.ok ? await flavorsRes.json() : [];
+    if (!sizes.length || !flavors.length) { toast({ title: "Configure tamanhos, classificações, preços e sabores em Cardápio > Pizzas multissabor.", variant: "destructive" }); return; }
+    const baseProductId = Number(window.prompt("ID do produto base fiscal (ex: Pizza Montada):"));
+    const pizzaSizeId = Number(window.prompt(`ID do tamanho:
+${sizes.map((s: any) => `${s.id} - ${s.name} (máx. ${s.maxFlavors})`).join("\n")}`));
+    const selectedSize = sizes.find((s: any) => s.id === pizzaSizeId);
+    const flavorText = window.prompt(`IDs dos sabores separados por vírgula (máx. ${selectedSize?.maxFlavors ?? "?"}):
+${flavors.map((f: any) => `${f.productId} - ${f.productName} — ${f.tierName}`).join("\n")}`) ?? "";
+    const flavorProductIds = flavorText.split(",").map((v) => Number(v.trim())).filter(Boolean);
+    const quantity = Number(window.prompt("Quantidade:", "1") ?? "1");
+    const notes = window.prompt("Observação (opcional):") ?? undefined;
+    setPizzaPreview(`${selectedSize?.name ?? "Pizza"}: ${flavorProductIds.length} sabor(es) — regra: maior classificação selecionada`);
+    const res = await fetch(`/api/orders/${orderId}/pizza-items`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ baseProductId, pizzaSizeId, flavorProductIds, quantity, notes }) });
+    if (!res.ok) { toast({ title: (await res.json()).error ?? "Erro ao adicionar pizza.", variant: "destructive" }); return; }
+    toast({ title: "Pizza multissabor adicionada." }); setAddItemOpen(false); invalidateOrder();
+  };
 
   const addProductToExistingOrder = async (product: {
     id: number;
@@ -475,6 +496,8 @@ export default function OrderDetail() {
                     </DialogTitle>
                   </DialogHeader>
                   <div className="space-y-3">
+                    <Button variant="secondary" onClick={() => void addPizzaToExistingOrder()} data-testid="button-add-pizza-multiflavor">Pizza multissabor</Button>
+                    {pizzaPreview && <p className="text-xs text-muted-foreground">{pizzaPreview}</p>}
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       <Input
@@ -606,7 +629,7 @@ export default function OrderDetail() {
                               {item.quantity}x
                             </span>
                             <p className="font-medium truncate">
-                              {item.productName}
+                              {item.displayName ?? item.productName}
                             </p>
                           </div>
                           <p className="text-sm text-muted-foreground">
@@ -631,6 +654,15 @@ export default function OrderDetail() {
                                 </p>
                               ),
                             )}
+                          {Array.isArray(item.flavors) && item.flavors.length > 0 && (
+                            <div className="mt-2 text-sm text-muted-foreground">
+                              {item.flavors.map((flavor, flavorIndex) => (
+                                <div key={`${item.id}-flavor-${flavorIndex}`}>
+                                  {flavor.fractionNumerator}/{flavor.fractionDenominator} {flavor.productName}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           {item.notes && (
                             <p className="text-xs text-muted-foreground italic mt-0.5">
                               💬 {item.notes}
@@ -938,7 +970,7 @@ export default function OrderDetail() {
                 {order.items.map((item) => (
                   <div key={item.id} className="flex justify-between text-sm">
                     <span className="text-muted-foreground truncate">
-                      {item.quantity}x {item.productName}
+                      {item.quantity}x {item.displayName ?? item.productName}
                       {"addons" in item &&
                       Array.isArray(item.addons) &&
                       item.addons.length > 0
