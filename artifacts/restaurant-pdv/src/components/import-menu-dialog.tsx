@@ -29,7 +29,7 @@ import {
   getListProductsQueryKey,
 } from "@workspace/api-client-react";
 
-type ImportMode = "upsert" | "skip" | "create_only";
+type ImportMode = "upsert" | "skip" | "create_only" | "update_only";
 type PreviewResponse = {
   ok: boolean;
   summary?: {
@@ -43,6 +43,7 @@ type PreviewResponse = {
     bordersToCreate: number;
     addonGroupsToCreate: number;
     addonOptionsToCreate: number;
+    multissaborToConfigure?: number;
   };
   rows?: {
     rowNumber: number;
@@ -91,6 +92,10 @@ export function ImportMenuDialog({
 
   const downloadTemplate = () => {
     window.location.href = "/api/menu/import-template";
+  };
+
+  const downloadAdvancedTemplate = () => {
+    window.location.href = "/api/menu/import-template/advanced";
   };
 
   const readFile = async (file: File | undefined) => {
@@ -196,8 +201,8 @@ export function ImportMenuDialog({
             planilha
           </DialogTitle>
           <DialogDescription>
-            Use o modelo parecido com cardápios de delivery: categorias,
-            produtos, tamanhos, bordas e complementos.
+            Use o modelo simples para produtos comuns. O modelo avançado é
+            opcional para pizzarias com tamanhos, complementos e multissabor.
           </DialogDescription>
         </DialogHeader>
 
@@ -223,8 +228,9 @@ export function ImportMenuDialog({
               <div>
                 <h3 className="font-semibold">Instruções rápidas</h3>
                 <p className="text-sm text-muted-foreground">
-                  Colunas obrigatórias: categoria, produto e preco_base. Use
-                  ponto ou vírgula para decimais. Máximo de 1000 linhas e 1MB.
+                  Modelo simples: categoria; produto; descricao; preco; sku;
+                  ativo. O preço aceita vírgula, ponto, R$ e separador de
+                  milhar. Máximo de 1000 linhas e 1MB.
                 </p>
               </div>
               <Button
@@ -234,17 +240,24 @@ export function ImportMenuDialog({
               >
                 <Download className="mr-2 h-4 w-4" /> Baixar modelo CSV
               </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={downloadAdvancedTemplate}
+              >
+                <Download className="mr-2 h-4 w-4" /> Baixar modelo avançado
+              </Button>
               <div className="rounded-lg border bg-muted/30 p-3 text-sm">
                 <p className="font-medium">Exemplo visual</p>
                 <p>
                   <strong>Produto:</strong> Pizza Calabresa
                 </p>
                 <p>
-                  <strong>Tamanhos:</strong> Broto:29.90 | Média:39.90 |
-                  Grande:49.90
+                  <strong>Preço:</strong> 49,90 ou R$ 49,90
                 </p>
                 <p>
-                  <strong>Bordas:</strong> Catupiry:8 | Cheddar:8 | Chocolate:10
+                  <strong>Ativo:</strong> sim, s, yes, true, 1, não, n, no,
+                  false ou 0
                 </p>
               </div>
               <div className="space-y-2">
@@ -260,11 +273,13 @@ export function ImportMenuDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="upsert">Atualizar existentes</SelectItem>
-                    <SelectItem value="skip">Ignorar duplicados</SelectItem>
                     <SelectItem value="create_only">
                       Apenas criar novos
                     </SelectItem>
+                    <SelectItem value="update_only">
+                      Atualizar existentes
+                    </SelectItem>
+                    <SelectItem value="upsert">Criar e atualizar</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -295,7 +310,7 @@ export function ImportMenuDialog({
                   setCsv(e.target.value);
                   setPreview(null);
                 }}
-                placeholder="categoria,produto,descricao,preco_base,tamanhos,bordas,complementos..."
+                placeholder="categoria;produto;descricao;preco;sku;ativo\nPizzas;Pizza Calabresa;Molho, mussarela, calabresa e cebola;49,90;PIZ-CAL;sim"
               />
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>{fileSummary.lines} linhas de dados estimadas</span>
@@ -323,7 +338,7 @@ export function ImportMenuDialog({
               Categorias novas: {preview.summary.newCategories}
             </Badge>
             <Badge variant="outline">
-              Criar/atualizar: {preview.summary.newProducts}/
+              Produtos criar/atualizar: {preview.summary.newProducts}/
               {preview.summary.updateProducts}
             </Badge>
             <Badge variant="outline">
@@ -334,6 +349,9 @@ export function ImportMenuDialog({
             </Badge>
             <Badge variant="outline">
               Complementos criados: {preview.summary.addonGroupsToCreate}
+            </Badge>
+            <Badge variant="outline">
+              Multissabor: {preview.summary.multissaborToConfigure ?? 0}
             </Badge>
             <Badge variant="outline">Total: {preview.summary.totalRows}</Badge>
           </div>
