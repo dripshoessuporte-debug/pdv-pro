@@ -16,6 +16,12 @@ import {
   pizzaPriceTiersTable,
   pizzaSizeTierPricesTable,
   pizzaFlavorsTable,
+  multiflavorGroupsTable,
+  multiflavorSizesTable,
+  multiflavorClassificationsTable,
+  multiflavorSizeClassificationPricesTable,
+  multiflavorFlavorsTable,
+  multiflavorGroupAddonGroupsTable,
 } from "@workspace/db";
 import {
   CreateCategoryBody,
@@ -2977,5 +2983,705 @@ router.delete("/menu/pizza/flavors/:id", async (req, res) => {
   }
   res.status(204).end();
 });
+
+function positiveId(value: unknown) {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+async function ensureMultiflavorGroup(storeId: number, groupId: number) {
+  const [group] = await db
+    .select({ id: multiflavorGroupsTable.id })
+    .from(multiflavorGroupsTable)
+    .where(
+      and(
+        eq(multiflavorGroupsTable.storeId, storeId),
+        eq(multiflavorGroupsTable.id, groupId),
+      ),
+    )
+    .limit(1);
+  return group;
+}
+
+async function ensureMultiflavorSize(
+  storeId: number,
+  groupId: number,
+  sizeId: number,
+) {
+  const [size] = await db
+    .select({ id: multiflavorSizesTable.id })
+    .from(multiflavorSizesTable)
+    .where(
+      and(
+        eq(multiflavorSizesTable.storeId, storeId),
+        eq(multiflavorSizesTable.groupId, groupId),
+        eq(multiflavorSizesTable.id, sizeId),
+      ),
+    )
+    .limit(1);
+  return size;
+}
+
+async function ensureMultiflavorClassification(
+  storeId: number,
+  groupId: number,
+  classificationId: number,
+) {
+  const [classification] = await db
+    .select({ id: multiflavorClassificationsTable.id })
+    .from(multiflavorClassificationsTable)
+    .where(
+      and(
+        eq(multiflavorClassificationsTable.storeId, storeId),
+        eq(multiflavorClassificationsTable.groupId, groupId),
+        eq(multiflavorClassificationsTable.id, classificationId),
+      ),
+    )
+    .limit(1);
+  return classification;
+}
+
+router.get("/menu/multisabor/groups", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const rows = await db
+    .select()
+    .from(multiflavorGroupsTable)
+    .where(eq(multiflavorGroupsTable.storeId, actor.storeId))
+    .orderBy(
+      asc(multiflavorGroupsTable.sortOrder),
+      asc(multiflavorGroupsTable.name),
+    );
+  res.json(rows);
+});
+
+router.post("/menu/multisabor/groups", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  if (!req.body.name) {
+    res.status(400).json({ error: "Informe o nome do grupo Multisabor." });
+    return;
+  }
+  const categoryId =
+    req.body.categoryId == null ? null : positiveId(req.body.categoryId);
+  if (req.body.categoryId != null) {
+    const [category] = await db
+      .select({ id: categoriesTable.id })
+      .from(categoriesTable)
+      .where(
+        and(
+          eq(categoriesTable.storeId, actor.storeId),
+          eq(categoriesTable.id, categoryId ?? 0),
+        ),
+      )
+      .limit(1);
+    if (!category) {
+      res.status(400).json({ error: "Categoria não pertence à loja atual." });
+      return;
+    }
+  }
+  const [row] = await db
+    .insert(multiflavorGroupsTable)
+    .values({
+      storeId: actor.storeId,
+      categoryId,
+      name: String(req.body.name),
+      description:
+        req.body.description == null ? null : String(req.body.description),
+      quantityStepLabel: req.body.quantityStepLabel
+        ? String(req.body.quantityStepLabel)
+        : "Quantidade de sabores",
+      optionsStepLabel: req.body.optionsStepLabel
+        ? String(req.body.optionsStepLabel)
+        : "Sabores",
+      pricingMode: "highest_classification",
+      active: req.body.active ?? true,
+      available: req.body.available ?? true,
+      sortOrder: Number(req.body.sortOrder ?? 0),
+    })
+    .returning();
+  res.status(201).json(row);
+});
+
+router.patch("/menu/multisabor/groups/:groupId", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const groupId = positiveId(req.params.groupId);
+  if (!groupId || !(await ensureMultiflavorGroup(actor.storeId, groupId))) {
+    res.status(404).json({ error: "Grupo Multisabor não encontrado." });
+    return;
+  }
+  const patch: any = { updatedAt: new Date() };
+  if (req.body.name !== undefined) patch.name = String(req.body.name);
+  if (req.body.description !== undefined)
+    patch.description =
+      req.body.description == null ? null : String(req.body.description);
+  if (req.body.quantityStepLabel !== undefined)
+    patch.quantityStepLabel = String(req.body.quantityStepLabel);
+  if (req.body.optionsStepLabel !== undefined)
+    patch.optionsStepLabel = String(req.body.optionsStepLabel);
+  if (req.body.active !== undefined) patch.active = Boolean(req.body.active);
+  if (req.body.available !== undefined)
+    patch.available = Boolean(req.body.available);
+  if (req.body.sortOrder !== undefined)
+    patch.sortOrder = Number(req.body.sortOrder);
+  const [row] = await db
+    .update(multiflavorGroupsTable)
+    .set(patch)
+    .where(
+      and(
+        eq(multiflavorGroupsTable.storeId, actor.storeId),
+        eq(multiflavorGroupsTable.id, groupId),
+      ),
+    )
+    .returning();
+  res.json(row);
+});
+
+router.delete("/menu/multisabor/groups/:groupId", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const groupId = positiveId(req.params.groupId);
+  const [row] = await db
+    .update(multiflavorGroupsTable)
+    .set({ active: false, available: false, updatedAt: new Date() })
+    .where(
+      and(
+        eq(multiflavorGroupsTable.storeId, actor.storeId),
+        eq(multiflavorGroupsTable.id, groupId ?? 0),
+      ),
+    )
+    .returning({ id: multiflavorGroupsTable.id });
+  if (!row) {
+    res.status(404).json({ error: "Grupo Multisabor não encontrado." });
+    return;
+  }
+  res.status(204).end();
+});
+
+router.get("/menu/multisabor/groups/:groupId/config", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const groupId = positiveId(req.params.groupId);
+  if (!groupId || !(await ensureMultiflavorGroup(actor.storeId, groupId))) {
+    res.status(404).json({ error: "Grupo Multisabor não encontrado." });
+    return;
+  }
+  const [sizes, classifications, prices, flavors, addonGroups] =
+    await Promise.all([
+      db
+        .select()
+        .from(multiflavorSizesTable)
+        .where(
+          and(
+            eq(multiflavorSizesTable.storeId, actor.storeId),
+            eq(multiflavorSizesTable.groupId, groupId),
+          ),
+        )
+        .orderBy(
+          asc(multiflavorSizesTable.sortOrder),
+          asc(multiflavorSizesTable.name),
+        ),
+      db
+        .select()
+        .from(multiflavorClassificationsTable)
+        .where(
+          and(
+            eq(multiflavorClassificationsTable.storeId, actor.storeId),
+            eq(multiflavorClassificationsTable.groupId, groupId),
+          ),
+        )
+        .orderBy(
+          asc(multiflavorClassificationsTable.sortOrder),
+          asc(multiflavorClassificationsTable.name),
+        ),
+      db
+        .select()
+        .from(multiflavorSizeClassificationPricesTable)
+        .where(
+          and(
+            eq(multiflavorSizeClassificationPricesTable.storeId, actor.storeId),
+            eq(multiflavorSizeClassificationPricesTable.groupId, groupId),
+          ),
+        ),
+      db
+        .select({
+          id: multiflavorFlavorsTable.id,
+          storeId: multiflavorFlavorsTable.storeId,
+          groupId: multiflavorFlavorsTable.groupId,
+          productId: multiflavorFlavorsTable.productId,
+          productName: productsTable.name,
+          classificationId: multiflavorFlavorsTable.classificationId,
+          active: multiflavorFlavorsTable.active,
+          available: multiflavorFlavorsTable.available,
+          sortOrder: multiflavorFlavorsTable.sortOrder,
+        })
+        .from(multiflavorFlavorsTable)
+        .innerJoin(
+          productsTable,
+          eq(multiflavorFlavorsTable.productId, productsTable.id),
+        )
+        .where(
+          and(
+            eq(multiflavorFlavorsTable.storeId, actor.storeId),
+            eq(multiflavorFlavorsTable.groupId, groupId),
+            eq(productsTable.storeId, actor.storeId),
+          ),
+        )
+        .orderBy(
+          asc(multiflavorFlavorsTable.sortOrder),
+          asc(productsTable.name),
+        ),
+      db
+        .select({
+          id: multiflavorGroupAddonGroupsTable.id,
+          storeId: multiflavorGroupAddonGroupsTable.storeId,
+          groupId: multiflavorGroupAddonGroupsTable.groupId,
+          addonGroupId: multiflavorGroupAddonGroupsTable.addonGroupId,
+          addonGroupName: addonGroupsTable.name,
+          sortOrder: multiflavorGroupAddonGroupsTable.sortOrder,
+        })
+        .from(multiflavorGroupAddonGroupsTable)
+        .innerJoin(
+          addonGroupsTable,
+          eq(
+            multiflavorGroupAddonGroupsTable.addonGroupId,
+            addonGroupsTable.id,
+          ),
+        )
+        .where(
+          and(
+            eq(multiflavorGroupAddonGroupsTable.storeId, actor.storeId),
+            eq(multiflavorGroupAddonGroupsTable.groupId, groupId),
+            eq(addonGroupsTable.storeId, actor.storeId),
+          ),
+        )
+        .orderBy(
+          asc(multiflavorGroupAddonGroupsTable.sortOrder),
+          asc(addonGroupsTable.name),
+        ),
+    ]);
+  res.json({ sizes, classifications, prices, flavors, addonGroups });
+});
+
+router.post("/menu/multisabor/groups/:groupId/sizes", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const groupId = positiveId(req.params.groupId);
+  const minFlavors = Number(req.body.minFlavors ?? 1),
+    maxFlavors = Number(req.body.maxFlavors);
+  if (
+    !groupId ||
+    !(await ensureMultiflavorGroup(actor.storeId, groupId)) ||
+    !req.body.name ||
+    !Number.isInteger(minFlavors) ||
+    !Number.isInteger(maxFlavors) ||
+    minFlavors < 1 ||
+    maxFlavors < minFlavors
+  ) {
+    res
+      .status(400)
+      .json({
+        error: "Grupo, nome ou limites de sabores inválidos para esta loja.",
+      });
+    return;
+  }
+  const [row] = await db
+    .insert(multiflavorSizesTable)
+    .values({
+      storeId: actor.storeId,
+      groupId,
+      name: String(req.body.name),
+      minFlavors,
+      maxFlavors,
+      active: req.body.active ?? true,
+      available: req.body.available ?? true,
+      sortOrder: Number(req.body.sortOrder ?? 0),
+    })
+    .returning();
+  res.status(201).json(row);
+});
+
+router.patch("/menu/multisabor/sizes/:sizeId", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const sizeId = positiveId(req.params.sizeId);
+  const [old] = await db
+    .select()
+    .from(multiflavorSizesTable)
+    .where(
+      and(
+        eq(multiflavorSizesTable.storeId, actor.storeId),
+        eq(multiflavorSizesTable.id, sizeId ?? 0),
+      ),
+    )
+    .limit(1);
+  if (!old) {
+    res.status(404).json({ error: "Tamanho não encontrado." });
+    return;
+  }
+  const minFlavors =
+      req.body.minFlavors !== undefined
+        ? Number(req.body.minFlavors)
+        : old.minFlavors,
+    maxFlavors =
+      req.body.maxFlavors !== undefined
+        ? Number(req.body.maxFlavors)
+        : old.maxFlavors;
+  if (
+    !Number.isInteger(minFlavors) ||
+    !Number.isInteger(maxFlavors) ||
+    minFlavors < 1 ||
+    maxFlavors < minFlavors
+  ) {
+    res.status(400).json({ error: "Limites de sabores inválidos." });
+    return;
+  }
+  const patch: any = { updatedAt: new Date(), minFlavors, maxFlavors };
+  if (req.body.name !== undefined) patch.name = String(req.body.name);
+  if (req.body.active !== undefined) patch.active = Boolean(req.body.active);
+  if (req.body.available !== undefined)
+    patch.available = Boolean(req.body.available);
+  if (req.body.sortOrder !== undefined)
+    patch.sortOrder = Number(req.body.sortOrder);
+  const [row] = await db
+    .update(multiflavorSizesTable)
+    .set(patch)
+    .where(
+      and(
+        eq(multiflavorSizesTable.storeId, actor.storeId),
+        eq(multiflavorSizesTable.id, old.id),
+      ),
+    )
+    .returning();
+  res.json(row);
+});
+
+router.post(
+  "/menu/multisabor/groups/:groupId/classifications",
+  async (req, res) => {
+    const actor = await getCurrentActor(req);
+    const groupId = positiveId(req.params.groupId);
+    if (
+      !groupId ||
+      !(await ensureMultiflavorGroup(actor.storeId, groupId)) ||
+      !req.body.name
+    ) {
+      res
+        .status(400)
+        .json({ error: "Grupo ou classificação inválida para esta loja." });
+      return;
+    }
+    const [row] = await db
+      .insert(multiflavorClassificationsTable)
+      .values({
+        storeId: actor.storeId,
+        groupId,
+        name: String(req.body.name),
+        rank: Number(req.body.rank ?? 0),
+        active: req.body.active ?? true,
+        sortOrder: Number(req.body.sortOrder ?? 0),
+      })
+      .returning();
+    res.status(201).json(row);
+  },
+);
+
+router.patch(
+  "/menu/multisabor/classifications/:classificationId",
+  async (req, res) => {
+    const actor = await getCurrentActor(req);
+    const id = positiveId(req.params.classificationId);
+    const [old] = await db
+      .select()
+      .from(multiflavorClassificationsTable)
+      .where(
+        and(
+          eq(multiflavorClassificationsTable.storeId, actor.storeId),
+          eq(multiflavorClassificationsTable.id, id ?? 0),
+        ),
+      )
+      .limit(1);
+    if (!old) {
+      res.status(404).json({ error: "Classificação não encontrada." });
+      return;
+    }
+    const patch: any = { updatedAt: new Date() };
+    if (req.body.name !== undefined) patch.name = String(req.body.name);
+    if (req.body.rank !== undefined) patch.rank = Number(req.body.rank);
+    if (req.body.active !== undefined) patch.active = Boolean(req.body.active);
+    if (req.body.sortOrder !== undefined)
+      patch.sortOrder = Number(req.body.sortOrder);
+    const [row] = await db
+      .update(multiflavorClassificationsTable)
+      .set(patch)
+      .where(
+        and(
+          eq(multiflavorClassificationsTable.storeId, actor.storeId),
+          eq(multiflavorClassificationsTable.id, old.id),
+        ),
+      )
+      .returning();
+    res.json(row);
+  },
+);
+
+router.put("/menu/multisabor/groups/:groupId/prices", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const groupId = positiveId(req.params.groupId);
+  const entries = Array.isArray(req.body.prices) ? req.body.prices : [];
+  if (!groupId || !(await ensureMultiflavorGroup(actor.storeId, groupId))) {
+    res.status(404).json({ error: "Grupo Multisabor não encontrado." });
+    return;
+  }
+  const saved = [];
+  for (const entry of entries) {
+    const sizeId = positiveId(entry.sizeId),
+      classificationId = positiveId(entry.classificationId),
+      price = pizzaNumber(entry.price);
+    if (
+      !sizeId ||
+      !classificationId ||
+      price == null ||
+      price < 0 ||
+      !(await ensureMultiflavorSize(actor.storeId, groupId, sizeId)) ||
+      !(await ensureMultiflavorClassification(
+        actor.storeId,
+        groupId,
+        classificationId,
+      ))
+    ) {
+      res
+        .status(400)
+        .json({
+          error:
+            "Preço, tamanho ou classificação inválida para este grupo e loja.",
+        });
+      return;
+    }
+    const [row] = await db
+      .insert(multiflavorSizeClassificationPricesTable)
+      .values({
+        storeId: actor.storeId,
+        groupId,
+        sizeId,
+        classificationId,
+        price: String(price),
+      })
+      .onConflictDoUpdate({
+        target: [
+          multiflavorSizeClassificationPricesTable.storeId,
+          multiflavorSizeClassificationPricesTable.sizeId,
+          multiflavorSizeClassificationPricesTable.classificationId,
+        ],
+        set: { groupId, price: String(price), updatedAt: new Date() },
+      })
+      .returning();
+    saved.push(row);
+  }
+  res.json(saved);
+});
+
+router.post("/menu/multisabor/groups/:groupId/flavors", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const groupId = positiveId(req.params.groupId),
+    productId = positiveId(req.body.productId),
+    classificationId = positiveId(req.body.classificationId);
+  const [product] = await db
+    .select({ id: productsTable.id })
+    .from(productsTable)
+    .where(
+      and(
+        eq(productsTable.storeId, actor.storeId),
+        eq(productsTable.id, productId ?? 0),
+      ),
+    )
+    .limit(1);
+  if (
+    !groupId ||
+    !product ||
+    !(await ensureMultiflavorGroup(actor.storeId, groupId)) ||
+    !classificationId ||
+    !(await ensureMultiflavorClassification(
+      actor.storeId,
+      groupId,
+      classificationId,
+    ))
+  ) {
+    res
+      .status(400)
+      .json({
+        error: "Grupo, produto ou classificação não pertence à loja atual.",
+      });
+    return;
+  }
+  const [row] = await db
+    .insert(multiflavorFlavorsTable)
+    .values({
+      storeId: actor.storeId,
+      groupId,
+      productId: product.id,
+      classificationId,
+      active: req.body.active ?? true,
+      available: req.body.available ?? true,
+      sortOrder: Number(req.body.sortOrder ?? 0),
+    })
+    .onConflictDoUpdate({
+      target: [
+        multiflavorFlavorsTable.storeId,
+        multiflavorFlavorsTable.groupId,
+        multiflavorFlavorsTable.productId,
+      ],
+      set: {
+        classificationId,
+        active: req.body.active ?? true,
+        available: req.body.available ?? true,
+        sortOrder: Number(req.body.sortOrder ?? 0),
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+  res.status(201).json(row);
+});
+
+router.patch("/menu/multisabor/flavors/:flavorId", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const id = positiveId(req.params.flavorId);
+  const [old] = await db
+    .select()
+    .from(multiflavorFlavorsTable)
+    .where(
+      and(
+        eq(multiflavorFlavorsTable.storeId, actor.storeId),
+        eq(multiflavorFlavorsTable.id, id ?? 0),
+      ),
+    )
+    .limit(1);
+  if (!old) {
+    res.status(404).json({ error: "Sabor não encontrado." });
+    return;
+  }
+  const productId =
+      req.body.productId !== undefined
+        ? positiveId(req.body.productId)
+        : old.productId,
+    classificationId =
+      req.body.classificationId !== undefined
+        ? positiveId(req.body.classificationId)
+        : old.classificationId;
+  const [product] = await db
+    .select({ id: productsTable.id })
+    .from(productsTable)
+    .where(
+      and(
+        eq(productsTable.storeId, actor.storeId),
+        eq(productsTable.id, productId ?? 0),
+      ),
+    )
+    .limit(1);
+  if (
+    !product ||
+    !classificationId ||
+    !(await ensureMultiflavorClassification(
+      actor.storeId,
+      old.groupId,
+      classificationId,
+    ))
+  ) {
+    res
+      .status(400)
+      .json({
+        error: "Produto ou classificação não pertence ao grupo e loja atuais.",
+      });
+    return;
+  }
+  const [row] = await db
+    .update(multiflavorFlavorsTable)
+    .set({
+      productId: product.id,
+      classificationId,
+      active: req.body.active ?? old.active,
+      available: req.body.available ?? old.available,
+      sortOrder:
+        req.body.sortOrder !== undefined
+          ? Number(req.body.sortOrder)
+          : old.sortOrder,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(multiflavorFlavorsTable.storeId, actor.storeId),
+        eq(multiflavorFlavorsTable.id, old.id),
+      ),
+    )
+    .returning();
+  res.json(row);
+});
+
+router.post(
+  "/menu/multisabor/groups/:groupId/addon-groups",
+  async (req, res) => {
+    const actor = await getCurrentActor(req);
+    const groupId = positiveId(req.params.groupId),
+      addonGroupId = positiveId(req.body.addonGroupId);
+    const [addonGroup] = await db
+      .select({ id: addonGroupsTable.id })
+      .from(addonGroupsTable)
+      .where(
+        and(
+          eq(addonGroupsTable.storeId, actor.storeId),
+          eq(addonGroupsTable.id, addonGroupId ?? 0),
+        ),
+      )
+      .limit(1);
+    if (
+      !groupId ||
+      !(await ensureMultiflavorGroup(actor.storeId, groupId)) ||
+      !addonGroup
+    ) {
+      res
+        .status(400)
+        .json({
+          error: "Grupo Multisabor ou adicionais não pertence à loja atual.",
+        });
+      return;
+    }
+    const [row] = await db
+      .insert(multiflavorGroupAddonGroupsTable)
+      .values({
+        storeId: actor.storeId,
+        groupId,
+        addonGroupId: addonGroup.id,
+        sortOrder: Number(req.body.sortOrder ?? 0),
+      })
+      .onConflictDoUpdate({
+        target: [
+          multiflavorGroupAddonGroupsTable.storeId,
+          multiflavorGroupAddonGroupsTable.groupId,
+          multiflavorGroupAddonGroupsTable.addonGroupId,
+        ],
+        set: { sortOrder: Number(req.body.sortOrder ?? 0) },
+      })
+      .returning();
+    res.status(201).json(row);
+  },
+);
+
+router.delete(
+  "/menu/multisabor/groups/:groupId/addon-groups/:linkId",
+  async (req, res) => {
+    const actor = await getCurrentActor(req);
+    const groupId = positiveId(req.params.groupId),
+      linkId = positiveId(req.params.linkId);
+    const deleted = await db
+      .delete(multiflavorGroupAddonGroupsTable)
+      .where(
+        and(
+          eq(multiflavorGroupAddonGroupsTable.storeId, actor.storeId),
+          eq(multiflavorGroupAddonGroupsTable.groupId, groupId ?? 0),
+          eq(multiflavorGroupAddonGroupsTable.id, linkId ?? 0),
+        ),
+      )
+      .returning({ id: multiflavorGroupAddonGroupsTable.id });
+    if (!deleted.length) {
+      res.status(404).json({ error: "Vínculo de adicionais não encontrado." });
+      return;
+    }
+    res.status(204).end();
+  },
+);
 
 export default router;
