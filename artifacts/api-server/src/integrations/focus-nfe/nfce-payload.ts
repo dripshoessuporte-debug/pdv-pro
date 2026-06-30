@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
-import { db, fiscalGroupRulesTable, fiscalGroupsTable, orderItemsTable, ordersTable, paymentsTable, productFiscalSettingsTable, productsTable, storeFiscalPresentationTable, storeFiscalSettingsTable } from "@workspace/db";
+import { db, fiscalGroupRulesTable, fiscalGroupsTable, orderItemFlavorsTable, orderItemsTable, ordersTable, paymentsTable, productFiscalSettingsTable, productsTable, storeFiscalPresentationTable, storeFiscalSettingsTable } from "@workspace/db";
 import { getFocusCompanySummary } from "./company-service";
 import { getHomologationRuleMode, isFiscalRuleComplete } from "./readiness";
 import { FOCUS_NFCE_PAYMENT_CODES, FOCUS_NFCE_REF_MAX_LENGTH, FOCUS_NFCE_REF_PATTERN, FOCUS_NFCE_REQUIRED_ISSUER_FIELDS } from "./nfce-contract";
@@ -42,10 +42,14 @@ export async function buildHomologationNfcePayload(input:{ db: DbExecutor; store
   const rules = (await executor.select().from(productFiscalSettingsTable).where(and(eq(productFiscalSettingsTable.storeId, storeId), inArray(productFiscalSettingsTable.productId, productIds)))) as any[];
   const products = (await executor.select({ id: productsTable.id, name: productsTable.name, storeId: productsTable.storeId }).from(productsTable).where(and(eq(productsTable.storeId, storeId), inArray(productsTable.id, productIds)))) as any[];
   const byProduct = new Map(rules.map(r=>[r.productId,r])); const productNames = new Map(products.map(p=>[p.id,p.name]));
+  const flavors = (await executor.select().from(orderItemFlavorsTable).where(inArray(orderItemFlavorsTable.orderItemId, items.map(i=>i.id)))) as any[];
+  const flavorsByItem = new Map<number, any[]>();
+  for (const flavor of flavors) flavorsByItem.set(flavor.orderItemId, [...(flavorsByItem.get(flavor.orderItemId) ?? []), flavor]);
+  const fiscalDescription = (i:any) => { const base = i.displayName || [productNames.get(i.productId!) ?? i.externalProductName, i.variantName].filter(Boolean).join(" - "); const itemFlavors = flavorsByItem.get(i.id) ?? []; return itemFlavors.length ? `${base}: ${itemFlavors.map((f:any)=>`${f.fractionNumerator}/${f.fractionDenominator} ${f.productNameSnapshot}`).join(", ")}` : base; };
   if (products.length !== productIds.length) throw new NfceServiceError("PRODUCT_FISCAL_RULE_MISSING", "Produto sem regra fiscal completa.");
   let itemsPayload: Record<string,unknown>[] = [];
   if (mode === "complete") {
-    itemsPayload = items.map((i,idx)=>{ const r=byProduct.get(i.productId!); if(!r || !isFiscalRuleComplete(r)) throw new NfceServiceError("PRODUCT_FISCAL_RULE_MISSING", "Produto sem regra fiscal completa."); const desc=[productNames.get(i.productId!) ?? i.externalProductName, i.variantName].filter(Boolean).join(" - "); return buildFocusNfceFiscalLineForTests(idx+1, i.productId!, desc, i.quantity, cents(i.totalPrice), r); });
+    itemsPayload = items.map((i,idx)=>{ const r=byProduct.get(i.productId!); if(!r || !isFiscalRuleComplete(r)) throw new NfceServiceError("PRODUCT_FISCAL_RULE_MISSING", "Produto sem regra fiscal completa."); const desc=fiscalDescription(i); return buildFocusNfceFiscalLineForTests(idx+1, i.productId!, desc, i.quantity, cents(i.totalPrice), r); });
   } else {
     const groupIds = [...new Set(rules.map(r=>r.fiscalGroupId).filter((x):x is number=>x!=null))];
     if (rules.length !== productIds.length || groupIds.length === 0) throw new NfceServiceError("FISCAL_GROUP_RULE_MISSING", "Produto sem grupo fiscal.");

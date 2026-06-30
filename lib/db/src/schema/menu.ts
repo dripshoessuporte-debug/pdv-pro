@@ -157,6 +157,71 @@ export const productAddonGroupsTable = pgTable(
   ]
 );
 
+
+export const pizzaSizesTable = pgTable(
+  "pizza_sizes",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().references(() => storesTable.id),
+    name: text("name").notNull(),
+    maxFlavors: integer("max_flavors").notNull().default(1),
+    active: boolean("active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("pizza_sizes_store_id_idx").on(table.storeId)],
+);
+
+export const pizzaPriceTiersTable = pgTable(
+  "pizza_price_tiers",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().references(() => storesTable.id),
+    name: text("name").notNull(),
+    active: boolean("active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("pizza_price_tiers_store_id_idx").on(table.storeId)],
+);
+
+export const pizzaSizeTierPricesTable = pgTable(
+  "pizza_size_tier_prices",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().references(() => storesTable.id),
+    sizeId: integer("size_id").notNull().references(() => pizzaSizesTable.id),
+    tierId: integer("tier_id").notNull().references(() => pizzaPriceTiersTable.id),
+    price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("pizza_size_tier_prices_store_id_idx").on(table.storeId),
+    uniqueIndex("pizza_size_tier_prices_unique_idx").on(table.storeId, table.sizeId, table.tierId),
+  ],
+);
+
+export const pizzaFlavorsTable = pgTable(
+  "pizza_flavors",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().references(() => storesTable.id),
+    productId: integer("product_id").notNull().references(() => productsTable.id),
+    tierId: integer("tier_id").notNull().references(() => pizzaPriceTiersTable.id),
+    active: boolean("active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("pizza_flavors_store_id_idx").on(table.storeId),
+    uniqueIndex("pizza_flavors_store_product_unique_idx").on(table.storeId, table.productId),
+  ],
+);
+
 export const insertCategorySchema = createInsertSchema(categoriesTable).omit({ id: true });
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type Category = typeof categoriesTable.$inferSelect;
@@ -189,3 +254,8 @@ export type AddonOption = typeof addonOptionsTable.$inferSelect;
 export const insertProductAddonGroupSchema = createInsertSchema(productAddonGroupsTable).omit({ id: true });
 export type InsertProductAddonGroup = z.infer<typeof insertProductAddonGroupSchema>;
 export type ProductAddonGroup = typeof productAddonGroupsTable.$inferSelect;
+
+export type PizzaSize = typeof pizzaSizesTable.$inferSelect;
+export type PizzaPriceTier = typeof pizzaPriceTiersTable.$inferSelect;
+export type PizzaSizeTierPrice = typeof pizzaSizeTierPricesTable.$inferSelect;
+export type PizzaFlavor = typeof pizzaFlavorsTable.$inferSelect;

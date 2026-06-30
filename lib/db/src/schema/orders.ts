@@ -13,7 +13,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { customersTable } from "./customers";
 import { tablesTable } from "./tables";
-import { addonOptionsTable, productsTable, productVariantsTable } from "./menu";
+import { addonOptionsTable, productsTable, productVariantsTable, pizzaSizesTable, pizzaPriceTiersTable } from "./menu";
 import { storesTable } from "./tenancy";
 
 export const ordersTable = pgTable(
@@ -103,7 +103,30 @@ export const orderItemsTable = pgTable("order_items", {
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
   totalPrice: numeric("total_price", { precision: 10, scale: 2 }).notNull(),
   notes: text("notes"),
+  itemType: text("item_type").notNull().default("normal"),
+  displayName: text("display_name"),
+  pizzaSizeId: integer("pizza_size_id").references(() => pizzaSizesTable.id),
+  pizzaSizeName: text("pizza_size_name"),
+  pricingMode: text("pricing_mode"),
+  basePizzaTierId: integer("base_pizza_tier_id").references(() => pizzaPriceTiersTable.id),
+  basePizzaTierName: text("base_pizza_tier_name"),
 });
+
+export const orderItemFlavorsTable = pgTable(
+  "order_item_flavors",
+  {
+    id: serial("id").primaryKey(),
+    orderItemId: integer("order_item_id").notNull().references(() => orderItemsTable.id, { onDelete: "cascade" }),
+    productId: integer("product_id").references(() => productsTable.id),
+    productNameSnapshot: text("product_name_snapshot").notNull(),
+    tierId: integer("tier_id").references(() => pizzaPriceTiersTable.id),
+    tierNameSnapshot: text("tier_name_snapshot").notNull(),
+    fractionNumerator: integer("fraction_numerator").notNull().default(1),
+    fractionDenominator: integer("fraction_denominator").notNull().default(1),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (table) => [index("order_item_flavors_order_item_id_idx").on(table.orderItemId)],
+);
 
 export const orderItemAddonsTable = pgTable(
   "order_item_addons",
@@ -146,3 +169,7 @@ export const insertOrderItemAddonSchema = createInsertSchema(
 ).omit({ id: true });
 export type InsertOrderItemAddon = z.infer<typeof insertOrderItemAddonSchema>;
 export type OrderItemAddon = typeof orderItemAddonsTable.$inferSelect;
+
+export const insertOrderItemFlavorSchema = createInsertSchema(orderItemFlavorsTable).omit({ id: true });
+export type InsertOrderItemFlavor = z.infer<typeof insertOrderItemFlavorSchema>;
+export type OrderItemFlavor = typeof orderItemFlavorsTable.$inferSelect;

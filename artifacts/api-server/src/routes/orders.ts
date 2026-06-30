@@ -12,6 +12,11 @@ import {
   addonOptionsTable,
   productAddonGroupsTable,
   orderItemAddonsTable,
+  orderItemFlavorsTable,
+  pizzaSizesTable,
+  pizzaPriceTiersTable,
+  pizzaSizeTierPricesTable,
+  pizzaFlavorsTable,
   kitchenTicketsTable,
   paymentsTable,
   cashMovementsTable,
@@ -189,6 +194,11 @@ async function getOrderWithItems(orderId: number, storeId?: number) {
       unitPrice: orderItemsTable.unitPrice,
       totalPrice: orderItemsTable.totalPrice,
       notes: orderItemsTable.notes,
+      itemType: orderItemsTable.itemType,
+      displayName: orderItemsTable.displayName,
+      pizzaSizeName: orderItemsTable.pizzaSizeName,
+      pricingMode: orderItemsTable.pricingMode,
+      basePizzaTierName: orderItemsTable.basePizzaTierName,
     })
     .from(orderItemsTable)
     .leftJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
@@ -238,6 +248,19 @@ async function getOrderWithItems(orderId: number, storeId?: number) {
           ...addon,
           addonPrice: parseFloat(String(addon.addonPrice)),
           totalPrice: parseFloat(String(addon.totalPrice)),
+        })),
+        flavors: (
+          await db
+            .select()
+            .from(orderItemFlavorsTable)
+            .where(eq(orderItemFlavorsTable.orderItemId, item.id))
+        ).map((flavor) => ({
+          productId: flavor.productId,
+          productName: flavor.productNameSnapshot,
+          tierId: flavor.tierId,
+          tierName: flavor.tierNameSnapshot,
+          fractionNumerator: flavor.fractionNumerator,
+          fractionDenominator: flavor.fractionDenominator,
         })),
       })),
     ),
@@ -398,6 +421,12 @@ router.get("/orders", async (req, res): Promise<void> => {
               addonPrice: parseFloat(String(addon.addonPrice)),
               totalPrice: parseFloat(String(addon.totalPrice)),
             })),
+            flavors: (
+              await db
+                .select()
+                .from(orderItemFlavorsTable)
+                .where(eq(orderItemFlavorsTable.orderItemId, item.id))
+            ).map((flavor) => ({ productId: flavor.productId, productName: flavor.productNameSnapshot, tierId: flavor.tierId, tierName: flavor.tierNameSnapshot, fractionNumerator: flavor.fractionNumerator, fractionDenominator: flavor.fractionDenominator })),
           })),
         ),
       };
@@ -1050,6 +1079,48 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
           : "Erro ao adicionar adicionais.",
     });
   }
+});
+
+
+router.post("/orders/:id/pizza-items", async (req, res): Promise<void> => {
+  const orderId = Number(req.params.id);
+  const baseProductId = Number(req.body.baseProductId);
+  const pizzaSizeId = Number(req.body.pizzaSizeId);
+  const flavorProductIds: number[] = Array.isArray(req.body.flavorProductIds) ? req.body.flavorProductIds.map(Number).filter((id: number) => Number.isInteger(id) && id > 0) : [];
+  const quantity = Number(req.body.quantity ?? 1);
+  if (!orderId || !baseProductId || !pizzaSizeId || !Number.isInteger(quantity) || quantity < 1 || flavorProductIds.length < 1) {
+    res.status(400).json({ error: "Dados da pizza inválidos." }); return;
+  }
+  const scope = await requireOpenShift(req, res); if (!scope) return; const storeId = scope.actor.storeId;
+  const [order] = await db.select({ status: ordersTable.status }).from(ordersTable).where(and(eq(ordersTable.id, orderId), eq(ordersTable.storeId, storeId))).limit(1);
+  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+  if (["ready", "closed", "cancelled"].includes(order.status)) { res.status(409).json({ error: "Não é possível adicionar itens a um pedido pronto, finalizado ou cancelado." }); return; }
+  const [baseProduct] = await db.select().from(productsTable).where(and(eq(productsTable.id, baseProductId), eq(productsTable.storeId, storeId), eq(productsTable.active, true), eq(productsTable.available, true))).limit(1);
+  if (!baseProduct) { res.status(400).json({ error: "Produto base inválido para esta loja." }); return; }
+  const [size] = await db.select().from(pizzaSizesTable).where(and(eq(pizzaSizesTable.id, pizzaSizeId), eq(pizzaSizesTable.storeId, storeId), eq(pizzaSizesTable.active, true))).limit(1);
+  if (!size) { res.status(400).json({ error: "Tamanho inválido para esta loja." }); return; }
+  if (flavorProductIds.length > size.maxFlavors) { res.status(400).json({ error: `Selecione no máximo ${size.maxFlavors} sabor(es).` }); return; }
+  const uniqueFlavorIds = [...new Set(flavorProductIds)];
+  const rows = await db.select({ flavor: pizzaFlavorsTable, product: productsTable, tier: pizzaPriceTiersTable, price: pizzaSizeTierPricesTable.price })
+    .from(pizzaFlavorsTable)
+    .innerJoin(productsTable, eq(pizzaFlavorsTable.productId, productsTable.id))
+    .innerJoin(pizzaPriceTiersTable, eq(pizzaFlavorsTable.tierId, pizzaPriceTiersTable.id))
+    .leftJoin(pizzaSizeTierPricesTable, and(eq(pizzaSizeTierPricesTable.storeId, storeId), eq(pizzaSizeTierPricesTable.sizeId, pizzaSizeId), eq(pizzaSizeTierPricesTable.tierId, pizzaFlavorsTable.tierId)))
+    .where(and(eq(pizzaFlavorsTable.storeId, storeId), inArray(pizzaFlavorsTable.productId, uniqueFlavorIds), eq(pizzaFlavorsTable.active, true), eq(productsTable.storeId, storeId), eq(pizzaPriceTiersTable.storeId, storeId)));
+  if (rows.length !== uniqueFlavorIds.length) { res.status(400).json({ error: "Sabor sem classificação ativa ou de outra loja." }); return; }
+  if (rows.some((r) => r.price == null)) { res.status(400).json({ error: "Classificação sem preço para este tamanho." }); return; }
+  const priced = rows.map((r) => ({ ...r, numericPrice: parseFloat(String(r.price)) })).sort((a,b)=>b.numericPrice-a.numericPrice);
+  const highest = priced[0]; const unitPrice = highest.numericPrice; const totalPrice = unitPrice * quantity;
+  const displayName = `Pizza ${size.name} — ${flavorProductIds.length} sabor${flavorProductIds.length > 1 ? "es" : ""}`;
+  const fractionDenominator = flavorProductIds.length;
+  const created = await db.transaction(async (tx) => {
+    const [item] = await tx.insert(orderItemsTable).values({ orderId, productId: baseProductId, quantity, unitPrice: String(unitPrice), totalPrice: String(totalPrice), notes: req.body.notes ?? null, itemType: "pizza_multi_flavor", displayName, pizzaSizeId, pizzaSizeName: size.name, pricingMode: "highest_tier", basePizzaTierId: highest.tier.id, basePizzaTierName: highest.tier.name }).returning();
+    await tx.insert(orderItemFlavorsTable).values(flavorProductIds.map((pid:number, index:number) => { const row = rows.find((r) => r.product.id === pid)!; return { orderItemId: item.id, productId: pid, productNameSnapshot: row.product.name, tierId: row.tier.id, tierNameSnapshot: row.tier.name, fractionNumerator: 1, fractionDenominator, sortOrder: index }; }));
+    await recalcOrderTotal(orderId, tx);
+    if (order.status === "preparing") { const [pendingTicket] = await tx.select({id:kitchenTicketsTable.id}).from(kitchenTicketsTable).where(and(eq(kitchenTicketsTable.orderId, orderId), eq(kitchenTicketsTable.status, "pending"))).limit(1); if(!pendingTicket) await tx.insert(kitchenTicketsTable).values({ orderId, status: "pending" }); }
+    return item;
+  });
+  res.status(201).json({ ...created, productName: baseProduct.name, unitPrice, totalPrice, addons: [], flavors: flavorProductIds.map((pid:number) => { const row = rows.find((r) => r.product.id === pid)!; return { productId: pid, productName: row.product.name, tierId: row.tier.id, tierName: row.tier.name, fractionNumerator: 1, fractionDenominator }; }) });
 });
 
 router.delete("/orders/:id/items/:itemId", async (req, res): Promise<void> => {
