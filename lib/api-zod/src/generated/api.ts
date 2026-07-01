@@ -979,6 +979,21 @@ export const ListOrdersResponse = zod.array(ListOrdersResponseItem);
 /**
  * @summary Create a new order
  */
+const CreateOrderItemBody = zod.object({
+  productId: zod.number(),
+  quantity: zod.number().min(1),
+  notes: zod.string().optional(),
+  variantId: zod.number().nullish(),
+  addons: zod
+    .array(
+      zod.object({
+        addonOptionId: zod.number(),
+        quantity: zod.number().min(1).optional(),
+      }),
+    )
+    .optional(),
+});
+
 export const CreateOrderBody = zod.object({
   tableId: zod.number().optional(),
   customerId: zod.number().optional(),
@@ -1005,6 +1020,7 @@ export const CreateOrderBody = zod.object({
   needsChange: zod.boolean().optional(),
   changeFor: zod.number().optional(),
   deliveryPaymentNotes: zod.string().optional(),
+  items: zod.array(CreateOrderItemBody).optional(),
 });
 
 /**
@@ -1210,20 +1226,7 @@ export const AddOrderItemParams = zod.object({
   id: zod.coerce.number(),
 });
 
-export const AddOrderItemBody = zod.object({
-  productId: zod.number(),
-  quantity: zod.number().min(1),
-  notes: zod.string().optional(),
-  variantId: zod.number().nullish(),
-  addons: zod
-    .array(
-      zod.object({
-        addonOptionId: zod.number(),
-        quantity: zod.number().min(1).optional(),
-      }),
-    )
-    .optional(),
-});
+export const AddOrderItemBody = CreateOrderItemBody;
 
 /**
  * @summary Remove an item from an order
