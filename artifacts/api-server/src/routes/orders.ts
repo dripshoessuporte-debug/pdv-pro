@@ -102,6 +102,33 @@ function numberOrNull(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function numberOrZero(value: unknown): number {
+  const parsed = Number.parseFloat(String(value ?? "0"));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function dateToIsoOrNull(value: unknown): string | null {
+  if (!value) return null;
+  if (value instanceof Date)
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function loadOrdersErrorResponse(error: unknown): {
+  error: string;
+  details?: string;
+} {
+  return {
+    error: "Erro ao carregar pedidos.",
+    ...(isDevRuntime() ? { details: getErrorMessage(error) } : {}),
+  };
+}
+
 function isLargeDistanceDivergence(a: number, b: number): boolean {
   const diff = Math.abs(a - b);
   return diff > Math.max(1, Math.min(a, b) * 0.2);
@@ -204,7 +231,15 @@ async function getOrderWithItems(orderId: number, storeId?: number) {
     .leftJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
     .where(eq(orderItemsTable.orderId, orderId));
 
-  const financial = await getOrderFinancialState(orderId);
+  const financial = await getOrderFinancialState(orderId).catch((error) => {
+    console.error({ error, orderId }, "failed to load order financial state");
+    return {
+      totalAmount: numberOrZero(order.totalAmount),
+      paidAmount: 0,
+      outstandingAmount: numberOrZero(order.totalAmount),
+      paymentState: "unpaid" as const,
+    };
+  });
   const { customerNameRegistered, ...orderRest } = order;
   return {
     ...orderRest,
@@ -214,46 +249,61 @@ async function getOrderWithItems(orderId: number, storeId?: number) {
     paidAmount: financial.paidAmount,
     outstandingAmount: financial.outstandingAmount,
     paymentState: financial.paymentState,
-    deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
+    deliveryFee: numberOrZero(order.deliveryFee),
     needsChange:
       order.needsChange == null ? null : order.needsChange === "true",
-    changeFor: order.changeFor ? parseFloat(String(order.changeFor)) : null,
-    kitchenAcceptedAt: order.kitchenAcceptedAt
-      ? order.kitchenAcceptedAt.toISOString()
-      : null,
-    readyAt: order.readyAt ? order.readyAt.toISOString() : null,
-    paidAt: order.paidAt ? order.paidAt.toISOString() : null,
-    closedAt: order.closedAt ? order.closedAt.toISOString() : null,
+    changeFor: order.changeFor ? numberOrZero(order.changeFor) : null,
+    kitchenAcceptedAt: dateToIsoOrNull(order.kitchenAcceptedAt),
+    readyAt: dateToIsoOrNull(order.readyAt),
+    paidAt: dateToIsoOrNull(order.paidAt),
+    closedAt: dateToIsoOrNull(order.closedAt),
     estimatedDistanceKm:
       order.estimatedDistanceKm != null
-        ? parseFloat(String(order.estimatedDistanceKm))
+        ? numberOrZero(order.estimatedDistanceKm)
         : null,
     deliveryFeeCalculated: order.deliveryFeeCalculated === "true",
-    createdAt: order.createdAt.toISOString(),
-    updatedAt: order.updatedAt.toISOString(),
+    createdAt: dateToIsoOrNull(order.createdAt) ?? new Date(0).toISOString(),
+    updatedAt: dateToIsoOrNull(order.updatedAt) ?? undefined,
     items: await Promise.all(
       items.map(async (item) => ({
         ...item,
+        productName: item.productName ?? item.displayName ?? "Produto removido",
         variantPrice: item.variantPrice
-          ? parseFloat(String(item.variantPrice))
+          ? numberOrZero(item.variantPrice)
           : null,
-        unitPrice: parseFloat(String(item.unitPrice)),
-        totalPrice: parseFloat(String(item.totalPrice)),
+        unitPrice: numberOrZero(item.unitPrice),
+        totalPrice: numberOrZero(item.totalPrice),
         addons: (
           await db
             .select()
             .from(orderItemAddonsTable)
             .where(eq(orderItemAddonsTable.orderItemId, item.id))
+            .catch((error) => {
+              console.error(
+                { error, orderItemId: item.id },
+                "failed to load order item addons",
+              );
+              return [];
+            })
         ).map((addon) => ({
           ...addon,
-          addonPrice: parseFloat(String(addon.addonPrice)),
-          totalPrice: parseFloat(String(addon.totalPrice)),
+          addonGroupName: addon.addonGroupName ?? "Adicionais",
+          addonName: addon.addonName ?? "Adicional removido",
+          addonPrice: numberOrZero(addon.addonPrice),
+          totalPrice: numberOrZero(addon.totalPrice),
         })),
         flavors: (
           await db
             .select()
             .from(orderItemFlavorsTable)
             .where(eq(orderItemFlavorsTable.orderItemId, item.id))
+            .catch((error) => {
+              console.error(
+                { error, orderItemId: item.id },
+                "failed to load order item flavors",
+              );
+              return [];
+            })
         ).map((flavor) => ({
           productId: flavor.productId,
           productName: flavor.productNameSnapshot,
@@ -308,20 +358,8 @@ async function addSimpleOrderItem({
       ),
     );
   if (!product) {
-    throw new OrderFlowError("Product not found", 404);
+    throw new OrderFlowError("Produto não encontrado nesta loja.", 404);
   }
-
-  const activeVariants = await client
-    .select({ id: productVariantsTable.id })
-    .from(productVariantsTable)
-    .where(
-      and(
-        eq(productVariantsTable.productId, data.productId),
-        eq(productVariantsTable.storeId, storeId),
-        eq(productVariantsTable.active, true),
-        eq(productVariantsTable.available, true),
-      ),
-    );
 
   let unitPrice = parseFloat(String(product.price));
   let variantName: string | null = null;
@@ -348,8 +386,6 @@ async function addSimpleOrderItem({
     variantId = variant.id;
     variantName = variant.name;
     variantPrice = unitPrice;
-  } else if (activeVariants.length > 0) {
-    throw new OrderFlowError("Escolha uma variação para este produto.");
   }
 
   const requestedAddons = (data.addons ?? []).map((addon) => ({
@@ -397,7 +433,7 @@ async function addSimpleOrderItem({
     : [];
 
   if (addonRows.length !== new Set(addonOptionIds).size) {
-    throw new OrderFlowError("Adicional inválido ou indisponível.");
+    throw new OrderFlowError("Adicional inválido para este produto.");
   }
 
   const addonById = new Map(addonRows.map((row: any) => [row.option.id, row]));
@@ -414,7 +450,7 @@ async function addSimpleOrderItem({
   for (const requested of requestedAddons) {
     const row = addonById.get(requested.addonOptionId) as any;
     if (!row || !allowedGroupIds.has(row.group.id)) {
-      throw new OrderFlowError("Adicional não pertence a este produto/loja.");
+      throw new OrderFlowError("Adicional inválido para este produto.");
     }
     selectedByGroup.set(
       row.group.id,
@@ -541,150 +577,55 @@ router.get("/orders", async (req, res): Promise<void> => {
   const scope = await requireOpenShift(req, res);
   if (!scope) return;
 
-  const conditions = [eq(ordersTable.storeId, scope.actor.storeId)];
-  if (status) conditions.push(eq(ordersTable.status, status));
-  if (tableId) conditions.push(eq(ordersTable.tableId, tableId));
-  if (scope.actor.role === "atendente" && scope.openedAt) {
-    conditions.push(gte(ordersTable.createdAt, scope.openedAt));
+  try {
+    const conditions = [eq(ordersTable.storeId, scope.actor.storeId)];
+    if (status) conditions.push(eq(ordersTable.status, status));
+    if (tableId) conditions.push(eq(ordersTable.tableId, tableId));
+    if (scope.actor.role === "atendente" && scope.openedAt) {
+      conditions.push(gte(ordersTable.createdAt, scope.openedAt));
+    }
+
+    const orders = await db
+      .select({ id: ordersTable.id })
+      .from(ordersTable)
+      .where(and(...conditions))
+      .orderBy(sql`${ordersTable.createdAt} DESC`)
+      .limit(100);
+
+    const ordersWithItems = (
+      await Promise.all(
+        orders.map(async (order) => {
+          try {
+            return await getOrderWithItems(order.id, scope.actor.storeId);
+          } catch (error) {
+            req.log.error(
+              { error, orderId: order.id, storeId: scope.actor.storeId },
+              "failed to hydrate order for list",
+            );
+            return null;
+          }
+        }),
+      )
+    ).filter((order): order is NonNullable<typeof order> => order != null);
+
+    const parsed = ListOrdersResponse.safeParse(ordersWithItems);
+    if (!parsed.success) {
+      req.log.error(
+        { error: parsed.error.flatten(), storeId: scope.actor.storeId },
+        "list orders response schema mismatch",
+      );
+      res.json(ordersWithItems);
+      return;
+    }
+
+    res.json(parsed.data);
+  } catch (error) {
+    req.log.error(
+      { error, storeId: scope.actor.storeId },
+      "failed to list orders",
+    );
+    res.status(500).json(loadOrdersErrorResponse(error));
   }
-
-  const orders = await db
-    .select({
-      id: ordersTable.id,
-      tableId: ordersTable.tableId,
-      tableNumber: tablesTable.number,
-      customerId: ordersTable.customerId,
-      customerName: ordersTable.customerName,
-      customerNameRegistered: customersTable.name,
-      status: ordersTable.status,
-      type: ordersTable.type,
-      notes: ordersTable.notes,
-      totalAmount: ordersTable.totalAmount,
-      customerPhone: ordersTable.customerPhone,
-      deliveryCep: ordersTable.deliveryCep,
-      deliveryAddress: ordersTable.deliveryAddress,
-      deliveryNumber: ordersTable.deliveryNumber,
-      deliveryNeighborhood: ordersTable.deliveryNeighborhood,
-      deliveryCity: ordersTable.deliveryCity,
-      deliveryState: ordersTable.deliveryState,
-      deliveryComplement: ordersTable.deliveryComplement,
-      deliveryReference: ordersTable.deliveryReference,
-      deliveryFee: ordersTable.deliveryFee,
-      deliveryNotes: ordersTable.deliveryNotes,
-      deliveryStatus: ordersTable.deliveryStatus,
-      paymentTiming: ordersTable.paymentTiming,
-      deliveryPaymentMethod: ordersTable.deliveryPaymentMethod,
-      needsChange: ordersTable.needsChange,
-      changeFor: ordersTable.changeFor,
-      deliveryPaymentNotes: ordersTable.deliveryPaymentNotes,
-      kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
-      readyAt: ordersTable.readyAt,
-      paidAt: ordersTable.paidAt,
-      closedAt: ordersTable.closedAt,
-      source: ordersTable.source,
-      externalOrderId: ordersTable.externalOrderId,
-      integrationStatus: ordersTable.integrationStatus,
-      estimatedDistanceKm: ordersTable.estimatedDistanceKm,
-      deliveryFeeCalculated: ordersTable.deliveryFeeCalculated,
-      deliveryFeeSource: ordersTable.deliveryFeeSource,
-      createdAt: ordersTable.createdAt,
-      updatedAt: ordersTable.updatedAt,
-    })
-    .from(ordersTable)
-    .leftJoin(tablesTable, eq(ordersTable.tableId, tablesTable.id))
-    .leftJoin(customersTable, eq(ordersTable.customerId, customersTable.id))
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(sql`${ordersTable.createdAt} DESC`);
-
-  const ordersWithItems = await Promise.all(
-    orders.map(async (order) => {
-      const items = await db
-        .select({
-          id: orderItemsTable.id,
-          orderId: orderItemsTable.orderId,
-          productId: orderItemsTable.productId,
-          productName: sql<
-            string | null
-          >`coalesce(${productsTable.name}, ${orderItemsTable.externalProductName})`,
-          variantId: orderItemsTable.variantId,
-          variantName: orderItemsTable.variantName,
-          variantPrice: orderItemsTable.variantPrice,
-          quantity: orderItemsTable.quantity,
-          unitPrice: orderItemsTable.unitPrice,
-          totalPrice: orderItemsTable.totalPrice,
-          notes: orderItemsTable.notes,
-        })
-        .from(orderItemsTable)
-        .leftJoin(
-          productsTable,
-          eq(orderItemsTable.productId, productsTable.id),
-        )
-        .where(eq(orderItemsTable.orderId, order.id));
-
-      const financial = await getOrderFinancialState(order.id);
-      const { customerNameRegistered, ...orderRest } = order;
-      return {
-        ...orderRest,
-        customerName: order.customerName ?? customerNameRegistered ?? null,
-        totalAmount: financial.totalAmount,
-        financial,
-        paidAmount: financial.paidAmount,
-        outstandingAmount: financial.outstandingAmount,
-        paymentState: financial.paymentState,
-        deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
-        needsChange:
-          order.needsChange == null ? null : order.needsChange === "true",
-        changeFor: order.changeFor ? parseFloat(String(order.changeFor)) : null,
-        kitchenAcceptedAt: order.kitchenAcceptedAt
-          ? order.kitchenAcceptedAt.toISOString()
-          : null,
-        readyAt: order.readyAt ? order.readyAt.toISOString() : null,
-        paidAt: order.paidAt ? order.paidAt.toISOString() : null,
-        closedAt: order.closedAt ? order.closedAt.toISOString() : null,
-        estimatedDistanceKm: order.estimatedDistanceKm
-          ? parseFloat(String(order.estimatedDistanceKm))
-          : null,
-        deliveryFeeCalculated: order.deliveryFeeCalculated === "true",
-        createdAt: order.createdAt.toISOString(),
-        updatedAt: order.updatedAt.toISOString(),
-        items: await Promise.all(
-          items.map(async (item) => ({
-            ...item,
-            variantPrice: item.variantPrice
-              ? parseFloat(String(item.variantPrice))
-              : null,
-            unitPrice: parseFloat(String(item.unitPrice)),
-            totalPrice: parseFloat(String(item.totalPrice)),
-            addons: (
-              await db
-                .select()
-                .from(orderItemAddonsTable)
-                .where(eq(orderItemAddonsTable.orderItemId, item.id))
-            ).map((addon) => ({
-              ...addon,
-              addonPrice: parseFloat(String(addon.addonPrice)),
-              totalPrice: parseFloat(String(addon.totalPrice)),
-            })),
-            flavors: (
-              await db
-                .select()
-                .from(orderItemFlavorsTable)
-                .where(eq(orderItemFlavorsTable.orderItemId, item.id))
-            ).map((flavor) => ({
-              productId: flavor.productId,
-              productName: flavor.productNameSnapshot,
-              tierId: flavor.tierId,
-              tierName: flavor.tierNameSnapshot,
-              fractionNumerator: flavor.fractionNumerator,
-              fractionDenominator: flavor.fractionDenominator,
-            })),
-          })),
-        ),
-      };
-    }),
-  );
-
-  res.json(ListOrdersResponse.parse(ordersWithItems));
 });
 
 router.post("/orders", async (req, res): Promise<void> => {
@@ -892,14 +833,35 @@ router.post("/orders", async (req, res): Promise<void> => {
       return createdOrder;
     });
 
-    const full = await getOrderWithItems(order.id, storeId);
-    if (!full) {
-      res
-        .status(500)
-        .json({ error: "Pedido criado, mas não foi possível carregá-lo." });
-      return;
+    try {
+      const full = await getOrderWithItems(order.id, storeId);
+      if (!full) {
+        req.log.error(
+          { orderId: order.id, storeId },
+          "created order not found while hydrating response",
+        );
+        res.status(500).json({ error: "Erro ao criar pedido." });
+        return;
+      }
+
+      const response = GetOrderResponse.safeParse(full);
+      if (!response.success) {
+        req.log.error(
+          { error: response.error.flatten(), orderId: order.id, storeId },
+          "created order response schema mismatch",
+        );
+        res.status(201).json(full);
+        return;
+      }
+
+      res.status(201).json(response.data);
+    } catch (error) {
+      req.log.error(
+        { error, orderId: order.id, storeId },
+        "failed to hydrate created order response",
+      );
+      res.status(500).json(createOrderErrorResponse(error));
     }
-    res.status(201).json(GetOrderResponse.parse(full));
   } catch (error) {
     req.log.error({ error }, "failed to create order");
     const status = error instanceof OrderFlowError ? error.status : 500;
@@ -1174,12 +1136,10 @@ router.post("/orders/:id/pizza-items", async (req, res): Promise<void> => {
     return;
   }
   if (["ready", "closed", "cancelled"].includes(order.status)) {
-    res
-      .status(409)
-      .json({
-        error:
-          "Não é possível adicionar itens a um pedido pronto, finalizado ou cancelado.",
-      });
+    res.status(409).json({
+      error:
+        "Não é possível adicionar itens a um pedido pronto, finalizado ou cancelado.",
+    });
     return;
   }
   const [baseProduct] = await db
