@@ -11,7 +11,6 @@ import {
   useListProducts,
   getListProductsQueryKey,
   useCreateOrder,
-  useAddOrderItem,
   useCreateCustomer,
   useUpdateCustomer,
   getListOrdersQueryKey,
@@ -144,10 +143,19 @@ const buildDeliveryAddressNote = ({
   return parts.length > 0 ? `Endereço delivery: ${parts.join(" · ")}` : "";
 };
 
+const htmlErrorMessage =
+  "A API retornou erro interno. Verifique os logs do Railway.";
+
+const looksLikeHtml = (value: string) =>
+  /<!doctype html|<html[\s>]|<body[\s>]|<pre[\s>]/i.test(value);
+
 const extractErrorMessage = (error: unknown) => {
   if (error && typeof error === "object") {
     const data =
       "data" in error ? (error as { data?: unknown }).data : undefined;
+    if (typeof data === "string" && looksLikeHtml(data)) {
+      return htmlErrorMessage;
+    }
     if (data && typeof data === "object") {
       const errorText =
         (data as { error?: unknown; message?: unknown; detail?: unknown })
@@ -156,14 +164,20 @@ const extractErrorMessage = (error: unknown) => {
           .message ??
         (data as { error?: unknown; message?: unknown; detail?: unknown })
           .detail;
-      if (typeof errorText === "string" && errorText.trim()) return errorText;
+      if (typeof errorText === "string" && errorText.trim()) {
+        return looksLikeHtml(errorText) ? htmlErrorMessage : errorText;
+      }
     }
 
     const message = (error as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) return message;
+    if (typeof message === "string" && message.trim()) {
+      return looksLikeHtml(message) ? htmlErrorMessage : message;
+    }
   }
 
-  if (typeof error === "string" && error.trim()) return error;
+  if (typeof error === "string" && error.trim()) {
+    return looksLikeHtml(error) ? htmlErrorMessage : error;
+  }
 
   return "Erro ao criar pedido. Tente novamente.";
 };
@@ -313,7 +327,6 @@ export default function NewOrder() {
   );
 
   const createOrder = useCreateOrder();
-  const addItem = useAddOrderItem();
   const createCustomer = useCreateCustomer();
   const updateCustomer = useUpdateCustomer();
 
@@ -782,6 +795,8 @@ export default function NewOrder() {
   };
 
   const handleCreate = async () => {
+    if (creating) return;
+
     if (cart.length === 0) {
       toast({
         title: "Adicione pelo menos um item ao pedido",
@@ -834,6 +849,20 @@ export default function NewOrder() {
       if (tableId) orderData.tableId = parseInt(tableId);
       if (savedCustomerId) orderData.customerId = savedCustomerId;
       if (orderNotes.trim()) orderData.notes = orderNotes.trim();
+      orderData.items = cart.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        ...(item.variantId != null ? { variantId: item.variantId } : {}),
+        ...(item.notes.trim() ? { notes: item.notes.trim() } : {}),
+        ...(item.addons.length
+          ? {
+              addons: item.addons.map((addon) => ({
+                addonOptionId: addon.addonOptionId,
+                quantity: addon.quantity,
+              })),
+            }
+          : {}),
+      }));
 
       if (orderType === "delivery") {
         // All delivery fields
@@ -890,33 +919,6 @@ export default function NewOrder() {
           { onSuccess: (o) => resolve(o), onError: (e) => reject(e) },
         );
       });
-
-      for (const item of cart) {
-        await new Promise<void>((resolve, reject) => {
-          addItem.mutate(
-            {
-              id: order.id,
-              data: {
-                productId: item.productId,
-                quantity: item.quantity,
-                ...(item.variantId != null
-                  ? { variantId: item.variantId }
-                  : {}),
-                ...(item.notes.trim() ? { notes: item.notes.trim() } : {}),
-                ...(item.addons.length
-                  ? {
-                      addons: item.addons.map((addon) => ({
-                        addonOptionId: addon.addonOptionId,
-                        quantity: addon.quantity,
-                      })),
-                    }
-                  : {}),
-              },
-            },
-            { onSuccess: () => resolve(), onError: (e) => reject(e) },
-          );
-        });
-      }
 
       queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
       queryClient.invalidateQueries({ queryKey: getListTablesQueryKey() });

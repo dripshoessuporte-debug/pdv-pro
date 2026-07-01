@@ -267,6 +267,250 @@ async function getOrderWithItems(orderId: number, storeId?: number) {
   };
 }
 
+class OrderFlowError extends Error {
+  status: number;
+
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+type AddSimpleOrderItemInput = typeof AddOrderItemBody._type;
+
+async function addSimpleOrderItem({
+  orderId,
+  data,
+  storeId,
+  orderStatus,
+  client = db,
+}: {
+  orderId: number;
+  data: AddSimpleOrderItemInput;
+  storeId: number;
+  orderStatus: string;
+  client?: any;
+}) {
+  if (["ready", "closed", "cancelled"].includes(orderStatus)) {
+    throw new OrderFlowError(
+      "Não é possível adicionar itens a um pedido pronto, finalizado ou cancelado.",
+      409,
+    );
+  }
+
+  const [product] = await client
+    .select()
+    .from(productsTable)
+    .where(
+      and(
+        eq(productsTable.id, data.productId),
+        eq(productsTable.storeId, storeId),
+      ),
+    );
+  if (!product) {
+    throw new OrderFlowError("Product not found", 404);
+  }
+
+  const activeVariants = await client
+    .select({ id: productVariantsTable.id })
+    .from(productVariantsTable)
+    .where(
+      and(
+        eq(productVariantsTable.productId, data.productId),
+        eq(productVariantsTable.storeId, storeId),
+        eq(productVariantsTable.active, true),
+        eq(productVariantsTable.available, true),
+      ),
+    );
+
+  let unitPrice = parseFloat(String(product.price));
+  let variantName: string | null = null;
+  let variantPrice: number | null = null;
+  let variantId: number | null = null;
+
+  if (data.variantId != null) {
+    const [variant] = await client
+      .select()
+      .from(productVariantsTable)
+      .where(
+        and(
+          eq(productVariantsTable.id, data.variantId),
+          eq(productVariantsTable.productId, data.productId),
+          eq(productVariantsTable.storeId, storeId),
+          eq(productVariantsTable.active, true),
+          eq(productVariantsTable.available, true),
+        ),
+      );
+    if (!variant) {
+      throw new OrderFlowError("Variação inválida para este produto.");
+    }
+    unitPrice = parseFloat(String(variant.price));
+    variantId = variant.id;
+    variantName = variant.name;
+    variantPrice = unitPrice;
+  } else if (activeVariants.length > 0) {
+    throw new OrderFlowError("Escolha uma variação para este produto.");
+  }
+
+  const requestedAddons = (data.addons ?? []).map((addon) => ({
+    addonOptionId: addon.addonOptionId,
+    quantity: addon.quantity ?? 1,
+  }));
+
+  if (requestedAddons.some((addon) => addon.quantity < 1)) {
+    throw new OrderFlowError("Quantidade de adicional deve ser >= 1.");
+  }
+
+  const linkedGroups = await client
+    .select({ group: addonGroupsTable })
+    .from(productAddonGroupsTable)
+    .innerJoin(
+      addonGroupsTable,
+      eq(productAddonGroupsTable.addonGroupId, addonGroupsTable.id),
+    )
+    .where(
+      and(
+        eq(productAddonGroupsTable.productId, data.productId),
+        eq(productAddonGroupsTable.storeId, storeId),
+        eq(addonGroupsTable.storeId, storeId),
+        eq(addonGroupsTable.active, true),
+      ),
+    );
+  const allowedGroupIds = new Set(linkedGroups.map((row: any) => row.group.id));
+  const addonOptionIds = requestedAddons.map((addon) => addon.addonOptionId);
+  const addonRows = addonOptionIds.length
+    ? await client
+        .select({ option: addonOptionsTable, group: addonGroupsTable })
+        .from(addonOptionsTable)
+        .innerJoin(
+          addonGroupsTable,
+          eq(addonOptionsTable.groupId, addonGroupsTable.id),
+        )
+        .where(
+          and(
+            eq(addonOptionsTable.storeId, storeId),
+            inArray(addonOptionsTable.id, addonOptionIds),
+            eq(addonOptionsTable.available, true),
+            eq(addonGroupsTable.active, true),
+          ),
+        )
+    : [];
+
+  if (addonRows.length !== new Set(addonOptionIds).size) {
+    throw new OrderFlowError("Adicional inválido ou indisponível.");
+  }
+
+  const addonById = new Map(addonRows.map((row: any) => [row.option.id, row]));
+  const selectedByGroup = new Map<number, number>();
+  let addonsTotal = 0;
+  const addonSnapshots = [] as Array<{
+    addonOptionId: number;
+    addonGroupName: string;
+    addonName: string;
+    addonPrice: number;
+    quantity: number;
+    totalPrice: number;
+  }>;
+  for (const requested of requestedAddons) {
+    const row = addonById.get(requested.addonOptionId) as any;
+    if (!row || !allowedGroupIds.has(row.group.id)) {
+      throw new OrderFlowError("Adicional não pertence a este produto/loja.");
+    }
+    selectedByGroup.set(
+      row.group.id,
+      (selectedByGroup.get(row.group.id) ?? 0) + requested.quantity,
+    );
+    const addonPrice = parseFloat(String(row.option.price));
+    const total = addonPrice * requested.quantity * data.quantity;
+    addonsTotal += addonPrice * requested.quantity;
+    addonSnapshots.push({
+      addonOptionId: row.option.id,
+      addonGroupName: row.group.name,
+      addonName: row.option.name,
+      addonPrice,
+      quantity: requested.quantity,
+      totalPrice: total,
+    });
+  }
+
+  for (const { group } of linkedGroups) {
+    const selectedCount = selectedByGroup.get(group.id) ?? 0;
+    const minimum = group.required
+      ? Math.max(1, group.minSelected)
+      : group.minSelected;
+    if (selectedCount < minimum) {
+      throw new OrderFlowError(
+        `Selecione pelo menos ${minimum} opção(ões) em ${group.name}.`,
+      );
+    }
+    if (group.maxSelected != null && selectedCount > group.maxSelected) {
+      throw new OrderFlowError(
+        `Selecione no máximo ${group.maxSelected} opção(ões) em ${group.name}.`,
+      );
+    }
+  }
+
+  const totalUnitPrice = unitPrice + addonsTotal;
+  const totalPrice = totalUnitPrice * data.quantity;
+  const [item] = await client
+    .insert(orderItemsTable)
+    .values({
+      orderId,
+      productId: data.productId,
+      variantId,
+      variantName,
+      variantPrice: variantPrice != null ? String(variantPrice) : null,
+      quantity: data.quantity,
+      unitPrice: String(totalUnitPrice),
+      totalPrice: String(totalPrice),
+      notes: data.notes,
+    })
+    .returning();
+
+  if (addonSnapshots.length) {
+    await client.insert(orderItemAddonsTable).values(
+      addonSnapshots.map((addon) => ({
+        orderItemId: item.id,
+        addonOptionId: addon.addonOptionId,
+        addonGroupName: addon.addonGroupName,
+        addonName: addon.addonName,
+        addonPrice: String(addon.addonPrice),
+        quantity: addon.quantity,
+        totalPrice: String(addon.totalPrice),
+      })),
+    );
+  }
+
+  await recalcOrderTotal(orderId, client);
+
+  if (orderStatus === "preparing") {
+    const [pendingTicket] = await client
+      .select({ id: kitchenTicketsTable.id })
+      .from(kitchenTicketsTable)
+      .where(
+        and(
+          eq(kitchenTicketsTable.orderId, orderId),
+          eq(kitchenTicketsTable.status, "pending"),
+        ),
+      )
+      .limit(1);
+    if (!pendingTicket) {
+      await client
+        .insert(kitchenTicketsTable)
+        .values({ orderId, status: "pending" });
+    }
+  }
+
+  return {
+    ...item,
+    productName: product.name,
+    variantPrice,
+    unitPrice: totalUnitPrice,
+    totalPrice,
+    addons: addonSnapshots,
+  };
+}
+
 async function recalcOrderTotal(orderId: number, client: any = db) {
   const items = await client
     .select()
@@ -426,7 +670,14 @@ router.get("/orders", async (req, res): Promise<void> => {
                 .select()
                 .from(orderItemFlavorsTable)
                 .where(eq(orderItemFlavorsTable.orderItemId, item.id))
-            ).map((flavor) => ({ productId: flavor.productId, productName: flavor.productNameSnapshot, tierId: flavor.tierId, tierName: flavor.tierNameSnapshot, fractionNumerator: flavor.fractionNumerator, fractionDenominator: flavor.fractionDenominator })),
+            ).map((flavor) => ({
+              productId: flavor.productId,
+              productName: flavor.productNameSnapshot,
+              tierId: flavor.tierId,
+              tierName: flavor.tierNameSnapshot,
+              fractionNumerator: flavor.fractionNumerator,
+              fractionDenominator: flavor.fractionDenominator,
+            })),
           })),
         ),
       };
@@ -451,6 +702,7 @@ router.post("/orders", async (req, res): Promise<void> => {
     deliveryFeeCalculated: _previewDeliveryFeeCalculated,
     deliveryFeeSource: _previewDeliveryFeeSource,
     deliveryDistanceSource: _previewDeliveryDistanceSource,
+    items,
     ...restData
   } = parsed.data;
   let fee = deliveryFee ?? 0;
@@ -586,49 +838,80 @@ router.post("/orders", async (req, res): Promise<void> => {
     }
   }
 
-  let order: typeof ordersTable.$inferSelect;
   try {
-    [order] = await db
-      .insert(ordersTable)
-      .values({
-        ...restData,
-        storeId,
-        cashRegisterId: scope.cashRegisterId,
-        deliveryFee: String(fee),
-        totalAmount: String(fee), // items added after via addOrderItem; recalcOrderTotal updates this
-        ...(parsed.data.type === "delivery"
-          ? {
-              deliveryStatus: "pending",
-              estimatedDistanceKm:
-                estimatedDistanceKm !== null
-                  ? String(estimatedDistanceKm)
-                  : null,
-              deliveryFeeCalculated: String(deliveryFeeCalculated),
-              deliveryFeeSource,
-              deliveryDistanceSource,
-            }
-          : {}),
-        ...(needsChange !== undefined
-          ? { needsChange: String(needsChange) }
-          : {}),
-        ...(changeFor !== undefined ? { changeFor: String(changeFor) } : {}),
-      })
-      .returning();
+    const order = await db.transaction(async (tx) => {
+      const [createdOrder] = await tx
+        .insert(ordersTable)
+        .values({
+          ...restData,
+          storeId,
+          cashRegisterId: scope.cashRegisterId,
+          deliveryFee: String(fee),
+          totalAmount: String(fee),
+          ...(parsed.data.type === "delivery"
+            ? {
+                deliveryStatus: "pending",
+                estimatedDistanceKm:
+                  estimatedDistanceKm !== null
+                    ? String(estimatedDistanceKm)
+                    : null,
+                deliveryFeeCalculated: String(deliveryFeeCalculated),
+                deliveryFeeSource,
+                deliveryDistanceSource,
+              }
+            : {}),
+          ...(needsChange !== undefined
+            ? { needsChange: String(needsChange) }
+            : {}),
+          ...(changeFor !== undefined ? { changeFor: String(changeFor) } : {}),
+        })
+        .returning();
+
+      if (parsed.data.tableId) {
+        await tx
+          .update(tablesTable)
+          .set({ status: "occupied", currentOrderId: createdOrder.id })
+          .where(
+            and(
+              eq(tablesTable.id, parsed.data.tableId),
+              eq(tablesTable.storeId, storeId),
+            ),
+          );
+      }
+
+      for (const item of items ?? []) {
+        await addSimpleOrderItem({
+          orderId: createdOrder.id,
+          data: item,
+          storeId,
+          orderStatus: createdOrder.status,
+          client: tx,
+        });
+      }
+
+      return createdOrder;
+    });
+
+    const full = await getOrderWithItems(order.id, storeId);
+    if (!full) {
+      res
+        .status(500)
+        .json({ error: "Pedido criado, mas não foi possível carregá-lo." });
+      return;
+    }
+    res.status(201).json(GetOrderResponse.parse(full));
   } catch (error) {
     req.log.error({ error }, "failed to create order");
-    res.status(500).json(createOrderErrorResponse(error));
+    const status = error instanceof OrderFlowError ? error.status : 500;
+    res
+      .status(status)
+      .json(
+        error instanceof OrderFlowError
+          ? { error: error.message }
+          : createOrderErrorResponse(error),
+      );
     return;
   }
-
-  if (parsed.data.tableId) {
-    await db
-      .update(tablesTable)
-      .set({ status: "occupied", currentOrderId: order.id })
-      .where(eq(tablesTable.id, parsed.data.tableId));
-  }
-
-  const full = await getOrderWithItems(order.id, storeId);
-  res.status(201).json(GetOrderResponse.parse(full));
 });
 
 router.get("/orders/:id", async (req, res): Promise<void> => {
@@ -833,294 +1116,231 @@ router.post("/orders/:id/items", async (req, res): Promise<void> => {
     return;
   }
 
-  if (["ready", "closed", "cancelled"].includes(order.status)) {
-    res.status(409).json({
-      error:
-        "Não é possível adicionar itens a um pedido pronto, finalizado ou cancelado.",
-    });
-    return;
-  }
-
-  const [product] = await db
-    .select()
-    .from(productsTable)
-    .where(
-      and(
-        eq(productsTable.id, parsed.data.productId),
-        eq(productsTable.storeId, scope.actor.storeId),
-      ),
-    );
-  if (!product) {
-    res.status(404).json({ error: "Product not found" });
-    return;
-  }
-
-  const activeVariants = await db
-    .select({
-      id: productVariantsTable.id,
-    })
-    .from(productVariantsTable)
-    .where(
-      and(
-        eq(productVariantsTable.productId, parsed.data.productId),
-        eq(productVariantsTable.storeId, scope.actor.storeId),
-        eq(productVariantsTable.active, true),
-        eq(productVariantsTable.available, true),
-      ),
-    );
-
-  let unitPrice = parseFloat(String(product.price));
-  let variantName: string | null = null;
-  let variantPrice: number | null = null;
-  let variantId: number | null = null;
-
-  if (parsed.data.variantId != null) {
-    const [variant] = await db
-      .select()
-      .from(productVariantsTable)
-      .where(
-        and(
-          eq(productVariantsTable.id, parsed.data.variantId),
-          eq(productVariantsTable.productId, parsed.data.productId),
-          eq(productVariantsTable.storeId, scope.actor.storeId),
-          eq(productVariantsTable.active, true),
-          eq(productVariantsTable.available, true),
-        ),
-      );
-    if (!variant) {
-      res.status(400).json({ error: "Variação inválida para este produto." });
-      return;
-    }
-    unitPrice = parseFloat(String(variant.price));
-    variantId = variant.id;
-    variantName = variant.name;
-    variantPrice = unitPrice;
-  } else if (activeVariants.length > 0) {
-    res.status(400).json({ error: "Escolha uma variação para este produto." });
-    return;
-  }
-
-  const requestedAddons = (parsed.data.addons ?? []).map((addon) => ({
-    addonOptionId: addon.addonOptionId,
-    quantity: addon.quantity ?? 1,
-  }));
-
-  if (requestedAddons.some((addon) => addon.quantity < 1)) {
-    res.status(400).json({ error: "Quantidade de adicional deve ser >= 1." });
-    return;
-  }
-
-  const linkedGroups = await db
-    .select({
-      group: addonGroupsTable,
-    })
-    .from(productAddonGroupsTable)
-    .innerJoin(
-      addonGroupsTable,
-      eq(productAddonGroupsTable.addonGroupId, addonGroupsTable.id),
-    )
-    .where(
-      and(
-        eq(productAddonGroupsTable.productId, parsed.data.productId),
-        eq(productAddonGroupsTable.storeId, scope.actor.storeId),
-        eq(addonGroupsTable.storeId, scope.actor.storeId),
-        eq(addonGroupsTable.active, true),
-      ),
-    );
-  const allowedGroupIds = new Set(linkedGroups.map((row) => row.group.id));
-  const addonOptionIds = requestedAddons.map((addon) => addon.addonOptionId);
-  const addonRows = addonOptionIds.length
-    ? await db
-        .select({ option: addonOptionsTable, group: addonGroupsTable })
-        .from(addonOptionsTable)
-        .innerJoin(
-          addonGroupsTable,
-          eq(addonOptionsTable.groupId, addonGroupsTable.id),
-        )
-        .where(
-          and(
-            eq(addonOptionsTable.storeId, scope.actor.storeId),
-            inArray(addonOptionsTable.id, addonOptionIds),
-            eq(addonOptionsTable.available, true),
-            eq(addonGroupsTable.active, true),
-          ),
-        )
-    : [];
-
-  if (addonRows.length !== new Set(addonOptionIds).size) {
-    res.status(400).json({ error: "Adicional inválido ou indisponível." });
-    return;
-  }
-
-  const addonById = new Map(addonRows.map((row) => [row.option.id, row]));
-  const selectedByGroup = new Map<number, number>();
-  let addonsTotal = 0;
-  const addonSnapshots = [] as Array<{
-    addonOptionId: number;
-    addonGroupName: string;
-    addonName: string;
-    addonPrice: number;
-    quantity: number;
-    totalPrice: number;
-  }>;
-  for (const requested of requestedAddons) {
-    const row = addonById.get(requested.addonOptionId);
-    if (!row || !allowedGroupIds.has(row.group.id)) {
-      res
-        .status(400)
-        .json({ error: "Adicional não pertence a este produto/loja." });
-      return;
-    }
-    selectedByGroup.set(
-      row.group.id,
-      (selectedByGroup.get(row.group.id) ?? 0) + requested.quantity,
-    );
-    const addonPrice = parseFloat(String(row.option.price));
-    const total = addonPrice * requested.quantity * parsed.data.quantity;
-    addonsTotal += addonPrice * requested.quantity;
-    addonSnapshots.push({
-      addonOptionId: row.option.id,
-      addonGroupName: row.group.name,
-      addonName: row.option.name,
-      addonPrice,
-      quantity: requested.quantity,
-      totalPrice: total,
-    });
-  }
-
-  for (const { group } of linkedGroups) {
-    const selectedCount = selectedByGroup.get(group.id) ?? 0;
-    const minimum = group.required
-      ? Math.max(1, group.minSelected)
-      : group.minSelected;
-    if (selectedCount < minimum) {
-      res.status(400).json({
-        error: `Selecione pelo menos ${minimum} opção(ões) em ${group.name}.`,
-      });
-      return;
-    }
-    if (group.maxSelected != null && selectedCount > group.maxSelected) {
-      res.status(400).json({
-        error: `Selecione no máximo ${group.maxSelected} opção(ões) em ${group.name}.`,
-      });
-      return;
-    }
-  }
-
   try {
-    const totalUnitPrice = unitPrice + addonsTotal;
-    const totalPrice = totalUnitPrice * parsed.data.quantity;
-    const itemWithName = await db.transaction(async (tx) => {
-      const [item] = await tx
-        .insert(orderItemsTable)
-        .values({
-          orderId: params.data.id,
-          productId: parsed.data.productId,
-          variantId,
-          variantName,
-          variantPrice: variantPrice != null ? String(variantPrice) : null,
-          quantity: parsed.data.quantity,
-          unitPrice: String(totalUnitPrice),
-          totalPrice: String(totalPrice),
-          notes: parsed.data.notes,
-        })
-        .returning();
-
-      if (addonSnapshots.length) {
-        await tx.insert(orderItemAddonsTable).values(
-          addonSnapshots.map((addon) => ({
-            orderItemId: item.id,
-            addonOptionId: addon.addonOptionId,
-            addonGroupName: addon.addonGroupName,
-            addonName: addon.addonName,
-            addonPrice: String(addon.addonPrice),
-            quantity: addon.quantity,
-            totalPrice: String(addon.totalPrice),
-          })),
-        );
-      }
-
-      await recalcOrderTotal(params.data.id, tx);
-
-      if (order.status === "preparing") {
-        const [pendingTicket] = await tx
-          .select({ id: kitchenTicketsTable.id })
-          .from(kitchenTicketsTable)
-          .where(
-            and(
-              eq(kitchenTicketsTable.orderId, params.data.id),
-              eq(kitchenTicketsTable.status, "pending"),
-            ),
-          )
-          .limit(1);
-        if (!pendingTicket) {
-          await tx
-            .insert(kitchenTicketsTable)
-            .values({ orderId: params.data.id, status: "pending" });
-        }
-      }
-
-      return {
-        ...item,
-        productName: product.name,
-        variantPrice,
-        unitPrice: totalUnitPrice,
-        totalPrice,
-        addons: addonSnapshots,
-      };
-    });
+    const itemWithName = await db.transaction((tx) =>
+      addSimpleOrderItem({
+        orderId: params.data.id,
+        data: parsed.data,
+        storeId: scope.actor.storeId,
+        orderStatus: order.status,
+        client: tx,
+      }),
+    );
 
     res.status(201).json(itemWithName);
   } catch (error) {
-    res.status(400).json({
+    req.log.error({ error }, "failed to add order item");
+    const status = error instanceof OrderFlowError ? error.status : 400;
+    res.status(status).json({
       error:
         error instanceof Error
           ? error.message
-          : "Erro ao adicionar adicionais.",
+          : "Erro ao adicionar item ao pedido.",
     });
   }
 });
-
 
 router.post("/orders/:id/pizza-items", async (req, res): Promise<void> => {
   const orderId = Number(req.params.id);
   const baseProductId = Number(req.body.baseProductId);
   const pizzaSizeId = Number(req.body.pizzaSizeId);
-  const flavorProductIds: number[] = Array.isArray(req.body.flavorProductIds) ? req.body.flavorProductIds.map(Number).filter((id: number) => Number.isInteger(id) && id > 0) : [];
+  const flavorProductIds: number[] = Array.isArray(req.body.flavorProductIds)
+    ? req.body.flavorProductIds
+        .map(Number)
+        .filter((id: number) => Number.isInteger(id) && id > 0)
+    : [];
   const quantity = Number(req.body.quantity ?? 1);
-  if (!orderId || !baseProductId || !pizzaSizeId || !Number.isInteger(quantity) || quantity < 1 || flavorProductIds.length < 1) {
-    res.status(400).json({ error: "Dados da pizza inválidos." }); return;
+  if (
+    !orderId ||
+    !baseProductId ||
+    !pizzaSizeId ||
+    !Number.isInteger(quantity) ||
+    quantity < 1 ||
+    flavorProductIds.length < 1
+  ) {
+    res.status(400).json({ error: "Dados da pizza inválidos." });
+    return;
   }
-  const scope = await requireOpenShift(req, res); if (!scope) return; const storeId = scope.actor.storeId;
-  const [order] = await db.select({ status: ordersTable.status }).from(ordersTable).where(and(eq(ordersTable.id, orderId), eq(ordersTable.storeId, storeId))).limit(1);
-  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
-  if (["ready", "closed", "cancelled"].includes(order.status)) { res.status(409).json({ error: "Não é possível adicionar itens a um pedido pronto, finalizado ou cancelado." }); return; }
-  const [baseProduct] = await db.select().from(productsTable).where(and(eq(productsTable.id, baseProductId), eq(productsTable.storeId, storeId), eq(productsTable.active, true), eq(productsTable.available, true))).limit(1);
-  if (!baseProduct) { res.status(400).json({ error: "Produto base inválido para esta loja." }); return; }
-  const [size] = await db.select().from(pizzaSizesTable).where(and(eq(pizzaSizesTable.id, pizzaSizeId), eq(pizzaSizesTable.storeId, storeId), eq(pizzaSizesTable.active, true))).limit(1);
-  if (!size) { res.status(400).json({ error: "Tamanho inválido para esta loja." }); return; }
-  if (flavorProductIds.length > size.maxFlavors) { res.status(400).json({ error: `Selecione no máximo ${size.maxFlavors} sabor(es).` }); return; }
+  const scope = await requireOpenShift(req, res);
+  if (!scope) return;
+  const storeId = scope.actor.storeId;
+  const [order] = await db
+    .select({ status: ordersTable.status })
+    .from(ordersTable)
+    .where(and(eq(ordersTable.id, orderId), eq(ordersTable.storeId, storeId)))
+    .limit(1);
+  if (!order) {
+    res.status(404).json({ error: "Order not found" });
+    return;
+  }
+  if (["ready", "closed", "cancelled"].includes(order.status)) {
+    res
+      .status(409)
+      .json({
+        error:
+          "Não é possível adicionar itens a um pedido pronto, finalizado ou cancelado.",
+      });
+    return;
+  }
+  const [baseProduct] = await db
+    .select()
+    .from(productsTable)
+    .where(
+      and(
+        eq(productsTable.id, baseProductId),
+        eq(productsTable.storeId, storeId),
+        eq(productsTable.active, true),
+        eq(productsTable.available, true),
+      ),
+    )
+    .limit(1);
+  if (!baseProduct) {
+    res.status(400).json({ error: "Produto base inválido para esta loja." });
+    return;
+  }
+  const [size] = await db
+    .select()
+    .from(pizzaSizesTable)
+    .where(
+      and(
+        eq(pizzaSizesTable.id, pizzaSizeId),
+        eq(pizzaSizesTable.storeId, storeId),
+        eq(pizzaSizesTable.active, true),
+      ),
+    )
+    .limit(1);
+  if (!size) {
+    res.status(400).json({ error: "Tamanho inválido para esta loja." });
+    return;
+  }
+  if (flavorProductIds.length > size.maxFlavors) {
+    res
+      .status(400)
+      .json({ error: `Selecione no máximo ${size.maxFlavors} sabor(es).` });
+    return;
+  }
   const uniqueFlavorIds = [...new Set(flavorProductIds)];
-  const rows = await db.select({ flavor: pizzaFlavorsTable, product: productsTable, tier: pizzaPriceTiersTable, price: pizzaSizeTierPricesTable.price })
+  const rows = await db
+    .select({
+      flavor: pizzaFlavorsTable,
+      product: productsTable,
+      tier: pizzaPriceTiersTable,
+      price: pizzaSizeTierPricesTable.price,
+    })
     .from(pizzaFlavorsTable)
     .innerJoin(productsTable, eq(pizzaFlavorsTable.productId, productsTable.id))
-    .innerJoin(pizzaPriceTiersTable, eq(pizzaFlavorsTable.tierId, pizzaPriceTiersTable.id))
-    .leftJoin(pizzaSizeTierPricesTable, and(eq(pizzaSizeTierPricesTable.storeId, storeId), eq(pizzaSizeTierPricesTable.sizeId, pizzaSizeId), eq(pizzaSizeTierPricesTable.tierId, pizzaFlavorsTable.tierId)))
-    .where(and(eq(pizzaFlavorsTable.storeId, storeId), inArray(pizzaFlavorsTable.productId, uniqueFlavorIds), eq(pizzaFlavorsTable.active, true), eq(productsTable.storeId, storeId), eq(pizzaPriceTiersTable.storeId, storeId)));
-  if (rows.length !== uniqueFlavorIds.length) { res.status(400).json({ error: "Sabor sem classificação ativa ou de outra loja." }); return; }
-  if (rows.some((r) => r.price == null)) { res.status(400).json({ error: "Classificação sem preço para este tamanho." }); return; }
-  const priced = rows.map((r) => ({ ...r, numericPrice: parseFloat(String(r.price)) })).sort((a,b)=>b.numericPrice-a.numericPrice);
-  const highest = priced[0]; const unitPrice = highest.numericPrice; const totalPrice = unitPrice * quantity;
+    .innerJoin(
+      pizzaPriceTiersTable,
+      eq(pizzaFlavorsTable.tierId, pizzaPriceTiersTable.id),
+    )
+    .leftJoin(
+      pizzaSizeTierPricesTable,
+      and(
+        eq(pizzaSizeTierPricesTable.storeId, storeId),
+        eq(pizzaSizeTierPricesTable.sizeId, pizzaSizeId),
+        eq(pizzaSizeTierPricesTable.tierId, pizzaFlavorsTable.tierId),
+      ),
+    )
+    .where(
+      and(
+        eq(pizzaFlavorsTable.storeId, storeId),
+        inArray(pizzaFlavorsTable.productId, uniqueFlavorIds),
+        eq(pizzaFlavorsTable.active, true),
+        eq(productsTable.storeId, storeId),
+        eq(pizzaPriceTiersTable.storeId, storeId),
+      ),
+    );
+  if (rows.length !== uniqueFlavorIds.length) {
+    res
+      .status(400)
+      .json({ error: "Sabor sem classificação ativa ou de outra loja." });
+    return;
+  }
+  if (rows.some((r) => r.price == null)) {
+    res
+      .status(400)
+      .json({ error: "Classificação sem preço para este tamanho." });
+    return;
+  }
+  const priced = rows
+    .map((r) => ({ ...r, numericPrice: parseFloat(String(r.price)) }))
+    .sort((a, b) => b.numericPrice - a.numericPrice);
+  const highest = priced[0];
+  const unitPrice = highest.numericPrice;
+  const totalPrice = unitPrice * quantity;
   const displayName = `Pizza ${size.name} — ${flavorProductIds.length} sabor${flavorProductIds.length > 1 ? "es" : ""}`;
   const fractionDenominator = flavorProductIds.length;
   const created = await db.transaction(async (tx) => {
-    const [item] = await tx.insert(orderItemsTable).values({ orderId, productId: baseProductId, quantity, unitPrice: String(unitPrice), totalPrice: String(totalPrice), notes: req.body.notes ?? null, itemType: "pizza_multi_flavor", displayName, pizzaSizeId, pizzaSizeName: size.name, pricingMode: "highest_tier", basePizzaTierId: highest.tier.id, basePizzaTierName: highest.tier.name }).returning();
-    await tx.insert(orderItemFlavorsTable).values(flavorProductIds.map((pid:number, index:number) => { const row = rows.find((r) => r.product.id === pid)!; return { orderItemId: item.id, productId: pid, productNameSnapshot: row.product.name, tierId: row.tier.id, tierNameSnapshot: row.tier.name, fractionNumerator: 1, fractionDenominator, sortOrder: index }; }));
+    const [item] = await tx
+      .insert(orderItemsTable)
+      .values({
+        orderId,
+        productId: baseProductId,
+        quantity,
+        unitPrice: String(unitPrice),
+        totalPrice: String(totalPrice),
+        notes: req.body.notes ?? null,
+        itemType: "pizza_multi_flavor",
+        displayName,
+        pizzaSizeId,
+        pizzaSizeName: size.name,
+        pricingMode: "highest_tier",
+        basePizzaTierId: highest.tier.id,
+        basePizzaTierName: highest.tier.name,
+      })
+      .returning();
+    await tx.insert(orderItemFlavorsTable).values(
+      flavorProductIds.map((pid: number, index: number) => {
+        const row = rows.find((r) => r.product.id === pid)!;
+        return {
+          orderItemId: item.id,
+          productId: pid,
+          productNameSnapshot: row.product.name,
+          tierId: row.tier.id,
+          tierNameSnapshot: row.tier.name,
+          fractionNumerator: 1,
+          fractionDenominator,
+          sortOrder: index,
+        };
+      }),
+    );
     await recalcOrderTotal(orderId, tx);
-    if (order.status === "preparing") { const [pendingTicket] = await tx.select({id:kitchenTicketsTable.id}).from(kitchenTicketsTable).where(and(eq(kitchenTicketsTable.orderId, orderId), eq(kitchenTicketsTable.status, "pending"))).limit(1); if(!pendingTicket) await tx.insert(kitchenTicketsTable).values({ orderId, status: "pending" }); }
+    if (order.status === "preparing") {
+      const [pendingTicket] = await tx
+        .select({ id: kitchenTicketsTable.id })
+        .from(kitchenTicketsTable)
+        .where(
+          and(
+            eq(kitchenTicketsTable.orderId, orderId),
+            eq(kitchenTicketsTable.status, "pending"),
+          ),
+        )
+        .limit(1);
+      if (!pendingTicket)
+        await tx
+          .insert(kitchenTicketsTable)
+          .values({ orderId, status: "pending" });
+    }
     return item;
   });
-  res.status(201).json({ ...created, productName: baseProduct.name, unitPrice, totalPrice, addons: [], flavors: flavorProductIds.map((pid:number) => { const row = rows.find((r) => r.product.id === pid)!; return { productId: pid, productName: row.product.name, tierId: row.tier.id, tierName: row.tier.name, fractionNumerator: 1, fractionDenominator }; }) });
+  res.status(201).json({
+    ...created,
+    productName: baseProduct.name,
+    unitPrice,
+    totalPrice,
+    addons: [],
+    flavors: flavorProductIds.map((pid: number) => {
+      const row = rows.find((r) => r.product.id === pid)!;
+      return {
+        productId: pid,
+        productName: row.product.name,
+        tierId: row.tier.id,
+        tierName: row.tier.name,
+        fractionNumerator: 1,
+        fractionDenominator,
+      };
+    }),
+  });
 });
 
 router.delete("/orders/:id/items/:itemId", async (req, res): Promise<void> => {
@@ -1149,30 +1369,24 @@ router.delete("/orders/:id/items/:itemId", async (req, res): Promise<void> => {
   }
   const financial = await getOrderFinancialState(params.data.id);
   if (financial.paidAmount > 0) {
-    res
-      .status(409)
-      .json({
-        error:
-          "Pedido já possui pagamento. Remoção exigirá ajuste/estorno manual.",
-      });
+    res.status(409).json({
+      error:
+        "Pedido já possui pagamento. Remoção exigirá ajuste/estorno manual.",
+    });
     return;
   }
   if (order.status === "preparing") {
-    res
-      .status(409)
-      .json({
-        error:
-          "Pedido já foi enviado para cozinha. Para remover item, cancele o pedido ou use ajuste manual.",
-      });
+    res.status(409).json({
+      error:
+        "Pedido já foi enviado para cozinha. Para remover item, cancele o pedido ou use ajuste manual.",
+    });
     return;
   }
   if (order.status !== "open") {
-    res
-      .status(409)
-      .json({
-        error:
-          "Pedido pronto, finalizado ou cancelado não permite remoção de item.",
-      });
+    res.status(409).json({
+      error:
+        "Pedido pronto, finalizado ou cancelado não permite remoção de item.",
+    });
     return;
   }
 
@@ -1245,11 +1459,9 @@ router.post("/orders/:id/send-to-kitchen", async (req, res): Promise<void> => {
     return;
   }
   if (current.status !== "open") {
-    res
-      .status(409)
-      .json({
-        error: "Somente pedidos abertos podem ser enviados para a cozinha.",
-      });
+    res.status(409).json({
+      error: "Somente pedidos abertos podem ser enviados para a cozinha.",
+    });
     return;
   }
 
@@ -1258,11 +1470,9 @@ router.post("/orders/:id/send-to-kitchen", async (req, res): Promise<void> => {
     .from(orderItemsTable)
     .where(eq(orderItemsTable.orderId, params.data.id));
   if (Number(count) < 1) {
-    res
-      .status(400)
-      .json({
-        error: "Adicione pelo menos um item antes de enviar para a cozinha.",
-      });
+    res.status(400).json({
+      error: "Adicione pelo menos um item antes de enviar para a cozinha.",
+    });
     return;
   }
 
@@ -1474,11 +1684,9 @@ router.post(
     const id = Number(req.params.id);
     const actor = await getCurrentActor(req);
     if (actor.role !== "max_control") {
-      res
-        .status(403)
-        .json({
-          error: "Apenas max_control pode reabrir pedidos legados pagos.",
-        });
+      res.status(403).json({
+        error: "Apenas max_control pode reabrir pedidos legados pagos.",
+      });
       return;
     }
     const [order] = await db
@@ -1595,11 +1803,9 @@ router.post("/orders/:id/finalize", async (req, res): Promise<void> => {
 
   const financial = await getOrderFinancialState(id);
   if (!["paid", "overpaid"].includes(financial.paymentState)) {
-    res
-      .status(400)
-      .json({
-        error: `Existe valor pendente de R$ ${financial.outstandingAmount.toFixed(2)}. Cobre a diferença antes de finalizar.`,
-      });
+    res.status(400).json({
+      error: `Existe valor pendente de R$ ${financial.outstandingAmount.toFixed(2)}. Cobre a diferença antes de finalizar.`,
+    });
     return;
   }
 
@@ -1610,12 +1816,10 @@ router.post("/orders/:id/finalize", async (req, res): Promise<void> => {
         String(order.deliveryStatus),
       ));
   if (!canCloseOperationally) {
-    res
-      .status(400)
-      .json({
-        error:
-          "Pedido ainda não está pronto. Finalize apenas depois da cozinha marcar como pronto.",
-      });
+    res.status(400).json({
+      error:
+        "Pedido ainda não está pronto. Finalize apenas depois da cozinha marcar como pronto.",
+    });
     return;
   }
 
