@@ -30,12 +30,12 @@ import PlansPage from "@/pages/plans";
 import ActivatePage from "@/pages/activate";
 import OnboardingPage from "@/pages/onboarding";
 import AdminMaxLoginPage from "@/pages/admin-max-login";
+import { AdminMaxStoresPage } from "@/pages/admin-max-stores";
 import { AdminMaxUsersPage } from "@/pages/admin-max-users";
 import {
   AdminMaxBillingPage,
   AdminMaxDashboardPage,
   AdminMaxLogsPage,
-  AdminMaxStoresPage,
   AdminMaxSupportPage,
   AdminMaxSystemsPage,
 } from "@/pages/admin-max";
