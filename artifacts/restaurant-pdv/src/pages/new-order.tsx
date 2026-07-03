@@ -979,8 +979,8 @@ export default function NewOrder() {
         (addon) => addon.groupId === group.id,
       ).length;
       const minimum = group.required
-        ? Math.max(1, group.minSelected)
-        : group.minSelected;
+        ? Math.max(1, group.minSelected ?? 0)
+        : 0;
       if (selectedCount < minimum)
         return `Selecione pelo menos ${minimum} em ${group.name}.`;
       if (group.maxSelected != null && selectedCount > group.maxSelected)
@@ -1912,8 +1912,8 @@ export default function NewOrder() {
                       <p className="text-xs text-muted-foreground">
                         {group.required ? "Obrigatório" : "Opcional"} · mín.{" "}
                         {group.required
-                          ? Math.max(1, group.minSelected)
-                          : group.minSelected}
+                          ? Math.max(1, group.minSelected ?? 0)
+                          : 0}
                         {group.maxSelected != null
                           ? ` · máx. ${group.maxSelected}`
                           : ""}
