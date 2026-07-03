@@ -122,6 +122,7 @@ type MultisaborPrice = { id: number; sizeId: number; classificationId: number; p
 type MultisaborFlavor = { id: number; productId: number; productName: string; classificationId: number; active: boolean; available: boolean };
 type MultisaborAddonLink = { id: number; addonGroupId: number; addonGroupName: string; sortOrder: number };
 type MultisaborConfig = { sizes: MultisaborSize[]; classifications: MultisaborClassification[]; prices: MultisaborPrice[]; flavors: MultisaborFlavor[]; addonGroups: MultisaborAddonLink[] };
+type MenuResetPreview = { categories: number; products: number; variants: number; addonGroups: number; addonOptions: number; productAddonLinks: number; legacyPizzaConfigs: number; multiflavorGroups: number; multiflavorSizes: number; multiflavorClassifications: number; multiflavorPrices: number; multiflavorFlavors: number; multiflavorAddonLinks: number; orderItemsToDetach: number; orderItemAddonsToDetach: number };
 
 type ApiErrorLike = {
   data?: { error?: unknown; message?: unknown } | null;
@@ -157,6 +158,10 @@ export default function Menu() {
   const [productDialog, setProductDialog] = useState(false);
   const [categoryDialog, setCategoryDialog] = useState(false);
   const [importDialog, setImportDialog] = useState(false);
+  const [resetDialog, setResetDialog] = useState(false);
+  const [resetPreview, setResetPreview] = useState<MenuResetPreview | null>(null);
+  const [resetConfirmation, setResetConfirmation] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyProduct);
@@ -265,6 +270,54 @@ export default function Menu() {
     query: { enabled: editingId !== null, queryKey: getListProductAddonGroupsQueryKey(editingId ?? 0) },
   });
 
+
+
+  const openResetDialog = async () => {
+    hidePizzaMultiflavorConfig();
+    setResetDialog(true);
+    setResetPreview(null);
+    setResetConfirmation("");
+    setResetLoading(true);
+    try {
+      const res = await fetch("/api/menu/reset-preview");
+      if (!res.ok) throw new Error(await getErrorMessage(res, "Não foi possível carregar a prévia da limpeza."));
+      setResetPreview(await res.json() as MenuResetPreview);
+    } catch (err) {
+      toast({ title: err instanceof Error ? err.message : "Não foi possível carregar a prévia da limpeza.", variant: "destructive" });
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const confirmMenuReset = async () => {
+    if (resetConfirmation !== "LIMPAR CARDAPIO") return;
+    setResetLoading(true);
+    try {
+      const res = await fetch("/api/menu/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmation: resetConfirmation }),
+      });
+      if (!res.ok) throw new Error(await getErrorMessage(res, "Não foi possível limpar o cardápio da loja."));
+      queryClient.invalidateQueries({ queryKey: getListProductsQueryKey(params) });
+      queryClient.invalidateQueries({ queryKey: getListCategoriesQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getListAddonGroupsQueryKey() });
+      if (editingId !== null) {
+        queryClient.invalidateQueries({ queryKey: getListProductVariantsQueryKey(editingId) });
+        queryClient.invalidateQueries({ queryKey: getListProductAddonGroupsQueryKey(editingId) });
+      }
+      setMultisaborGroups([]);
+      setMultisaborConfig({ sizes: [], classifications: [], prices: [], flavors: [], addonGroups: [] });
+      setSelectedMultisaborGroupId(null);
+      if (showPizzaMultiflavorConfig) void loadMultisaborGroups();
+      setResetDialog(false);
+      toast({ title: "Cardápio da loja limpo com sucesso." });
+    } catch (err) {
+      toast({ title: err instanceof Error ? err.message : "Não foi possível limpar o cardápio da loja.", variant: "destructive" });
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const invalidateProducts = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/menu/products"] });
@@ -763,7 +816,7 @@ export default function Menu() {
             <h1 className="text-3xl font-bold tracking-tight">Cardápio</h1>
             <p className="text-muted-foreground mt-1">Produtos e categorias</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -778,6 +831,9 @@ export default function Menu() {
             </Button>
             <Button variant="outline" onClick={() => { hidePizzaMultiflavorConfig(); setImportDialog(true); }} data-testid="button-import-menu">
               <Upload className="w-4 h-4 mr-2" /> Importar planilha
+            </Button>
+            <Button variant="outline" className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={openResetDialog} data-testid="button-reset-menu">
+              Limpar cardápio da loja
             </Button>
             <Button variant="outline" onClick={() => { hidePizzaMultiflavorConfig(); setVariantTemplatesDialog(true); }}>
               Variações gerais
@@ -1001,6 +1057,59 @@ export default function Menu() {
       </div>
 
       <ImportMenuDialog open={importDialog} onOpenChange={setImportDialog} />
+
+      <Dialog open={resetDialog} onOpenChange={(open) => { setResetDialog(open); if (!open) setResetConfirmation(""); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Limpar cardápio da loja</DialogTitle>
+            <DialogDescription>
+              Isso remove produtos, categorias, adicionais e configurações de Multisabor da loja atual. Pedidos, clientes, caixa e fiscal não serão apagados.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+              Esta ação é irreversível e afeta somente os dados de cardápio da loja atual.
+            </div>
+            {resetLoading && !resetPreview ? <p className="text-sm text-muted-foreground">Carregando prévia...</p> : null}
+            {resetPreview ? (
+              <div className="grid gap-2 sm:grid-cols-2 text-sm">
+                {[
+                  ["Categorias", resetPreview.categories],
+                  ["Produtos", resetPreview.products],
+                  ["Variações", resetPreview.variants],
+                  ["Grupos de adicionais", resetPreview.addonGroups],
+                  ["Opções de adicionais", resetPreview.addonOptions],
+                  ["Vínculos produto-adicional", resetPreview.productAddonLinks],
+                  ["Configurações pizza antiga", resetPreview.legacyPizzaConfigs],
+                  ["Grupos Multisabor", resetPreview.multiflavorGroups],
+                  ["Tamanhos Multisabor", resetPreview.multiflavorSizes],
+                  ["Classificações Multisabor", resetPreview.multiflavorClassifications],
+                  ["Preços Multisabor", resetPreview.multiflavorPrices],
+                  ["Sabores Multisabor", resetPreview.multiflavorFlavors],
+                  ["Vínculos adicionais Multisabor", resetPreview.multiflavorAddonLinks],
+                  ["Itens de pedidos preservados", resetPreview.orderItemsToDetach],
+                  ["Adicionais de pedidos preservados", resetPreview.orderItemAddonsToDetach],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex items-center justify-between rounded border px-3 py-2">
+                    <span>{label}</span><strong>{value}</strong>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <div className="space-y-2">
+              <Label>Digite LIMPAR CARDAPIO para confirmar</Label>
+              <Input value={resetConfirmation} onChange={(e) => setResetConfirmation(e.target.value)} placeholder="LIMPAR CARDAPIO" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetDialog(false)}>Cancelar</Button>
+            <Button variant="destructive" disabled={resetLoading || resetConfirmation !== "LIMPAR CARDAPIO"} onClick={confirmMenuReset}>
+              Confirmar limpeza do cardápio
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       {/* Product Dialog */}
       <Dialog open={productDialog} onOpenChange={(o) => { setProductDialog(o); if (!o) { setEditingId(null); setForm(emptyProduct); } }}>
