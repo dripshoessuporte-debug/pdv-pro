@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, ilike, and, ne, inArray, asc } from "drizzle-orm";
+import { eq, ilike, and, ne, inArray, asc, sql } from "drizzle-orm";
 import { getCurrentActor } from "../middleware/rbac";
 import {
   db,
@@ -82,6 +82,175 @@ type ParsedImportRow = {
     maxFlavors: number;
   }[];
 };
+
+
+const MENU_RESET_CONFIRMATION = "LIMPAR CARDAPIO";
+
+type MenuResetPreview = {
+  categories: number;
+  products: number;
+  variants: number;
+  addonGroups: number;
+  addonOptions: number;
+  productAddonLinks: number;
+  legacyPizzaConfigs: number;
+  multiflavorGroups: number;
+  multiflavorSizes: number;
+  multiflavorClassifications: number;
+  multiflavorPrices: number;
+  multiflavorFlavors: number;
+  multiflavorAddonLinks: number;
+  orderItemsToDetach: number;
+  orderItemAddonsToDetach: number;
+};
+
+async function getMenuResetPreview(storeId: number): Promise<MenuResetPreview> {
+  const result = await db.execute<MenuResetPreview>(sql`
+    select
+      (select count(*)::int from categories where store_id = ${storeId}) as "categories",
+      (select count(*)::int from products where store_id = ${storeId}) as "products",
+      (select count(*)::int from product_variants where store_id = ${storeId}) as "variants",
+      (select count(*)::int from addon_groups where store_id = ${storeId}) as "addonGroups",
+      (select count(*)::int from addon_options where store_id = ${storeId}) as "addonOptions",
+      (select count(*)::int from product_addon_groups where store_id = ${storeId}) as "productAddonLinks",
+      (
+        (select count(*)::int from pizza_flavors where store_id = ${storeId}) +
+        (select count(*)::int from pizza_size_tier_prices where store_id = ${storeId}) +
+        (select count(*)::int from pizza_price_tiers where store_id = ${storeId}) +
+        (select count(*)::int from pizza_sizes where store_id = ${storeId})
+      ) as "legacyPizzaConfigs",
+      (select count(*)::int from multiflavor_groups where store_id = ${storeId}) as "multiflavorGroups",
+      (select count(*)::int from multiflavor_sizes where store_id = ${storeId}) as "multiflavorSizes",
+      (select count(*)::int from multiflavor_classifications where store_id = ${storeId}) as "multiflavorClassifications",
+      (select count(*)::int from multiflavor_size_classification_prices where store_id = ${storeId}) as "multiflavorPrices",
+      (select count(*)::int from multiflavor_flavors where store_id = ${storeId}) as "multiflavorFlavors",
+      (select count(*)::int from multiflavor_group_addon_groups where store_id = ${storeId}) as "multiflavorAddonLinks",
+      (
+        select count(*)::int
+        from order_items oi
+        inner join orders o on o.id = oi.order_id and o.store_id = ${storeId}
+        inner join products p on p.id = oi.product_id and p.store_id = ${storeId}
+      ) as "orderItemsToDetach",
+      (
+        select count(*)::int
+        from order_item_addons oia
+        inner join addon_options ao on ao.id = oia.addon_option_id and ao.store_id = ${storeId}
+        inner join order_items oi on oi.id = oia.order_item_id
+        inner join orders o on o.id = oi.order_id and o.store_id = ${storeId}
+      ) as "orderItemAddonsToDetach"
+  `);
+  return result.rows[0] ?? {
+    categories: 0,
+    products: 0,
+    variants: 0,
+    addonGroups: 0,
+    addonOptions: 0,
+    productAddonLinks: 0,
+    legacyPizzaConfigs: 0,
+    multiflavorGroups: 0,
+    multiflavorSizes: 0,
+    multiflavorClassifications: 0,
+    multiflavorPrices: 0,
+    multiflavorFlavors: 0,
+    multiflavorAddonLinks: 0,
+    orderItemsToDetach: 0,
+    orderItemAddonsToDetach: 0,
+  };
+}
+
+function requireMaxControl(actor: { role: string }, res: { status: (code: number) => { json: (body: unknown) => unknown } }): boolean {
+  if (actor.role === "max_control") return true;
+  res.status(403).json({ error: "Apenas max_control pode limpar o cardápio da loja." });
+  return false;
+}
+
+
+router.get("/menu/reset-preview", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  if (!requireMaxControl(actor, res)) return;
+  res.json(await getMenuResetPreview(actor.storeId));
+});
+
+router.post("/menu/reset", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  if (!requireMaxControl(actor, res)) return;
+
+  if (req.body?.confirmation !== MENU_RESET_CONFIRMATION) {
+    res.status(400).json({ error: `Digite exatamente ${MENU_RESET_CONFIRMATION} para confirmar.` });
+    return;
+  }
+
+  const preview = await db.transaction(async (tx) => {
+    const before = await getMenuResetPreview(actor.storeId);
+
+    await tx.execute(sql`
+      update order_items oi
+      set external_product_name = coalesce(nullif(oi.external_product_name, ''), nullif(oi.display_name, ''), p.name)
+      from orders o, products p
+      where oi.order_id = o.id
+        and oi.product_id = p.id
+        and o.store_id = ${actor.storeId}
+        and p.store_id = ${actor.storeId}
+        and (oi.external_product_name is null or oi.external_product_name = '')
+    `);
+    await tx.execute(sql`
+      update order_items oi
+      set product_id = null,
+          variant_id = null,
+          pizza_size_id = null,
+          base_pizza_tier_id = null
+      from orders o, products p
+      where oi.order_id = o.id
+        and oi.product_id = p.id
+        and o.store_id = ${actor.storeId}
+        and p.store_id = ${actor.storeId}
+    `);
+    await tx.execute(sql`
+      update order_item_addons oia
+      set addon_option_id = null
+      from addon_options ao, order_items oi, orders o
+      where oia.addon_option_id = ao.id
+        and oia.order_item_id = oi.id
+        and oi.order_id = o.id
+        and ao.store_id = ${actor.storeId}
+        and o.store_id = ${actor.storeId}
+    `);
+    await tx.execute(sql`
+      update order_item_flavors oif
+      set product_id = null,
+          tier_id = null
+      from order_items oi, orders o
+      where oif.order_item_id = oi.id
+        and oi.order_id = o.id
+        and o.store_id = ${actor.storeId}
+        and (
+          exists (select 1 from products p where p.id = oif.product_id and p.store_id = ${actor.storeId})
+          or exists (select 1 from pizza_price_tiers ppt where ppt.id = oif.tier_id and ppt.store_id = ${actor.storeId})
+        )
+    `);
+
+    await tx.delete(multiflavorGroupAddonGroupsTable).where(eq(multiflavorGroupAddonGroupsTable.storeId, actor.storeId));
+    await tx.delete(multiflavorFlavorsTable).where(eq(multiflavorFlavorsTable.storeId, actor.storeId));
+    await tx.delete(multiflavorSizeClassificationPricesTable).where(eq(multiflavorSizeClassificationPricesTable.storeId, actor.storeId));
+    await tx.delete(multiflavorClassificationsTable).where(eq(multiflavorClassificationsTable.storeId, actor.storeId));
+    await tx.delete(multiflavorSizesTable).where(eq(multiflavorSizesTable.storeId, actor.storeId));
+    await tx.delete(multiflavorGroupsTable).where(eq(multiflavorGroupsTable.storeId, actor.storeId));
+    await tx.delete(pizzaFlavorsTable).where(eq(pizzaFlavorsTable.storeId, actor.storeId));
+    await tx.delete(pizzaSizeTierPricesTable).where(eq(pizzaSizeTierPricesTable.storeId, actor.storeId));
+    await tx.delete(pizzaPriceTiersTable).where(eq(pizzaPriceTiersTable.storeId, actor.storeId));
+    await tx.delete(pizzaSizesTable).where(eq(pizzaSizesTable.storeId, actor.storeId));
+    await tx.delete(productAddonGroupsTable).where(eq(productAddonGroupsTable.storeId, actor.storeId));
+    await tx.delete(addonOptionsTable).where(eq(addonOptionsTable.storeId, actor.storeId));
+    await tx.delete(addonGroupsTable).where(eq(addonGroupsTable.storeId, actor.storeId));
+    await tx.delete(productVariantsTable).where(eq(productVariantsTable.storeId, actor.storeId));
+    await tx.delete(productsTable).where(eq(productsTable.storeId, actor.storeId));
+    await tx.delete(categoriesTable).where(eq(categoriesTable.storeId, actor.storeId));
+
+    return before;
+  });
+
+  res.json({ ok: true, preview });
+});
 
 const IMPORT_MAX_BYTES = 1024 * 1024;
 const IMPORT_MAX_ROWS = 1000;
