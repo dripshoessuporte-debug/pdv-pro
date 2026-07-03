@@ -3210,6 +3210,143 @@ async function ensureMultiflavorClassification(
   return classification;
 }
 
+
+type MultisaborImportPreview = {
+  counters: { grupos: number; tamanhos: number; classificacoes: number; precos: number; sabores: number; adicionais: number; erros: number };
+  errors: ImportError[];
+  rows: Array<{ rowNumber: number; tipo: string; grupo: string; resumo: string }>;
+};
+const MULTISABOR_HEADERS = ["tipo_registro","grupo","categoria","tamanho","min_sabores","max_sabores","classificacao","rank","preco","produto","grupo_adicional","nome_etapa_quantidade","nome_opcoes","regra_preco","ativo","ordem"];
+const normName = (v: unknown) => String(v ?? "").trim().toLowerCase();
+const parseMultisaborPrice = (value: string) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const normalized = raw.replace(/R\$/gi, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+function parseMultisaborCsvRows(csv: string, store: { categories: any[]; products: any[]; addonGroups: any[]; existingGroups: any[]; existingSizes: any[]; existingClasses: any[] }) {
+  const errors: ImportError[] = [];
+  const parsed = parseCsv(csv || "");
+  const headers = parsed[0]?.map(normalizeHeader) ?? [];
+  const map: Record<string, number> = {};
+  MULTISABOR_HEADERS.forEach((h) => { const idx = headers.indexOf(normalizeHeader(h)); if (idx >= 0) map[h] = idx; });
+  for (const required of ["tipo_registro", "grupo"]) if (map[required] === undefined) errors.push({ rowNumber: 1, field: required, message: `Coluna obrigatória ausente: ${required}.` });
+  const rows = parsed.slice(1).map((r, i) => ({ raw: r, rowNumber: i + 2, tipo: cell(r, map, "tipo_registro").toLowerCase(), grupo: cell(r, map, "grupo"), categoria: cell(r, map, "categoria"), tamanho: cell(r, map, "tamanho"), min: Number(cell(r, map, "min_sabores") || 1), max: Number(cell(r, map, "max_sabores") || 1), classificacao: cell(r, map, "classificacao"), rank: Number(cell(r, map, "rank") || 0), precoRaw: cell(r, map, "preco"), produto: cell(r, map, "produto"), grupoAdicional: cell(r, map, "grupo_adicional"), quantidade: cell(r, map, "nome_etapa_quantidade") || "Quantidade de sabores", opcoes: cell(r, map, "nome_opcoes") || "Sabores", ativo: parseBooleanValue(cell(r, map, "ativo"), true), ordem: Number(cell(r, map, "ordem") || 0) }));
+  const categories = new Map(store.categories.map((x:any) => [normName(x.name), x]));
+  const products = new Map(store.products.map((x:any) => [normName(x.name), x]));
+  const addons = new Map(store.addonGroups.map((x:any) => [normName(x.name), x]));
+  const groupNames = new Set(store.existingGroups.map((x:any) => normName(x.name)));
+  rows.filter(r => r.tipo === "grupo").forEach(r => { if (r.grupo) groupNames.add(normName(r.grupo)); });
+  const sizes = new Set(store.existingSizes.map((x:any) => `${normName(x.groupName)}|${normName(x.name)}`));
+  rows.filter(r => r.tipo === "tamanho" && r.grupo && r.tamanho).forEach(r => sizes.add(`${normName(r.grupo)}|${normName(r.tamanho)}`));
+  const classes = new Set(store.existingClasses.map((x:any) => `${normName(x.groupName)}|${normName(x.name)}`));
+  rows.filter(r => r.tipo === "classificacao" && r.grupo && r.classificacao).forEach(r => classes.add(`${normName(r.grupo)}|${normName(r.classificacao)}`));
+  const counters = { grupos: 0, tamanhos: 0, classificacoes: 0, precos: 0, sabores: 0, adicionais: 0, erros: 0 };
+  const previewRows: MultisaborImportPreview["rows"] = [];
+  for (const r of rows) {
+    if (!r.tipo && !r.grupo) continue;
+    if (!r.grupo) errors.push({ rowNumber: r.rowNumber, field: "grupo", message: "grupo obrigatório não informado." });
+    else if (!groupNames.has(normName(r.grupo)) && r.tipo !== "grupo") errors.push({ rowNumber: r.rowNumber, field: "grupo", message: `grupo "${r.grupo}" não encontrado.` });
+    if (r.categoria && !categories.has(normName(r.categoria))) errors.push({ rowNumber: r.rowNumber, field: "categoria", message: `categoria "${r.categoria}" não encontrada nesta loja.` });
+    if (r.tipo === "grupo") { counters.grupos++; previewRows.push({ rowNumber: r.rowNumber, tipo: r.tipo, grupo: r.grupo, resumo: r.categoria ? `Categoria ${r.categoria}` : "Grupo" }); }
+    else if (r.tipo === "tamanho") { if (!r.tamanho || !Number.isInteger(r.min) || !Number.isInteger(r.max) || r.min < 1 || r.max < r.min) errors.push({ rowNumber: r.rowNumber, field: "tamanho", message: "tamanho ou limites de sabores inválidos." }); counters.tamanhos++; previewRows.push({ rowNumber: r.rowNumber, tipo: r.tipo, grupo: r.grupo, resumo: r.tamanho }); }
+    else if (r.tipo === "classificacao") { if (!r.classificacao) errors.push({ rowNumber: r.rowNumber, field: "classificacao", message: "classificação obrigatória não informada." }); counters.classificacoes++; previewRows.push({ rowNumber: r.rowNumber, tipo: r.tipo, grupo: r.grupo, resumo: r.classificacao }); }
+    else if (r.tipo === "preco") { const price = parseMultisaborPrice(r.precoRaw); if (!sizes.has(`${normName(r.grupo)}|${normName(r.tamanho)}`)) errors.push({ rowNumber: r.rowNumber, field: "tamanho", message: `tamanho "${r.tamanho}" não encontrado no grupo "${r.grupo}".` }); if (!classes.has(`${normName(r.grupo)}|${normName(r.classificacao)}`)) errors.push({ rowNumber: r.rowNumber, field: "classificacao", message: `classificação "${r.classificacao}" não encontrada.` }); if (price == null) errors.push({ rowNumber: r.rowNumber, field: "preco", message: `preço inválido "${r.precoRaw}". Use exemplo: 49,90.` }); counters.precos++; previewRows.push({ rowNumber: r.rowNumber, tipo: r.tipo, grupo: r.grupo, resumo: `${r.tamanho} / ${r.classificacao} = ${r.precoRaw}` }); }
+    else if (r.tipo === "sabor") { if (!products.has(normName(r.produto))) errors.push({ rowNumber: r.rowNumber, field: "produto", message: `produto "${r.produto}" não encontrado nesta loja.` }); if (!classes.has(`${normName(r.grupo)}|${normName(r.classificacao)}`)) errors.push({ rowNumber: r.rowNumber, field: "classificacao", message: `classificação "${r.classificacao}" não encontrada.` }); counters.sabores++; previewRows.push({ rowNumber: r.rowNumber, tipo: r.tipo, grupo: r.grupo, resumo: r.produto }); }
+    else if (r.tipo === "adicional") { if (!addons.has(normName(r.grupoAdicional))) errors.push({ rowNumber: r.rowNumber, field: "grupo_adicional", message: `grupo de adicional "${r.grupoAdicional}" não encontrado nesta loja.` }); counters.adicionais++; previewRows.push({ rowNumber: r.rowNumber, tipo: r.tipo, grupo: r.grupo, resumo: r.grupoAdicional }); }
+    else errors.push({ rowNumber: r.rowNumber, field: "tipo_registro", message: `tipo_registro "${r.tipo}" inválido.` });
+  }
+  counters.erros = errors.length;
+  return { counters, errors, rows: previewRows, parsedRows: rows, categories, products, addons };
+}
+async function buildMultisaborImportPreview(storeId: number, csv: string) {
+  const [categories, products, addonGroups, existingGroups, existingSizes, existingClasses] = await Promise.all([
+    db.select({ id: categoriesTable.id, name: categoriesTable.name }).from(categoriesTable).where(eq(categoriesTable.storeId, storeId)),
+    db.select({ id: productsTable.id, name: productsTable.name }).from(productsTable).where(eq(productsTable.storeId, storeId)),
+    db.select({ id: addonGroupsTable.id, name: addonGroupsTable.name }).from(addonGroupsTable).where(eq(addonGroupsTable.storeId, storeId)),
+    db.select({ id: multiflavorGroupsTable.id, name: multiflavorGroupsTable.name }).from(multiflavorGroupsTable).where(eq(multiflavorGroupsTable.storeId, storeId)),
+    db.select({ id: multiflavorSizesTable.id, name: multiflavorSizesTable.name, groupId: multiflavorSizesTable.groupId, groupName: multiflavorGroupsTable.name }).from(multiflavorSizesTable).innerJoin(multiflavorGroupsTable, eq(multiflavorSizesTable.groupId, multiflavorGroupsTable.id)).where(and(eq(multiflavorSizesTable.storeId, storeId), eq(multiflavorGroupsTable.storeId, storeId))),
+    db.select({ id: multiflavorClassificationsTable.id, name: multiflavorClassificationsTable.name, groupId: multiflavorClassificationsTable.groupId, groupName: multiflavorGroupsTable.name }).from(multiflavorClassificationsTable).innerJoin(multiflavorGroupsTable, eq(multiflavorClassificationsTable.groupId, multiflavorGroupsTable.id)).where(and(eq(multiflavorClassificationsTable.storeId, storeId), eq(multiflavorGroupsTable.storeId, storeId))),
+  ]);
+  return parseMultisaborCsvRows(csv, { categories, products, addonGroups, existingGroups, existingSizes, existingClasses });
+}
+
+
+router.get("/menu/multisabor/import-template", (_req, res) => {
+  const sample = [
+    MULTISABOR_HEADERS.join(";"),
+    "grupo;Pizza Multisabor;Pizzas;;;;;;;;;Quantidade de sabores;Sabores;highest_classification;sim;1",
+    "tamanho;Pizza Multisabor;;Broto;1;1;;;;;;;;sim;1",
+    "tamanho;Pizza Multisabor;;Grande;1;2;;;;;;;;sim;2",
+    "classificacao;Pizza Multisabor;;;;;Tradicional;1;;;;;;sim;1",
+    "classificacao;Pizza Multisabor;;;;;Especial;2;;;;;;sim;2",
+    "preco;Pizza Multisabor;;Grande;;;Tradicional;;54,90;;;;;;;",
+    "preco;Pizza Multisabor;;Grande;;;Especial;;64,90;;;;;;;",
+    "sabor;Pizza Multisabor;;;;;Tradicional;;;Pizza Calabresa;;;;sim;1",
+    "sabor;Pizza Multisabor;;;;;Especial;;;Pizza Quatro Queijos;;;;sim;2",
+    "adicional;Pizza Multisabor;;;;;;;;;;Bordas;;;;1",
+  ].join("\n");
+  res.header("Content-Type", "text/csv; charset=utf-8");
+  res.header("Content-Disposition", 'attachment; filename="modelo-multisabor.csv"');
+  res.send(sample);
+});
+
+router.post("/menu/multisabor/import/preview", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const preview = await buildMultisaborImportPreview(actor.storeId, String(req.body.csv ?? ""));
+  res.json({ counters: preview.counters, errors: preview.errors, rows: preview.rows });
+});
+
+router.post("/menu/multisabor/import/confirm", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const preview = await buildMultisaborImportPreview(actor.storeId, String(req.body.csv ?? ""));
+  if (preview.errors.length) { res.status(400).json({ error: "Corrija os erros antes de importar.", errors: preview.errors, counters: preview.counters }); return; }
+  const result = await db.transaction(async (tx) => {
+    const groupMap = new Map<string, any>();
+    for (const g of await tx.select().from(multiflavorGroupsTable).where(eq(multiflavorGroupsTable.storeId, actor.storeId))) groupMap.set(normName(g.name), g);
+    const sizeMap = new Map<string, any>();
+    const classMap = new Map<string, any>();
+    for (const s of preview.parsedRows.length ? await tx.select({ id: multiflavorSizesTable.id, name: multiflavorSizesTable.name, groupId: multiflavorSizesTable.groupId, groupName: multiflavorGroupsTable.name }).from(multiflavorSizesTable).innerJoin(multiflavorGroupsTable, eq(multiflavorSizesTable.groupId, multiflavorGroupsTable.id)).where(and(eq(multiflavorSizesTable.storeId, actor.storeId), eq(multiflavorGroupsTable.storeId, actor.storeId))) : []) sizeMap.set(`${normName(s.groupName)}|${normName(s.name)}`, s);
+    for (const c of preview.parsedRows.length ? await tx.select({ id: multiflavorClassificationsTable.id, name: multiflavorClassificationsTable.name, groupId: multiflavorClassificationsTable.groupId, groupName: multiflavorGroupsTable.name }).from(multiflavorClassificationsTable).innerJoin(multiflavorGroupsTable, eq(multiflavorClassificationsTable.groupId, multiflavorGroupsTable.id)).where(and(eq(multiflavorClassificationsTable.storeId, actor.storeId), eq(multiflavorGroupsTable.storeId, actor.storeId))) : []) classMap.set(`${normName(c.groupName)}|${normName(c.name)}`, c);
+    for (const r of preview.parsedRows.filter(r => r.tipo === "grupo")) {
+      const existing = groupMap.get(normName(r.grupo));
+      const category = r.categoria ? preview.categories.get(normName(r.categoria)) : null;
+      const values = { categoryId: category?.id ?? null, description: null, quantityStepLabel: r.quantidade, optionsStepLabel: r.opcoes, pricingMode: "highest_classification", active: r.ativo, available: r.ativo, sortOrder: r.ordem, updatedAt: new Date() };
+      const [row] = existing ? await tx.update(multiflavorGroupsTable).set(values).where(and(eq(multiflavorGroupsTable.storeId, actor.storeId), eq(multiflavorGroupsTable.id, existing.id))).returning() : await tx.insert(multiflavorGroupsTable).values({ storeId: actor.storeId, name: r.grupo, ...values }).returning();
+      groupMap.set(normName(row.name), row);
+    }
+    for (const r of preview.parsedRows.filter(r => r.tipo === "tamanho")) {
+      const g = groupMap.get(normName(r.grupo));
+      const key = `${normName(r.grupo)}|${normName(r.tamanho)}`;
+      const old = sizeMap.get(key);
+      const [row] = old ? await tx.update(multiflavorSizesTable).set({ minFlavors: r.min, maxFlavors: r.max, active: r.ativo, available: r.ativo, sortOrder: r.ordem, updatedAt: new Date() }).where(and(eq(multiflavorSizesTable.storeId, actor.storeId), eq(multiflavorSizesTable.id, old.id))).returning() : await tx.insert(multiflavorSizesTable).values({ storeId: actor.storeId, groupId: g.id, name: r.tamanho, minFlavors: r.min, maxFlavors: r.max, active: r.ativo, available: r.ativo, sortOrder: r.ordem }).returning();
+      sizeMap.set(key, row);
+    }
+    for (const r of preview.parsedRows.filter(r => r.tipo === "classificacao")) {
+      const g = groupMap.get(normName(r.grupo));
+      const key = `${normName(r.grupo)}|${normName(r.classificacao)}`;
+      const old = classMap.get(key);
+      const [row] = old ? await tx.update(multiflavorClassificationsTable).set({ rank: r.rank, active: r.ativo, sortOrder: r.ordem, updatedAt: new Date() }).where(and(eq(multiflavorClassificationsTable.storeId, actor.storeId), eq(multiflavorClassificationsTable.id, old.id))).returning() : await tx.insert(multiflavorClassificationsTable).values({ storeId: actor.storeId, groupId: g.id, name: r.classificacao, rank: r.rank, active: r.ativo, sortOrder: r.ordem }).returning();
+      classMap.set(key, row);
+    }
+    for (const r of preview.parsedRows.filter(r => r.tipo === "preco")) {
+      const g = groupMap.get(normName(r.grupo)), size = sizeMap.get(`${normName(r.grupo)}|${normName(r.tamanho)}`), cls = classMap.get(`${normName(r.grupo)}|${normName(r.classificacao)}`), price = parseMultisaborPrice(r.precoRaw)!;
+      await tx.insert(multiflavorSizeClassificationPricesTable).values({ storeId: actor.storeId, groupId: g.id, sizeId: size.id, classificationId: cls.id, price: String(price) }).onConflictDoUpdate({ target: [multiflavorSizeClassificationPricesTable.storeId, multiflavorSizeClassificationPricesTable.sizeId, multiflavorSizeClassificationPricesTable.classificationId], set: { groupId: g.id, price: String(price), updatedAt: new Date() } });
+    }
+    for (const r of preview.parsedRows.filter(r => r.tipo === "sabor")) {
+      const g = groupMap.get(normName(r.grupo)), cls = classMap.get(`${normName(r.grupo)}|${normName(r.classificacao)}`), product = preview.products.get(normName(r.produto));
+      await tx.insert(multiflavorFlavorsTable).values({ storeId: actor.storeId, groupId: g.id, productId: product.id, classificationId: cls.id, active: r.ativo, available: r.ativo, sortOrder: r.ordem }).onConflictDoUpdate({ target: [multiflavorFlavorsTable.storeId, multiflavorFlavorsTable.groupId, multiflavorFlavorsTable.productId], set: { classificationId: cls.id, active: r.ativo, available: r.ativo, sortOrder: r.ordem, updatedAt: new Date() } });
+    }
+    for (const r of preview.parsedRows.filter(r => r.tipo === "adicional")) {
+      const g = groupMap.get(normName(r.grupo)), addon = preview.addons.get(normName(r.grupoAdicional));
+      await tx.insert(multiflavorGroupAddonGroupsTable).values({ storeId: actor.storeId, groupId: g.id, addonGroupId: addon.id, sortOrder: r.ordem }).onConflictDoUpdate({ target: [multiflavorGroupAddonGroupsTable.storeId, multiflavorGroupAddonGroupsTable.groupId, multiflavorGroupAddonGroupsTable.addonGroupId], set: { sortOrder: r.ordem } });
+    }
+    return preview.counters;
+  });
+  res.json({ counters: result });
+});
+
 router.get("/menu/multisabor/groups", async (req, res) => {
   const actor = await getCurrentActor(req);
   const rows = await db
