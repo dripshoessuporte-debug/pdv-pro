@@ -17,6 +17,12 @@ import {
   pizzaPriceTiersTable,
   pizzaSizeTierPricesTable,
   pizzaFlavorsTable,
+  multiflavorGroupsTable,
+  multiflavorSizesTable,
+  multiflavorClassificationsTable,
+  multiflavorSizeClassificationPricesTable,
+  multiflavorFlavorsTable,
+  multiflavorGroupAddonGroupsTable,
   kitchenTicketsTable,
   paymentsTable,
   cashMovementsTable,
@@ -327,6 +333,335 @@ class OrderFlowError extends Error {
 }
 
 type AddSimpleOrderItemInput = typeof AddOrderItemBody._type;
+type AddMultisaborOrderItemInput = {
+  itemType: "multisabor";
+  groupId: number;
+  sizeId: number;
+  flavorProductIds: number[];
+  quantity: number;
+  notes?: string;
+  addons?: Array<{ addonOptionId: number; quantity?: number }>;
+};
+
+async function addMultisaborOrderItem({
+  orderId,
+  data,
+  storeId,
+  orderStatus,
+  client = db,
+}: {
+  orderId: number;
+  data: AddMultisaborOrderItemInput;
+  storeId: number;
+  orderStatus: string;
+  client?: any;
+}) {
+  if (["ready", "closed", "cancelled"].includes(orderStatus)) {
+    throw new OrderFlowError(
+      "Não é possível adicionar itens a um pedido pronto, finalizado ou cancelado.",
+      409,
+    );
+  }
+
+  const groupId = Number(data.groupId);
+  const sizeId = Number(data.sizeId);
+  const quantity = Number(data.quantity ?? 1);
+  if (!Number.isSafeInteger(groupId) || groupId <= 0) {
+    throw new OrderFlowError("Grupo Multisabor não encontrado.");
+  }
+  if (!Number.isSafeInteger(sizeId) || sizeId <= 0) {
+    throw new OrderFlowError("Tamanho não encontrado para este grupo.");
+  }
+  if (!Number.isInteger(quantity) || quantity < 1) {
+    throw new OrderFlowError("Quantidade inválida.");
+  }
+
+  const flavorProductIds = Array.isArray(data.flavorProductIds)
+    ? data.flavorProductIds.map(Number)
+    : [];
+  const addonsInput = Array.isArray(data.addons) ? data.addons : [];
+
+  const [[group], [size]] = await Promise.all([
+    client
+      .select({
+        id: multiflavorGroupsTable.id,
+        name: multiflavorGroupsTable.name,
+      })
+      .from(multiflavorGroupsTable)
+      .where(
+        and(
+          eq(multiflavorGroupsTable.storeId, storeId),
+          eq(multiflavorGroupsTable.id, groupId),
+          eq(multiflavorGroupsTable.active, true),
+          eq(multiflavorGroupsTable.available, true),
+        ),
+      )
+      .limit(1),
+    client
+      .select({
+        id: multiflavorSizesTable.id,
+        name: multiflavorSizesTable.name,
+        minFlavors: multiflavorSizesTable.minFlavors,
+        maxFlavors: multiflavorSizesTable.maxFlavors,
+      })
+      .from(multiflavorSizesTable)
+      .where(
+        and(
+          eq(multiflavorSizesTable.storeId, storeId),
+          eq(multiflavorSizesTable.groupId, groupId),
+          eq(multiflavorSizesTable.id, sizeId),
+          eq(multiflavorSizesTable.active, true),
+          eq(multiflavorSizesTable.available, true),
+        ),
+      )
+      .limit(1),
+  ]);
+  if (!group) throw new OrderFlowError("Grupo Multisabor não encontrado.");
+  if (!size)
+    throw new OrderFlowError("Tamanho não encontrado para este grupo.");
+  if (
+    flavorProductIds.length < size.minFlavors ||
+    flavorProductIds.length > size.maxFlavors
+  ) {
+    throw new OrderFlowError(
+      `Este tamanho permite no mínimo ${size.minFlavors} e no máximo ${size.maxFlavors} sabores.`,
+    );
+  }
+
+  const flavorRows = flavorProductIds.length
+    ? await client
+        .select({
+          productId: multiflavorFlavorsTable.productId,
+          productName: productsTable.name,
+          classificationId: multiflavorFlavorsTable.classificationId,
+          classificationName: multiflavorClassificationsTable.name,
+          rank: multiflavorClassificationsTable.rank,
+        })
+        .from(multiflavorFlavorsTable)
+        .innerJoin(
+          productsTable,
+          eq(multiflavorFlavorsTable.productId, productsTable.id),
+        )
+        .innerJoin(
+          multiflavorClassificationsTable,
+          eq(
+            multiflavorFlavorsTable.classificationId,
+            multiflavorClassificationsTable.id,
+          ),
+        )
+        .where(
+          and(
+            eq(multiflavorFlavorsTable.storeId, storeId),
+            eq(multiflavorFlavorsTable.groupId, groupId),
+            inArray(multiflavorFlavorsTable.productId, flavorProductIds),
+            eq(multiflavorFlavorsTable.active, true),
+            eq(multiflavorFlavorsTable.available, true),
+            eq(productsTable.storeId, storeId),
+            eq(productsTable.active, true),
+            eq(productsTable.available, true),
+            eq(multiflavorClassificationsTable.storeId, storeId),
+            eq(multiflavorClassificationsTable.groupId, groupId),
+            eq(multiflavorClassificationsTable.active, true),
+          ),
+        )
+    : [];
+  const flavorsByProductId = new Map(
+    flavorRows.map((flavor: any) => [flavor.productId, flavor]),
+  );
+  for (const productId of flavorProductIds) {
+    if (
+      !Number.isSafeInteger(productId) ||
+      productId <= 0 ||
+      !flavorsByProductId.has(productId)
+    ) {
+      throw new OrderFlowError(
+        `O sabor "ID ${productId}" não pertence a este grupo.`,
+      );
+    }
+  }
+  const flavors = flavorProductIds.map(
+    (productId: number) => flavorsByProductId.get(productId)!,
+  );
+  const winning = flavors.reduce(
+    (best: any | null, flavor: any) =>
+      !best || flavor.rank > best.rank ? flavor : best,
+    null,
+  );
+  if (!winning)
+    throw new OrderFlowError("Classificação do sabor não encontrada.");
+
+  const [priceRow] = await client
+    .select({ price: multiflavorSizeClassificationPricesTable.price })
+    .from(multiflavorSizeClassificationPricesTable)
+    .where(
+      and(
+        eq(multiflavorSizeClassificationPricesTable.storeId, storeId),
+        eq(multiflavorSizeClassificationPricesTable.groupId, groupId),
+        eq(multiflavorSizeClassificationPricesTable.sizeId, sizeId),
+        eq(
+          multiflavorSizeClassificationPricesTable.classificationId,
+          winning.classificationId,
+        ),
+      ),
+    )
+    .limit(1);
+  if (!priceRow) {
+    throw new OrderFlowError(
+      "Preço não encontrado para o tamanho e classificação selecionados.",
+    );
+  }
+
+  const addonIds = addonsInput
+    .map((addon) => Number(addon?.addonOptionId))
+    .filter((id) => Number.isSafeInteger(id) && id > 0);
+  const linkedAddonGroups = await client
+    .select({
+      addonGroupId: addonGroupsTable.id,
+      required: addonGroupsTable.required,
+      minSelected: addonGroupsTable.minSelected,
+      maxSelected: addonGroupsTable.maxSelected,
+    })
+    .from(multiflavorGroupAddonGroupsTable)
+    .innerJoin(
+      addonGroupsTable,
+      eq(multiflavorGroupAddonGroupsTable.addonGroupId, addonGroupsTable.id),
+    )
+    .where(
+      and(
+        eq(multiflavorGroupAddonGroupsTable.storeId, storeId),
+        eq(multiflavorGroupAddonGroupsTable.groupId, groupId),
+        eq(addonGroupsTable.storeId, storeId),
+        eq(addonGroupsTable.active, true),
+      ),
+    );
+  const addonRows = addonIds.length
+    ? await client
+        .select({
+          addonOptionId: addonOptionsTable.id,
+          addonName: addonOptionsTable.name,
+          addonGroupId: addonGroupsTable.id,
+          addonGroupName: addonGroupsTable.name,
+          unitPrice: addonOptionsTable.price,
+        })
+        .from(addonOptionsTable)
+        .innerJoin(
+          addonGroupsTable,
+          eq(addonOptionsTable.groupId, addonGroupsTable.id),
+        )
+        .innerJoin(
+          multiflavorGroupAddonGroupsTable,
+          eq(
+            multiflavorGroupAddonGroupsTable.addonGroupId,
+            addonGroupsTable.id,
+          ),
+        )
+        .where(
+          and(
+            eq(addonOptionsTable.storeId, storeId),
+            eq(addonOptionsTable.available, true),
+            eq(addonGroupsTable.storeId, storeId),
+            eq(addonGroupsTable.active, true),
+            eq(multiflavorGroupAddonGroupsTable.storeId, storeId),
+            eq(multiflavorGroupAddonGroupsTable.groupId, groupId),
+            inArray(addonOptionsTable.id, addonIds),
+          ),
+        )
+    : [];
+  const addonById = new Map(
+    addonRows.map((addon: any) => [addon.addonOptionId, addon]),
+  );
+  const addonCountsByGroup = new Map<number, number>();
+  const addonSnapshots = [];
+  let addonsTotal = 0;
+  for (const addon of addonsInput) {
+    const addonOptionId = Number(addon?.addonOptionId);
+    const addonQuantity = addon?.quantity == null ? 1 : Number(addon.quantity);
+    if (!Number.isInteger(addonQuantity) || addonQuantity < 1) {
+      throw new OrderFlowError("Quantidade inválida.");
+    }
+    const row = addonById.get(addonOptionId) as any;
+    if (!row)
+      throw new OrderFlowError("Adicional não pertence a este Multisabor.");
+    addonCountsByGroup.set(
+      row.addonGroupId,
+      (addonCountsByGroup.get(row.addonGroupId) ?? 0) + addonQuantity,
+    );
+    const addonPrice = Number(row.unitPrice);
+    const totalPrice = addonPrice * addonQuantity * quantity;
+    addonsTotal += addonPrice * addonQuantity;
+    addonSnapshots.push({
+      addonOptionId,
+      addonGroupName: row.addonGroupName,
+      addonName: row.addonName,
+      addonPrice,
+      quantity: addonQuantity,
+      totalPrice,
+    });
+  }
+  for (const row of linkedAddonGroups) {
+    const count = addonCountsByGroup.get(row.addonGroupId) ?? 0;
+    if (row.required && count < Math.max(1, row.minSelected)) {
+      throw new OrderFlowError("Quantidade inválida.");
+    }
+    if (
+      count < row.minSelected ||
+      (row.maxSelected != null && count > row.maxSelected)
+    ) {
+      throw new OrderFlowError("Quantidade inválida.");
+    }
+  }
+
+  const basePrice = Number(priceRow.price);
+  const unitPrice = basePrice + addonsTotal;
+  const totalPrice = unitPrice * quantity;
+  const displayName = `${group.name} ${size.name} - ${flavors.length} ${flavors.length === 1 ? "sabor" : "sabores"}`;
+  const [item] = await client
+    .insert(orderItemsTable)
+    .values({
+      orderId,
+      productId: null,
+      variantId: null,
+      quantity,
+      unitPrice: String(unitPrice),
+      totalPrice: String(totalPrice),
+      notes: data.notes ?? null,
+      itemType: "multisabor",
+      displayName,
+      externalProductName: displayName,
+      pizzaSizeName: size.name,
+      pricingMode: "highest_classification",
+      basePizzaTierName: winning.classificationName,
+    })
+    .returning();
+
+  await client.insert(orderItemFlavorsTable).values(
+    flavors.map((flavor: any, index: number) => ({
+      orderItemId: item.id,
+      productId: flavor.productId,
+      productNameSnapshot: flavor.productName,
+      tierId: null,
+      tierNameSnapshot: flavor.classificationName,
+      fractionNumerator: 1,
+      fractionDenominator: flavors.length,
+      sortOrder: index,
+    })),
+  );
+  if (addonSnapshots.length) {
+    await client.insert(orderItemAddonsTable).values(
+      addonSnapshots.map((addon) => ({
+        orderItemId: item.id,
+        addonOptionId: addon.addonOptionId,
+        addonGroupName: addon.addonGroupName,
+        addonName: addon.addonName,
+        addonPrice: String(addon.addonPrice),
+        quantity: addon.quantity,
+        totalPrice: String(addon.totalPrice),
+      })),
+    );
+  }
+  await recalcOrderTotal(orderId, client);
+  return item;
+}
 
 async function addSimpleOrderItem({
   orderId,
@@ -471,9 +806,7 @@ async function addSimpleOrderItem({
 
   for (const { group } of linkedGroups) {
     const selectedCount = selectedByGroup.get(group.id) ?? 0;
-    const minimum = group.required
-      ? Math.max(1, group.minSelected ?? 0)
-      : 0;
+    const minimum = group.required ? Math.max(1, group.minSelected ?? 0) : 0;
     if (selectedCount < minimum) {
       throw new OrderFlowError(
         `Selecione pelo menos ${minimum} opção(ões) em ${group.name}.`,
@@ -821,6 +1154,16 @@ router.post("/orders", async (req, res): Promise<void> => {
       }
 
       for (const item of items ?? []) {
+        if (item.itemType === "multisabor") {
+          await addMultisaborOrderItem({
+            orderId: createdOrder.id,
+            data: item,
+            storeId,
+            orderStatus: createdOrder.status,
+            client: tx,
+          });
+          continue;
+        }
         await addSimpleOrderItem({
           orderId: createdOrder.id,
           data: item,
