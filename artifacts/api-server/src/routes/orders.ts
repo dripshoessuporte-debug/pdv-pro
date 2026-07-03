@@ -472,8 +472,8 @@ async function addSimpleOrderItem({
   for (const { group } of linkedGroups) {
     const selectedCount = selectedByGroup.get(group.id) ?? 0;
     const minimum = group.required
-      ? Math.max(1, group.minSelected)
-      : group.minSelected;
+      ? Math.max(1, group.minSelected ?? 0)
+      : 0;
     if (selectedCount < minimum) {
       throw new OrderFlowError(
         `Selecione pelo menos ${minimum} opção(ões) em ${group.name}.`,
