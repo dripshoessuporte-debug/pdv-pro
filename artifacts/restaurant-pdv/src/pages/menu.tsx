@@ -122,6 +122,7 @@ type MultisaborPrice = { id: number; sizeId: number; classificationId: number; p
 type MultisaborFlavor = { id: number; productId: number; productName: string; classificationId: number; active: boolean; available: boolean };
 type MultisaborAddonLink = { id: number; addonGroupId: number; addonGroupName: string; sortOrder: number };
 type MultisaborConfig = { sizes: MultisaborSize[]; classifications: MultisaborClassification[]; prices: MultisaborPrice[]; flavors: MultisaborFlavor[]; addonGroups: MultisaborAddonLink[] };
+type MultisaborImportPreview = { counters: { grupos: number; tamanhos: number; classificacoes: number; precos: number; sabores: number; adicionais: number; erros: number }; errors: { rowNumber: number; field: string; message: string }[]; rows: { rowNumber: number; tipo: string; grupo: string; resumo: string }[] };
 type MenuResetPreview = { categories: number; products: number; variants: number; addonGroups: number; addonOptions: number; productAddonLinks: number; legacyPizzaConfigs: number; multiflavorGroups: number; multiflavorSizes: number; multiflavorClassifications: number; multiflavorPrices: number; multiflavorFlavors: number; multiflavorAddonLinks: number; orderItemsToDetach: number; orderItemAddonsToDetach: number };
 
 type ApiErrorLike = {
@@ -193,6 +194,9 @@ export default function Menu() {
   const [multisaborPriceForm, setMultisaborPriceForm] = useState({ sizeId: "", classificationId: "", price: "" });
   const [multisaborFlavorForm, setMultisaborFlavorForm] = useState({ productId: "", classificationId: "" });
   const [multisaborAddonGroupId, setMultisaborAddonGroupId] = useState("");
+  const [multisaborCsv, setMultisaborCsv] = useState("");
+  const [multisaborImportPreview, setMultisaborImportPreview] = useState<MultisaborImportPreview | null>(null);
+  const [multisaborImporting, setMultisaborImporting] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -240,6 +244,30 @@ export default function Menu() {
   const saveMultisaborFlavor = async () => { if (!selectedMultisaborGroupId) return; const res = await fetch(`/api/menu/multisabor/groups/${selectedMultisaborGroupId}/flavors`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ productId: Number(multisaborFlavorForm.productId), classificationId: Number(multisaborFlavorForm.classificationId) }) }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Produto ou classificação não pertence à loja atual."), variant: "destructive" }); return; } setMultisaborFlavorForm({ productId: "", classificationId: "" }); await loadMultisaborConfig(selectedMultisaborGroupId); };
   const saveMultisaborAddon = async () => { if (!selectedMultisaborGroupId) return; const res = await fetch(`/api/menu/multisabor/groups/${selectedMultisaborGroupId}/addon-groups`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ addonGroupId: Number(multisaborAddonGroupId) }) }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Grupo de adicionais não pertence à loja atual."), variant: "destructive" }); return; } setMultisaborAddonGroupId(""); await loadMultisaborConfig(selectedMultisaborGroupId); };
   const removeMultisaborAddon = async (linkId: number) => { if (!selectedMultisaborGroupId) return; const res = await fetch(`/api/menu/multisabor/groups/${selectedMultisaborGroupId}/addon-groups/${linkId}`, { method: "DELETE" }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Erro ao remover vínculo de adicionais."), variant: "destructive" }); return; } await loadMultisaborConfig(selectedMultisaborGroupId); };
+
+  const downloadMultisaborTemplate = () => { window.location.href = "/api/menu/multisabor/import-template"; };
+  const validateMultisaborCsv = async () => {
+    setMultisaborImporting(true);
+    const res = await fetch("/api/menu/multisabor/import/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ csv: multisaborCsv }) });
+    setMultisaborImporting(false);
+    if (!res.ok) { toast({ title: await getErrorMessage(res, "Não foi possível validar o CSV Multisabor."), variant: "destructive" }); return; }
+    const preview = await res.json() as MultisaborImportPreview;
+    setMultisaborImportPreview(preview);
+    toast({ title: preview.counters.erros ? `Validação encontrou ${preview.counters.erros} erro(s).` : "CSV validado sem erros." });
+  };
+  const confirmMultisaborImport = async () => {
+    setMultisaborImporting(true);
+    const res = await fetch("/api/menu/multisabor/import/confirm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ csv: multisaborCsv }) });
+    setMultisaborImporting(false);
+    if (!res.ok) { const body = await res.json().catch(() => null) as MultisaborImportPreview & { error?: string } | null; if (body?.errors) setMultisaborImportPreview({ counters: body.counters, errors: body.errors, rows: [] }); toast({ title: body?.error ?? "Corrija os erros antes de importar.", variant: "destructive" }); return; }
+    toast({ title: "Configuração Multisabor importada." });
+    setMultisaborImportPreview(null);
+    setMultisaborCsv("");
+    await loadMultisaborGroups();
+    if (selectedMultisaborGroupId) await loadMultisaborConfig(selectedMultisaborGroupId);
+  };
+  const loadMultisaborCsvFile = async (file: File | null) => { if (file) setMultisaborCsv(await file.text()); };
+
 
   const params = useMemo(() => {
     const query: Record<string, unknown> = {};
@@ -866,6 +894,22 @@ export default function Menu() {
               </div>
               <Button variant="outline" size="sm" onClick={hidePizzaMultiflavorConfig}>Voltar para produtos</Button>
             </div>
+
+
+            <section className="rounded-xl border bg-muted/30 p-4 space-y-3" aria-labelledby="multisabor-import">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div><h3 id="multisabor-import" className="font-bold">Importar CSV Multisabor</h3><p className="text-sm text-muted-foreground">Valide primeiro, confira a prévia e só então confirme a gravação em lote.</p></div>
+                <Button variant="outline" size="sm" onClick={downloadMultisaborTemplate}>Baixar modelo CSV Multisabor</Button>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+                <Textarea rows={6} placeholder="Cole aqui o CSV Multisabor separado por ponto e vírgula" value={multisaborCsv} onChange={(e)=>{ setMultisaborCsv(e.target.value); setMultisaborImportPreview(null); }} />
+                <div className="flex flex-col gap-2"><Input type="file" accept=".csv,text/csv" onChange={(e)=>void loadMultisaborCsvFile(e.target.files?.[0] ?? null)} /><Button disabled={!multisaborCsv.trim() || multisaborImporting} onClick={validateMultisaborCsv}>Validar planilha</Button><Button disabled={!multisaborImportPreview || multisaborImportPreview.counters.erros > 0 || multisaborImporting} onClick={confirmMultisaborImport}>Confirmar importação</Button></div>
+              </div>
+              {multisaborImportPreview ? <div className="space-y-3 rounded-lg border bg-background p-3">
+                <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-7">{Object.entries(multisaborImportPreview.counters).map(([k,v])=><div key={k} className="rounded border p-2"><p className="text-xs text-muted-foreground">{k}</p><p className="font-semibold">{v}</p></div>)}</div>
+                {multisaborImportPreview.errors.length ? <div className="space-y-1 text-sm text-destructive">{multisaborImportPreview.errors.map((e,idx)=><p key={idx}>Linha {e.rowNumber}: {e.message}</p>)}</div> : <div className="max-h-48 overflow-auto text-sm">{multisaborImportPreview.rows.slice(0, 30).map((r)=><p key={`${r.rowNumber}-${r.tipo}`}>Linha {r.rowNumber}: {r.tipo} — {r.grupo} — {r.resumo}</p>)}</div>}
+              </div> : null}
+            </section>
 
             <section className="rounded-xl border bg-muted/30 p-4" aria-labelledby="multisabor-recommended-order">
               <h3 id="multisabor-recommended-order" className="font-bold">Ordem recomendada</h3>
