@@ -115,10 +115,13 @@ type VariantTemplate = { id: number; name: string; description: string | null; a
 type VariantTemplateOption = { id: number; templateId: number; name: string; price: number; available: boolean; sortOrder: number };
 type AddonOption = { id: number; groupId: number; name: string; price: number; available: boolean; sortOrder: number };
 type AddonGroup = { id: number; name: string; description?: string | null; required: boolean; minSelected: number; maxSelected?: number | null; active: boolean; options: AddonOption[] };
-type PizzaSize = { id: number; name: string; maxFlavors: number; active: boolean };
-type PizzaTier = { id: number; name: string; active: boolean };
-type PizzaPrice = { id: number; sizeId: number; tierId: number; price: string };
-type PizzaFlavor = { id: number; productId: number; productName: string; tierId: number; tierName: string; active: boolean };
+type MultisaborGroup = { id: number; name: string; description?: string | null; quantityStepLabel?: string | null; optionsStepLabel?: string | null; pricingMode?: string; active: boolean; available: boolean; sortOrder: number };
+type MultisaborSize = { id: number; name: string; minFlavors: number; maxFlavors: number; active: boolean; available: boolean };
+type MultisaborClassification = { id: number; name: string; rank: number; active: boolean; sortOrder: number };
+type MultisaborPrice = { id: number; sizeId: number; classificationId: number; price: string };
+type MultisaborFlavor = { id: number; productId: number; productName: string; classificationId: number; active: boolean; available: boolean };
+type MultisaborAddonLink = { id: number; addonGroupId: number; addonGroupName: string; sortOrder: number };
+type MultisaborConfig = { sizes: MultisaborSize[]; classifications: MultisaborClassification[]; prices: MultisaborPrice[]; flavors: MultisaborFlavor[]; addonGroups: MultisaborAddonLink[] };
 
 type ApiErrorLike = {
   data?: { error?: unknown; message?: unknown } | null;
@@ -175,16 +178,16 @@ export default function Menu() {
   const [editingAddonGroupId, setEditingAddonGroupId] = useState<number>(0);
   const [addonOptionForm, setAddonOptionForm] = useState({ groupId: 0, name: "", price: "", available: true });
   const [editingAddonOptionId, setEditingAddonOptionId] = useState<number>(0);
-  const [pizzaSizes, setPizzaSizes] = useState<PizzaSize[]>([]);
-  const [pizzaTiers, setPizzaTiers] = useState<PizzaTier[]>([]);
-  const [pizzaPrices, setPizzaPrices] = useState<PizzaPrice[]>([]);
-  const [pizzaFlavors, setPizzaFlavors] = useState<PizzaFlavor[]>([]);
-  const [pizzaSizeForm, setPizzaSizeForm] = useState({ name: "", maxFlavors: "2" });
-  const [pizzaTierName, setPizzaTierName] = useState("");
-  const [pizzaPriceForm, setPizzaPriceForm] = useState({ sizeId: "", tierId: "", price: "" });
-  const [pizzaFlavorForm, setPizzaFlavorForm] = useState({ productId: "", tierId: "" });
-  const [showPizzaExample, setShowPizzaExample] = useState(false);
   const [showPizzaMultiflavorConfig, setShowPizzaMultiflavorConfig] = useState(false);
+  const [multisaborGroups, setMultisaborGroups] = useState<MultisaborGroup[]>([]);
+  const [selectedMultisaborGroupId, setSelectedMultisaborGroupId] = useState<number | null>(null);
+  const [multisaborConfig, setMultisaborConfig] = useState<MultisaborConfig>({ sizes: [], classifications: [], prices: [], flavors: [], addonGroups: [] });
+  const [multisaborGroupForm, setMultisaborGroupForm] = useState({ id: 0, name: "", description: "", active: true, available: true });
+  const [multisaborSizeForm, setMultisaborSizeForm] = useState({ name: "", minFlavors: "1", maxFlavors: "2" });
+  const [multisaborClassificationForm, setMultisaborClassificationForm] = useState({ name: "", rank: "0" });
+  const [multisaborPriceForm, setMultisaborPriceForm] = useState({ sizeId: "", classificationId: "", price: "" });
+  const [multisaborFlavorForm, setMultisaborFlavorForm] = useState({ productId: "", classificationId: "" });
+  const [multisaborAddonGroupId, setMultisaborAddonGroupId] = useState("");
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -192,25 +195,46 @@ export default function Menu() {
 
   const openPizzaMultiflavorConfig = () => {
     setShowPizzaMultiflavorConfig(true);
+    void loadMultisaborGroups();
     window.requestAnimationFrame(() => {
-      document.getElementById("pizza-multiflavor-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("multisabor-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
 
-  const loadPizzaConfig = async () => {
-    const [sizesRes, tiersRes, pricesRes, flavorsRes] = await Promise.all([
-      fetch("/api/menu/pizza/sizes"), fetch("/api/menu/pizza/tiers"), fetch("/api/menu/pizza/prices"), fetch("/api/menu/pizza/flavors"),
-    ]);
-    if (sizesRes.ok) setPizzaSizes(await sizesRes.json());
-    if (tiersRes.ok) setPizzaTiers(await tiersRes.json());
-    if (pricesRes.ok) setPizzaPrices(await pricesRes.json());
-    if (flavorsRes.ok) setPizzaFlavors(await flavorsRes.json());
+  const loadMultisaborGroups = async () => {
+    const res = await fetch("/api/menu/multisabor/groups");
+    if (!res.ok) { toast({ title: await getErrorMessage(res, "Não foi possível carregar grupos Multisabor."), variant: "destructive" }); return; }
+    const rows = await res.json() as MultisaborGroup[];
+    setMultisaborGroups(rows);
+    if (!selectedMultisaborGroupId && rows[0]) setSelectedMultisaborGroupId(rows[0].id);
   };
-  useEffect(() => { void loadPizzaConfig(); }, []);
-  const createPizzaSize = async () => { const res = await fetch("/api/menu/pizza/sizes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: pizzaSizeForm.name, maxFlavors: Number(pizzaSizeForm.maxFlavors) }) }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Erro ao criar tamanho."), variant: "destructive" }); return; } setPizzaSizeForm({ name: "", maxFlavors: "2" }); await loadPizzaConfig(); };
-  const createPizzaTier = async () => { const res = await fetch("/api/menu/pizza/tiers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: pizzaTierName }) }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Erro ao criar classificação."), variant: "destructive" }); return; } setPizzaTierName(""); await loadPizzaConfig(); };
-  const savePizzaPrice = async () => { const res = await fetch("/api/menu/pizza/prices", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prices: [{ sizeId: Number(pizzaPriceForm.sizeId), tierId: Number(pizzaPriceForm.tierId), price: Number(pizzaPriceForm.price) }] }) }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Erro ao salvar preço."), variant: "destructive" }); return; } setPizzaPriceForm({ sizeId: "", tierId: "", price: "" }); await loadPizzaConfig(); };
-  const savePizzaFlavor = async () => { const res = await fetch("/api/menu/pizza/flavors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ productId: Number(pizzaFlavorForm.productId), tierId: Number(pizzaFlavorForm.tierId) }) }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Erro ao vincular sabor."), variant: "destructive" }); return; } setPizzaFlavorForm({ productId: "", tierId: "" }); await loadPizzaConfig(); };
+
+  const loadMultisaborConfig = async (groupId: number) => {
+    const res = await fetch(`/api/menu/multisabor/groups/${groupId}/config`);
+    if (!res.ok) { toast({ title: await getErrorMessage(res, "Não foi possível carregar a configuração Multisabor desta loja."), variant: "destructive" }); return; }
+    setMultisaborConfig(await res.json() as MultisaborConfig);
+  };
+
+
+  useEffect(() => { if (showPizzaMultiflavorConfig) void loadMultisaborGroups(); }, [showPizzaMultiflavorConfig]);
+  useEffect(() => { if (selectedMultisaborGroupId) void loadMultisaborConfig(selectedMultisaborGroupId); }, [selectedMultisaborGroupId]);
+  const selectedMultisaborGroup = multisaborGroups.find((g) => g.id === selectedMultisaborGroupId) ?? null;
+  const saveMultisaborGroup = async () => {
+    if (!multisaborGroupForm.name.trim()) return;
+    const isEdit = multisaborGroupForm.id > 0;
+    const res = await fetch(isEdit ? `/api/menu/multisabor/groups/${multisaborGroupForm.id}` : "/api/menu/multisabor/groups", { method: isEdit ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: multisaborGroupForm.name.trim(), description: multisaborGroupForm.description.trim() || null, quantityStepLabel: "Quantidade de sabores", optionsStepLabel: "Sabores", pricingMode: "highest_classification", active: multisaborGroupForm.active, available: multisaborGroupForm.available }) });
+    if (!res.ok) { toast({ title: await getErrorMessage(res, "Erro ao salvar grupo Multisabor desta loja."), variant: "destructive" }); return; }
+    setMultisaborGroupForm({ id: 0, name: "", description: "", active: true, available: true });
+    await loadMultisaborGroups();
+    toast({ title: isEdit ? "Grupo Multisabor atualizado." : "Grupo Multisabor criado." });
+  };
+  const inactivateMultisaborGroup = async (id: number) => { const res = await fetch(`/api/menu/multisabor/groups/${id}`, { method: "DELETE" }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Erro ao inativar grupo Multisabor."), variant: "destructive" }); return; } await loadMultisaborGroups(); toast({ title: "Grupo Multisabor inativado." }); };
+  const saveMultisaborSize = async () => { if (!selectedMultisaborGroupId) return; const res = await fetch(`/api/menu/multisabor/groups/${selectedMultisaborGroupId}/sizes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: multisaborSizeForm.name, minFlavors: Number(multisaborSizeForm.minFlavors), maxFlavors: Number(multisaborSizeForm.maxFlavors) }) }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Tamanho inválido para este grupo/loja."), variant: "destructive" }); return; } setMultisaborSizeForm({ name: "", minFlavors: "1", maxFlavors: "2" }); await loadMultisaborConfig(selectedMultisaborGroupId); };
+  const saveMultisaborClassification = async () => { if (!selectedMultisaborGroupId) return; const res = await fetch(`/api/menu/multisabor/groups/${selectedMultisaborGroupId}/classifications`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: multisaborClassificationForm.name, rank: Number(multisaborClassificationForm.rank) }) }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Classificação inválida para este grupo/loja."), variant: "destructive" }); return; } setMultisaborClassificationForm({ name: "", rank: "0" }); await loadMultisaborConfig(selectedMultisaborGroupId); };
+  const saveMultisaborPrice = async () => { if (!selectedMultisaborGroupId) return; const res = await fetch(`/api/menu/multisabor/groups/${selectedMultisaborGroupId}/prices`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prices: [{ sizeId: Number(multisaborPriceForm.sizeId), classificationId: Number(multisaborPriceForm.classificationId), price: Number(multisaborPriceForm.price) }] }) }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Preço, tamanho ou classificação inválida para este grupo/loja."), variant: "destructive" }); return; } setMultisaborPriceForm({ sizeId: "", classificationId: "", price: "" }); await loadMultisaborConfig(selectedMultisaborGroupId); };
+  const saveMultisaborFlavor = async () => { if (!selectedMultisaborGroupId) return; const res = await fetch(`/api/menu/multisabor/groups/${selectedMultisaborGroupId}/flavors`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ productId: Number(multisaborFlavorForm.productId), classificationId: Number(multisaborFlavorForm.classificationId) }) }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Produto ou classificação não pertence à loja atual."), variant: "destructive" }); return; } setMultisaborFlavorForm({ productId: "", classificationId: "" }); await loadMultisaborConfig(selectedMultisaborGroupId); };
+  const saveMultisaborAddon = async () => { if (!selectedMultisaborGroupId) return; const res = await fetch(`/api/menu/multisabor/groups/${selectedMultisaborGroupId}/addon-groups`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ addonGroupId: Number(multisaborAddonGroupId) }) }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Grupo de adicionais não pertence à loja atual."), variant: "destructive" }); return; } setMultisaborAddonGroupId(""); await loadMultisaborConfig(selectedMultisaborGroupId); };
+  const removeMultisaborAddon = async (linkId: number) => { if (!selectedMultisaborGroupId) return; const res = await fetch(`/api/menu/multisabor/groups/${selectedMultisaborGroupId}/addon-groups/${linkId}`, { method: "DELETE" }); if (!res.ok) { toast({ title: await getErrorMessage(res, "Erro ao remover vínculo de adicionais."), variant: "destructive" }); return; } await loadMultisaborConfig(selectedMultisaborGroupId); };
 
   const params = useMemo(() => {
     const query: Record<string, unknown> = {};
@@ -774,21 +798,35 @@ export default function Menu() {
         </div>
 
 
-        {showPizzaMultiflavorConfig && <Card id="pizza-multiflavor-config" data-testid="pizza-multiflavor-config">
+        {showPizzaMultiflavorConfig && <Card id="multisabor-config" data-testid="multisabor-config">
           <CardContent className="p-5 space-y-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="font-semibold text-xl">Multisabor</h2>
-                <p className="text-sm text-muted-foreground">Produtos | Categorias | Variações | Adicionais | Multisabor</p>
+                <p className="text-sm text-muted-foreground">Configure grupos, tamanhos, classificações, preços, sabores e adicionais sem alterar o fluxo de Novo Pedido.</p>
+                <p className="text-xs text-muted-foreground mt-1">Padrões: Quantidade de sabores • Sabores • Maior classificação selecionada</p>
               </div>
-              <Button variant="outline" size="sm" onClick={() => setShowPizzaExample(!showPizzaExample)}>Ver exemplo de configuração</Button>
+              <Button variant="outline" size="sm" onClick={hidePizzaMultiflavorConfig}>Voltar para produtos</Button>
             </div>
-            {showPizzaExample && <div className="rounded-lg border bg-amber-50 p-3 text-sm text-amber-950" data-testid="pizza-config-example"><p className="font-semibold">Exemplo de regra pela maior classificação</p><p>Grande Tradicional = R$ 54,90</p><p>Grande Nobre = R$ 64,90</p><p className="mt-2">1/2 Calabresa + 1/2 Quatro Queijos</p><p className="font-bold">Preço final: R$ 64,90</p></div>}
-            <div className="grid gap-4 lg:grid-cols-2">
-              <section className="rounded-xl border p-4 space-y-3" data-testid="pizza-section-sizes"><div><h3 className="font-bold">1. Tamanhos</h3><p className="text-sm text-muted-foreground">Defina o nome do tamanho e o máximo de sabores permitido.</p></div><Input placeholder="Grande" value={pizzaSizeForm.name} onChange={(e)=>setPizzaSizeForm({...pizzaSizeForm,name:e.target.value})}/><Input placeholder="Máx. sabores" value={pizzaSizeForm.maxFlavors} onChange={(e)=>setPizzaSizeForm({...pizzaSizeForm,maxFlavors:e.target.value})}/><Button size="sm" onClick={createPizzaSize}>Criar tamanho</Button>{pizzaSizes.length ? <div className="space-y-1 text-sm">{pizzaSizes.map(s=><div key={s.id} className="rounded border px-2 py-1">{s.name} — até {s.maxFlavors} sabor(es)</div>)}</div> : <p className="text-sm text-muted-foreground">Cadastre pelo menos um tamanho antes de montar multisabor.</p>}</section>
-              <section className="rounded-xl border p-4 space-y-3" data-testid="pizza-section-tiers"><div><h3 className="font-bold">2. Classificações</h3><p className="text-sm text-muted-foreground">Agrupe sabores por faixa de preço, como Tradicional e Nobre.</p></div><Input placeholder="Nobre" value={pizzaTierName} onChange={(e)=>setPizzaTierName(e.target.value)}/><Button size="sm" onClick={createPizzaTier}>Criar classificação</Button>{pizzaTiers.length ? <div className="flex flex-wrap gap-2">{pizzaTiers.map(t=><Badge key={t.id} variant="secondary">{t.name}</Badge>)}</div> : <p className="text-sm text-muted-foreground">Cadastre pelo menos uma classificação para precificar os sabores.</p>}</section>
-              <section className="rounded-xl border p-4 space-y-3" data-testid="pizza-section-prices"><div><h3 className="font-bold">3. Preços por tamanho</h3><p className="text-sm text-muted-foreground">Informe o preço de cada classificação em cada tamanho.</p></div><Select value={pizzaPriceForm.sizeId} onValueChange={(v)=>setPizzaPriceForm({...pizzaPriceForm,sizeId:v})}><SelectTrigger><SelectValue placeholder="Tamanho" /></SelectTrigger><SelectContent>{pizzaSizes.map(s=><SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent></Select><Select value={pizzaPriceForm.tierId} onValueChange={(v)=>setPizzaPriceForm({...pizzaPriceForm,tierId:v})}><SelectTrigger><SelectValue placeholder="Classificação" /></SelectTrigger><SelectContent>{pizzaTiers.map(t=><SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent></Select><Input placeholder="Preço" value={pizzaPriceForm.price} onChange={(e)=>setPizzaPriceForm({...pizzaPriceForm,price:e.target.value})}/><Button size="sm" onClick={savePizzaPrice}>Criar preço</Button>{pizzaPrices.length ? <div className="space-y-1 text-sm">{pizzaPrices.map(p=><div key={p.id} className="rounded border px-2 py-1">{pizzaSizes.find(s=>s.id===p.sizeId)?.name} / {pizzaTiers.find(t=>t.id===p.tierId)?.name}: R$ {Number(p.price).toFixed(2)}</div>)}</div> : <p className="text-sm text-muted-foreground">Cadastre preços para evitar bloqueio ao montar multisabor.</p>}</section>
-              <section className="rounded-xl border p-4 space-y-3" data-testid="pizza-section-flavors"><div><h3 className="font-bold">4. Sabores vinculados</h3><p className="text-sm text-muted-foreground">Vincule produtos do cardápio como sabores e escolha a classificação.</p></div><Select value={pizzaFlavorForm.productId} onValueChange={(v)=>setPizzaFlavorForm({...pizzaFlavorForm,productId:v})}><SelectTrigger><SelectValue placeholder="Produto sabor" /></SelectTrigger><SelectContent>{products?.map(p=><SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent></Select><Select value={pizzaFlavorForm.tierId} onValueChange={(v)=>setPizzaFlavorForm({...pizzaFlavorForm,tierId:v})}><SelectTrigger><SelectValue placeholder="Classificação" /></SelectTrigger><SelectContent>{pizzaTiers.map(t=><SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent></Select><Button size="sm" onClick={savePizzaFlavor}>Criar vínculo de sabor</Button>{pizzaFlavors.length ? <div className="space-y-1 text-sm">{pizzaFlavors.map(f=><div key={f.id} className="rounded border px-2 py-1">{f.productName} — {f.tierName}</div>)}</div> : <p className="text-sm text-muted-foreground">Vincule pelo menos um sabor antes de montar multisabor.</p>}</section>
+            <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
+              <section className="rounded-xl border p-4 space-y-3" data-testid="multisabor-section-groups">
+                <div><h3 className="font-bold">Grupos Multisabor</h3><p className="text-sm text-muted-foreground">Crie, edite, selecione ou inative grupos da loja atual.</p></div>
+                <Input placeholder="Nome do grupo" value={multisaborGroupForm.name} onChange={(e)=>setMultisaborGroupForm({...multisaborGroupForm,name:e.target.value})}/>
+                <Textarea placeholder="Descrição opcional" value={multisaborGroupForm.description} onChange={(e)=>setMultisaborGroupForm({...multisaborGroupForm,description:e.target.value})} rows={2}/>
+                <div className="flex flex-wrap gap-2 text-sm"><label className="flex items-center gap-2 rounded border px-2 py-1"><Switch checked={multisaborGroupForm.active} onCheckedChange={(active)=>setMultisaborGroupForm({...multisaborGroupForm,active})}/> Ativo</label><label className="flex items-center gap-2 rounded border px-2 py-1"><Switch checked={multisaborGroupForm.available} onCheckedChange={(available)=>setMultisaborGroupForm({...multisaborGroupForm,available})}/> Disponível</label></div>
+                <div className="flex gap-2"><Button size="sm" onClick={saveMultisaborGroup}>{multisaborGroupForm.id ? "Salvar grupo" : "Criar grupo"}</Button>{multisaborGroupForm.id ? <Button size="sm" variant="outline" onClick={()=>setMultisaborGroupForm({ id: 0, name: "", description: "", active: true, available: true })}>Cancelar</Button> : null}</div>
+                <div className="space-y-2">{multisaborGroups.length ? multisaborGroups.map((g)=><div key={g.id} className={`rounded border p-2 ${selectedMultisaborGroupId===g.id ? "border-primary bg-primary/5" : ""}`}><button type="button" className="w-full text-left" onClick={()=>setSelectedMultisaborGroupId(g.id)}><p className="font-medium">{g.name}</p><p className="text-xs text-muted-foreground">{g.active ? "Ativo" : "Inativo"} • {g.available ? "Disponível" : "Indisponível"}</p></button><div className="mt-2 flex gap-1"><Button size="sm" variant="outline" onClick={()=>setMultisaborGroupForm({ id: g.id, name: g.name, description: g.description ?? "", active: g.active, available: g.available })}>Editar</Button><Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={()=>inactivateMultisaborGroup(g.id)}>Inativar</Button></div></div>) : <p className="text-sm text-muted-foreground">Nenhum grupo Multisabor criado ainda.</p>}</div>
+              </section>
+              <section className="rounded-xl border p-4 space-y-4" data-testid="multisabor-section-selected-config">
+                <div><h3 className="font-bold">Configuração do grupo selecionado</h3><p className="text-sm text-muted-foreground">{selectedMultisaborGroup ? selectedMultisaborGroup.name : "Selecione ou crie um grupo para configurar."}</p></div>
+                {selectedMultisaborGroup ? <div className="grid gap-4 xl:grid-cols-2">
+                  <div className="rounded-lg border p-3 space-y-2"><h4 className="font-semibold">Tamanhos</h4><div className="grid grid-cols-3 gap-2"><Input placeholder="Nome" value={multisaborSizeForm.name} onChange={(e)=>setMultisaborSizeForm({...multisaborSizeForm,name:e.target.value})}/><Input type="number" min="1" placeholder="Mín." value={multisaborSizeForm.minFlavors} onChange={(e)=>setMultisaborSizeForm({...multisaborSizeForm,minFlavors:e.target.value})}/><Input type="number" min="1" placeholder="Máx." value={multisaborSizeForm.maxFlavors} onChange={(e)=>setMultisaborSizeForm({...multisaborSizeForm,maxFlavors:e.target.value})}/></div><Button size="sm" onClick={saveMultisaborSize}>Adicionar tamanho</Button>{multisaborConfig.sizes.map((x)=><p key={x.id} className="rounded border px-2 py-1 text-sm">{x.name}: {x.minFlavors} a {x.maxFlavors} sabor(es)</p>)}</div>
+                  <div className="rounded-lg border p-3 space-y-2"><h4 className="font-semibold">Classificações</h4><div className="grid grid-cols-2 gap-2"><Input placeholder="Nome" value={multisaborClassificationForm.name} onChange={(e)=>setMultisaborClassificationForm({...multisaborClassificationForm,name:e.target.value})}/><Input type="number" placeholder="Ordem/rank" value={multisaborClassificationForm.rank} onChange={(e)=>setMultisaborClassificationForm({...multisaborClassificationForm,rank:e.target.value})}/></div><Button size="sm" onClick={saveMultisaborClassification}>Adicionar classificação</Button><div className="flex flex-wrap gap-2">{multisaborConfig.classifications.map((x)=><Badge key={x.id} variant="secondary">{x.name} • rank {x.rank}</Badge>)}</div></div>
+                  <div className="rounded-lg border p-3 space-y-2"><h4 className="font-semibold">Preços</h4><Select value={multisaborPriceForm.sizeId} onValueChange={(v)=>setMultisaborPriceForm({...multisaborPriceForm,sizeId:v})}><SelectTrigger><SelectValue placeholder="Tamanho" /></SelectTrigger><SelectContent>{multisaborConfig.sizes.map((x)=><SelectItem key={x.id} value={String(x.id)}>{x.name}</SelectItem>)}</SelectContent></Select><Select value={multisaborPriceForm.classificationId} onValueChange={(v)=>setMultisaborPriceForm({...multisaborPriceForm,classificationId:v})}><SelectTrigger><SelectValue placeholder="Classificação" /></SelectTrigger><SelectContent>{multisaborConfig.classifications.map((x)=><SelectItem key={x.id} value={String(x.id)}>{x.name}</SelectItem>)}</SelectContent></Select><Input type="number" min="0" step="0.01" placeholder="Preço" value={multisaborPriceForm.price} onChange={(e)=>setMultisaborPriceForm({...multisaborPriceForm,price:e.target.value})}/><Button size="sm" onClick={saveMultisaborPrice}>Salvar preço</Button>{multisaborConfig.prices.map((x)=><p key={x.id} className="rounded border px-2 py-1 text-sm">{multisaborConfig.sizes.find(s=>s.id===x.sizeId)?.name} / {multisaborConfig.classifications.find(c=>c.id===x.classificationId)?.name}: R$ {Number(x.price).toFixed(2)}</p>)}</div>
+                  <div className="rounded-lg border p-3 space-y-2"><h4 className="font-semibold">Sabores</h4><Select value={multisaborFlavorForm.productId} onValueChange={(v)=>setMultisaborFlavorForm({...multisaborFlavorForm,productId:v})}><SelectTrigger><SelectValue placeholder="Produto da loja atual" /></SelectTrigger><SelectContent>{products?.map((x)=><SelectItem key={x.id} value={String(x.id)}>{x.name}</SelectItem>)}</SelectContent></Select><Select value={multisaborFlavorForm.classificationId} onValueChange={(v)=>setMultisaborFlavorForm({...multisaborFlavorForm,classificationId:v})}><SelectTrigger><SelectValue placeholder="Classificação" /></SelectTrigger><SelectContent>{multisaborConfig.classifications.map((x)=><SelectItem key={x.id} value={String(x.id)}>{x.name}</SelectItem>)}</SelectContent></Select><Button size="sm" onClick={saveMultisaborFlavor}>Vincular sabor</Button>{multisaborConfig.flavors.map((x)=><p key={x.id} className="rounded border px-2 py-1 text-sm">{x.productName} — {multisaborConfig.classifications.find(c=>c.id===x.classificationId)?.name}</p>)}</div>
+                  <div className="rounded-lg border p-3 space-y-2 xl:col-span-2"><h4 className="font-semibold">Adicionais</h4><div className="flex gap-2"><Select value={multisaborAddonGroupId} onValueChange={setMultisaborAddonGroupId}><SelectTrigger><SelectValue placeholder="Grupo de adicionais da loja atual" /></SelectTrigger><SelectContent>{addonGroups.map((x)=><SelectItem key={x.id} value={String(x.id)}>{x.name}</SelectItem>)}</SelectContent></Select><Button size="sm" onClick={saveMultisaborAddon}>Vincular</Button></div>{multisaborConfig.addonGroups.map((x)=><div key={x.id} className="flex items-center justify-between rounded border px-2 py-1 text-sm"><span>{x.addonGroupName}</span><Button size="sm" variant="ghost" onClick={()=>removeMultisaborAddon(x.id)}>Remover</Button></div>)}</div>
+                </div> : null}
+              </section>
             </div>
           </CardContent>
         </Card>}
