@@ -3347,6 +3347,144 @@ router.post("/menu/multisabor/import/confirm", async (req, res) => {
   res.json({ counters: result });
 });
 
+
+router.get("/menu/multisabor/sales-config", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const groups = await db
+    .select({
+      id: multiflavorGroupsTable.id,
+      name: multiflavorGroupsTable.name,
+      description: multiflavorGroupsTable.description,
+      quantityStepLabel: multiflavorGroupsTable.quantityStepLabel,
+      optionsStepLabel: multiflavorGroupsTable.optionsStepLabel,
+      pricingMode: multiflavorGroupsTable.pricingMode,
+      categoryId: multiflavorGroupsTable.categoryId,
+      sortOrder: multiflavorGroupsTable.sortOrder,
+    })
+    .from(multiflavorGroupsTable)
+    .where(
+      and(
+        eq(multiflavorGroupsTable.storeId, actor.storeId),
+        eq(multiflavorGroupsTable.active, true),
+        eq(multiflavorGroupsTable.available, true),
+      ),
+    )
+    .orderBy(
+      asc(multiflavorGroupsTable.sortOrder),
+      asc(multiflavorGroupsTable.name),
+    );
+  res.json(groups);
+});
+
+router.get("/menu/multisabor/groups/:groupId/sales-config", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const groupId = positiveId(req.params.groupId);
+  const [group] = groupId
+    ? await db
+        .select({
+          id: multiflavorGroupsTable.id,
+          name: multiflavorGroupsTable.name,
+          description: multiflavorGroupsTable.description,
+          quantityStepLabel: multiflavorGroupsTable.quantityStepLabel,
+          optionsStepLabel: multiflavorGroupsTable.optionsStepLabel,
+          pricingMode: multiflavorGroupsTable.pricingMode,
+          categoryId: multiflavorGroupsTable.categoryId,
+          sortOrder: multiflavorGroupsTable.sortOrder,
+        })
+        .from(multiflavorGroupsTable)
+        .where(
+          and(
+            eq(multiflavorGroupsTable.storeId, actor.storeId),
+            eq(multiflavorGroupsTable.id, groupId),
+            eq(multiflavorGroupsTable.active, true),
+            eq(multiflavorGroupsTable.available, true),
+          ),
+        )
+        .limit(1)
+    : [];
+  if (!group) {
+    res.status(404).json({ error: "Grupo Multisabor não encontrado." });
+    return;
+  }
+
+  const [sizes, classifications, prices, flavors, addonRows] = await Promise.all([
+    db.select().from(multiflavorSizesTable).where(and(eq(multiflavorSizesTable.storeId, actor.storeId), eq(multiflavorSizesTable.groupId, group.id), eq(multiflavorSizesTable.active, true), eq(multiflavorSizesTable.available, true))).orderBy(asc(multiflavorSizesTable.sortOrder), asc(multiflavorSizesTable.name)),
+    db.select().from(multiflavorClassificationsTable).where(and(eq(multiflavorClassificationsTable.storeId, actor.storeId), eq(multiflavorClassificationsTable.groupId, group.id), eq(multiflavorClassificationsTable.active, true))).orderBy(asc(multiflavorClassificationsTable.sortOrder), asc(multiflavorClassificationsTable.rank), asc(multiflavorClassificationsTable.name)),
+    db.select().from(multiflavorSizeClassificationPricesTable).where(and(eq(multiflavorSizeClassificationPricesTable.storeId, actor.storeId), eq(multiflavorSizeClassificationPricesTable.groupId, group.id))),
+    db.select({ id: multiflavorFlavorsTable.id, productId: multiflavorFlavorsTable.productId, productName: productsTable.name, classificationId: multiflavorFlavorsTable.classificationId, active: multiflavorFlavorsTable.active, available: multiflavorFlavorsTable.available, sortOrder: multiflavorFlavorsTable.sortOrder }).from(multiflavorFlavorsTable).innerJoin(productsTable, eq(multiflavorFlavorsTable.productId, productsTable.id)).where(and(eq(multiflavorFlavorsTable.storeId, actor.storeId), eq(multiflavorFlavorsTable.groupId, group.id), eq(multiflavorFlavorsTable.active, true), eq(multiflavorFlavorsTable.available, true), eq(productsTable.storeId, actor.storeId), eq(productsTable.active, true), eq(productsTable.available, true))).orderBy(asc(multiflavorFlavorsTable.sortOrder), asc(productsTable.name)),
+    db.select({ linkId: multiflavorGroupAddonGroupsTable.id, addonGroupId: addonGroupsTable.id, addonGroupName: addonGroupsTable.name, required: addonGroupsTable.required, minSelected: addonGroupsTable.minSelected, maxSelected: addonGroupsTable.maxSelected, addonGroupSortOrder: addonGroupsTable.sortOrder, optionId: addonOptionsTable.id, optionName: addonOptionsTable.name, optionPrice: addonOptionsTable.price, optionAvailable: addonOptionsTable.available, optionSortOrder: addonOptionsTable.sortOrder }).from(multiflavorGroupAddonGroupsTable).innerJoin(addonGroupsTable, eq(multiflavorGroupAddonGroupsTable.addonGroupId, addonGroupsTable.id)).leftJoin(addonOptionsTable, and(eq(addonOptionsTable.groupId, addonGroupsTable.id), eq(addonOptionsTable.storeId, actor.storeId), eq(addonOptionsTable.available, true))).where(and(eq(multiflavorGroupAddonGroupsTable.storeId, actor.storeId), eq(multiflavorGroupAddonGroupsTable.groupId, group.id), eq(addonGroupsTable.storeId, actor.storeId), eq(addonGroupsTable.active, true))).orderBy(asc(multiflavorGroupAddonGroupsTable.sortOrder), asc(addonGroupsTable.sortOrder), asc(addonGroupsTable.name), asc(addonOptionsTable.sortOrder), asc(addonOptionsTable.name)),
+  ]);
+
+  const addonGroups = Array.from(addonRows.reduce((map, row) => {
+    const current = map.get(row.addonGroupId) ?? { id: row.linkId, addonGroupId: row.addonGroupId, addonGroupName: row.addonGroupName, required: row.required, minSelected: row.minSelected, maxSelected: row.maxSelected, sortOrder: row.addonGroupSortOrder, options: [] as Array<{ id: number; name: string; price: number; available: boolean; sortOrder: number }> };
+    if (row.optionId) current.options.push({ id: row.optionId, name: row.optionName!, price: Number(row.optionPrice), available: row.optionAvailable!, sortOrder: row.optionSortOrder! });
+    map.set(row.addonGroupId, current);
+    return map;
+  }, new Map<number, any>()).values());
+
+  res.json({ group, sizes, classifications, prices, flavors, addonGroups });
+});
+
+router.post("/menu/multisabor/quote", async (req, res) => {
+  const actor = await getCurrentActor(req);
+  const fail = (message: string): void => { res.status(400).json({ error: message }); };
+  const groupId = positiveId(req.body?.groupId);
+  const sizeId = positiveId(req.body?.sizeId);
+  const quantity = req.body?.quantity == null ? 1 : Number(req.body.quantity);
+  if (!groupId) { fail("Grupo Multisabor não encontrado."); return; }
+  if (!sizeId) { fail("Tamanho não encontrado para este grupo."); return; }
+  if (!Number.isInteger(quantity) || quantity < 1) { fail("Quantidade inválida."); return; }
+  const flavorProductIds: number[] = Array.isArray(req.body?.flavorProductIds) ? req.body.flavorProductIds.map(Number) : [];
+  const addonsInput = Array.isArray(req.body?.addons) ? req.body.addons : [];
+
+  const [[group], [size]] = await Promise.all([
+    db.select({ id: multiflavorGroupsTable.id, name: multiflavorGroupsTable.name }).from(multiflavorGroupsTable).where(and(eq(multiflavorGroupsTable.storeId, actor.storeId), eq(multiflavorGroupsTable.id, groupId), eq(multiflavorGroupsTable.active, true), eq(multiflavorGroupsTable.available, true))).limit(1),
+    db.select({ id: multiflavorSizesTable.id, name: multiflavorSizesTable.name, minFlavors: multiflavorSizesTable.minFlavors, maxFlavors: multiflavorSizesTable.maxFlavors }).from(multiflavorSizesTable).where(and(eq(multiflavorSizesTable.storeId, actor.storeId), eq(multiflavorSizesTable.groupId, groupId), eq(multiflavorSizesTable.id, sizeId), eq(multiflavorSizesTable.active, true), eq(multiflavorSizesTable.available, true))).limit(1),
+  ]);
+  if (!group) { fail("Grupo Multisabor não encontrado."); return; }
+  if (!size) { fail("Tamanho não encontrado para este grupo."); return; }
+  if (flavorProductIds.length < size.minFlavors || flavorProductIds.length > size.maxFlavors) { fail(`Este tamanho permite no mínimo ${size.minFlavors} e no máximo ${size.maxFlavors} sabores.`); return; }
+
+  const flavorRows = flavorProductIds.length ? await db.select({ productId: multiflavorFlavorsTable.productId, productName: productsTable.name, classificationId: multiflavorFlavorsTable.classificationId, classificationName: multiflavorClassificationsTable.name, rank: multiflavorClassificationsTable.rank }).from(multiflavorFlavorsTable).innerJoin(productsTable, eq(multiflavorFlavorsTable.productId, productsTable.id)).innerJoin(multiflavorClassificationsTable, eq(multiflavorFlavorsTable.classificationId, multiflavorClassificationsTable.id)).where(and(eq(multiflavorFlavorsTable.storeId, actor.storeId), eq(multiflavorFlavorsTable.groupId, groupId), inArray(multiflavorFlavorsTable.productId, flavorProductIds), eq(multiflavorFlavorsTable.active, true), eq(multiflavorFlavorsTable.available, true), eq(productsTable.storeId, actor.storeId), eq(multiflavorClassificationsTable.storeId, actor.storeId), eq(multiflavorClassificationsTable.groupId, groupId), eq(multiflavorClassificationsTable.active, true))) : [];
+  const flavorsByProductId = new Map(flavorRows.map((flavor) => [flavor.productId, flavor]));
+  for (const productId of flavorProductIds) {
+    if (!Number.isSafeInteger(productId) || productId <= 0 || !flavorsByProductId.has(productId)) { fail(`O sabor "ID ${productId}" não pertence a este grupo.`); return; }
+  }
+  const flavors: Array<(typeof flavorRows)[number]> = flavorProductIds.map((productId: number) => flavorsByProductId.get(productId)!);
+  const winning = flavors.reduce((best: (typeof flavors)[number] | null, flavor: (typeof flavors)[number]) => !best || flavor.rank > best.rank ? flavor : best, null);
+  if (!winning) { fail("Classificação do sabor não encontrada."); return; }
+  const [priceRow] = await db.select({ price: multiflavorSizeClassificationPricesTable.price }).from(multiflavorSizeClassificationPricesTable).where(and(eq(multiflavorSizeClassificationPricesTable.storeId, actor.storeId), eq(multiflavorSizeClassificationPricesTable.groupId, groupId), eq(multiflavorSizeClassificationPricesTable.sizeId, sizeId), eq(multiflavorSizeClassificationPricesTable.classificationId, winning.classificationId))).limit(1);
+  if (!priceRow) { fail("Preço não encontrado para o tamanho e classificação selecionados."); return; }
+
+  const addonIds = addonsInput.map((addon: any) => Number(addon?.addonOptionId)).filter((id: number) => Number.isSafeInteger(id) && id > 0);
+  const linkedAddonGroups = await db.select({ addonGroupId: addonGroupsTable.id, required: addonGroupsTable.required, minSelected: addonGroupsTable.minSelected, maxSelected: addonGroupsTable.maxSelected }).from(multiflavorGroupAddonGroupsTable).innerJoin(addonGroupsTable, eq(multiflavorGroupAddonGroupsTable.addonGroupId, addonGroupsTable.id)).where(and(eq(multiflavorGroupAddonGroupsTable.storeId, actor.storeId), eq(multiflavorGroupAddonGroupsTable.groupId, groupId), eq(addonGroupsTable.storeId, actor.storeId), eq(addonGroupsTable.active, true)));
+  const addonRows = addonIds.length ? await db.select({ addonOptionId: addonOptionsTable.id, addonName: addonOptionsTable.name, addonGroupId: addonGroupsTable.id, addonGroupName: addonGroupsTable.name, required: addonGroupsTable.required, minSelected: addonGroupsTable.minSelected, maxSelected: addonGroupsTable.maxSelected, unitPrice: addonOptionsTable.price }).from(addonOptionsTable).innerJoin(addonGroupsTable, eq(addonOptionsTable.groupId, addonGroupsTable.id)).innerJoin(multiflavorGroupAddonGroupsTable, eq(multiflavorGroupAddonGroupsTable.addonGroupId, addonGroupsTable.id)).where(and(eq(addonOptionsTable.storeId, actor.storeId), eq(addonOptionsTable.available, true), eq(addonGroupsTable.storeId, actor.storeId), eq(addonGroupsTable.active, true), eq(multiflavorGroupAddonGroupsTable.storeId, actor.storeId), eq(multiflavorGroupAddonGroupsTable.groupId, groupId), inArray(addonOptionsTable.id, addonIds))) : [];
+  const addonById = new Map(addonRows.map((addon) => [addon.addonOptionId, addon]));
+  const addonCountsByGroup = new Map<number, number>();
+  const addons: Array<{ addonOptionId: number; addonName: string; addonGroupName: string; quantity: number; unitPrice: number; totalPrice: number }> = [];
+  for (const addon of addonsInput) {
+    const addonOptionId = Number(addon?.addonOptionId);
+    const addonQuantity = addon?.quantity == null ? 1 : Number(addon.quantity);
+    if (!Number.isInteger(addonQuantity) || addonQuantity < 1) { fail("Quantidade inválida."); return; }
+    const row = addonById.get(addonOptionId);
+    if (!row) { fail("Adicional não pertence a este Multisabor."); return; }
+    addonCountsByGroup.set(row.addonGroupId, (addonCountsByGroup.get(row.addonGroupId) ?? 0) + addonQuantity);
+    addons.push({ addonOptionId, addonName: row.addonName, addonGroupName: row.addonGroupName, quantity: addonQuantity, unitPrice: Number(row.unitPrice), totalPrice: Number(row.unitPrice) * addonQuantity });
+  }
+  for (const row of linkedAddonGroups) {
+    const count = addonCountsByGroup.get(row.addonGroupId) ?? 0;
+    if (row.required && count < Math.max(1, row.minSelected)) { fail("Quantidade inválida."); return; }
+    if (count < row.minSelected || (row.maxSelected != null && count > row.maxSelected)) { fail("Quantidade inválida."); return; }
+  }
+
+  const basePrice = Number(priceRow.price);
+  const addonsTotal = addons.reduce((sum, addon) => sum + addon.totalPrice, 0);
+  const unitPrice = basePrice + addonsTotal;
+  const totalPrice = unitPrice * quantity;
+  const flavorNames = flavors.map((flavor) => flavor.productName);
+  res.json({ valid: true, group, size, pricingClassification: { id: winning.classificationId, name: winning.classificationName, rank: winning.rank }, flavors: flavors.map((flavor) => ({ productId: flavor.productId, productName: flavor.productName, classificationName: flavor.classificationName, rank: flavor.rank })), addons, basePrice, addonsTotal, unitPrice, quantity, totalPrice, displayName: `${group.name} ${size.name} - ${flavors.length} ${flavors.length === 1 ? "sabor" : "sabores"}`, summary: `${size.name} com ${flavorNames.join(" e ")}` });
+});
+
 router.get("/menu/multisabor/groups", async (req, res) => {
   const actor = await getCurrentActor(req);
   const rows = await db
