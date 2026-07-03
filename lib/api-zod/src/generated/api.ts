@@ -979,7 +979,8 @@ export const ListOrdersResponse = zod.array(ListOrdersResponseItem);
 /**
  * @summary Create a new order
  */
-const CreateOrderItemBody = zod.object({
+const CreateSimpleOrderItemBody = zod.object({
+  itemType: zod.enum(["simple"]).optional(),
   productId: zod.number(),
   quantity: zod.number().min(1),
   notes: zod.string().optional(),
@@ -993,6 +994,26 @@ const CreateOrderItemBody = zod.object({
     )
     .optional(),
 });
+const CreateMultisaborOrderItemBody = zod.object({
+  itemType: zod.literal("multisabor"),
+  groupId: zod.number(),
+  sizeId: zod.number(),
+  flavorProductIds: zod.array(zod.number()),
+  quantity: zod.number().min(1),
+  notes: zod.string().optional(),
+  addons: zod
+    .array(
+      zod.object({
+        addonOptionId: zod.number(),
+        quantity: zod.number().min(1).optional(),
+      }),
+    )
+    .optional(),
+});
+const CreateOrderItemBody = zod.union([
+  CreateSimpleOrderItemBody,
+  CreateMultisaborOrderItemBody,
+]);
 
 export const CreateOrderBody = zod.object({
   tableId: zod.number().optional(),
@@ -1226,7 +1247,7 @@ export const AddOrderItemParams = zod.object({
   id: zod.coerce.number(),
 });
 
-export const AddOrderItemBody = CreateOrderItemBody;
+export const AddOrderItemBody = CreateSimpleOrderItemBody;
 
 /**
  * @summary Remove an item from an order
