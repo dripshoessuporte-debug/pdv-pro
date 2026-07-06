@@ -17,6 +17,8 @@ import {
   customersTable,
   couriersTable,
   orderItemsTable,
+  orderItemAddonsTable,
+  orderItemFlavorsTable,
   productsTable,
   paymentsTable,
   cashRegistersTable,
@@ -2024,6 +2026,130 @@ router.get(
             .where(inArray(deliveryRouteOrdersTable.orderId, orderIds))
         : [];
 
+    const itemRows =
+      orderIds.length > 0
+        ? await db
+            .select({
+              id: orderItemsTable.id,
+              orderId: orderItemsTable.orderId,
+              productId: orderItemsTable.productId,
+              productName: productsTable.name,
+              externalProductName: orderItemsTable.externalProductName,
+              displayName: orderItemsTable.displayName,
+              itemType: orderItemsTable.itemType,
+              quantity: orderItemsTable.quantity,
+              unitPrice: orderItemsTable.unitPrice,
+              totalPrice: orderItemsTable.totalPrice,
+              notes: orderItemsTable.notes,
+            })
+            .from(orderItemsTable)
+            .leftJoin(
+              productsTable,
+              eq(orderItemsTable.productId, productsTable.id),
+            )
+            .where(inArray(orderItemsTable.orderId, orderIds))
+        : [];
+
+    const itemIds = itemRows.map((item) => item.id);
+    const flavorRows =
+      itemIds.length > 0
+        ? await db
+            .select({
+              orderItemId: orderItemFlavorsTable.orderItemId,
+              productName: orderItemFlavorsTable.productNameSnapshot,
+              tierName: orderItemFlavorsTable.tierNameSnapshot,
+              fractionNumerator: orderItemFlavorsTable.fractionNumerator,
+              fractionDenominator: orderItemFlavorsTable.fractionDenominator,
+              sortOrder: orderItemFlavorsTable.sortOrder,
+            })
+            .from(orderItemFlavorsTable)
+            .where(inArray(orderItemFlavorsTable.orderItemId, itemIds))
+        : [];
+    const addonRows =
+      itemIds.length > 0
+        ? await db
+            .select({
+              orderItemId: orderItemAddonsTable.orderItemId,
+              addonGroupName: orderItemAddonsTable.addonGroupName,
+              addonName: orderItemAddonsTable.addonName,
+              quantity: orderItemAddonsTable.quantity,
+              totalPrice: orderItemAddonsTable.totalPrice,
+            })
+            .from(orderItemAddonsTable)
+            .where(inArray(orderItemAddonsTable.orderItemId, itemIds))
+        : [];
+
+    const flavorsByItemId = new Map<number, typeof flavorRows>();
+    for (const flavor of flavorRows) {
+      const flavors = flavorsByItemId.get(flavor.orderItemId) ?? [];
+      flavors.push(flavor);
+      flavorsByItemId.set(flavor.orderItemId, flavors);
+    }
+
+    const addonsByItemId = new Map<number, typeof addonRows>();
+    for (const addon of addonRows) {
+      const addons = addonsByItemId.get(addon.orderItemId) ?? [];
+      addons.push(addon);
+      addonsByItemId.set(addon.orderItemId, addons);
+    }
+
+    const itemsByOrderId = new Map<
+      number,
+      Array<{
+        id: number;
+        displayName: string;
+        itemType: string;
+        quantity: number;
+        unitPrice: number;
+        totalPrice: number;
+        notes: string | null;
+        flavors: Array<{
+          productName: string;
+          tierName: string;
+          fractionNumerator: number;
+          fractionDenominator: number;
+        }>;
+        addons: Array<{
+          addonGroupName: string;
+          addonName: string;
+          quantity: number;
+          totalPrice: number;
+        }>;
+      }>
+    >();
+    for (const item of itemRows) {
+      const displayName =
+        item.displayName?.trim() ||
+        item.externalProductName?.trim() ||
+        item.productName?.trim() ||
+        "Item do pedido";
+      const orderItems = itemsByOrderId.get(item.orderId) ?? [];
+      orderItems.push({
+        id: item.id,
+        displayName,
+        itemType: item.itemType,
+        quantity: item.quantity,
+        unitPrice: parseFloat(String(item.unitPrice ?? "0")),
+        totalPrice: parseFloat(String(item.totalPrice ?? "0")),
+        notes: item.notes ?? null,
+        flavors: (flavorsByItemId.get(item.id) ?? [])
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((flavor) => ({
+            productName: flavor.productName,
+            tierName: flavor.tierName,
+            fractionNumerator: flavor.fractionNumerator,
+            fractionDenominator: flavor.fractionDenominator,
+          })),
+        addons: (addonsByItemId.get(item.id) ?? []).map((addon) => ({
+          addonGroupName: addon.addonGroupName,
+          addonName: addon.addonName,
+          quantity: addon.quantity,
+          totalPrice: parseFloat(String(addon.totalPrice ?? "0")),
+        })),
+      });
+      itemsByOrderId.set(item.orderId, orderItems);
+    }
+
     const routeMap = new Map(routeAssignments.map((r) => [r.orderId, r]));
 
     const result = orders.map((o) => {
@@ -2051,6 +2177,7 @@ router.get(
         deliveryPaymentNotes: o.deliveryPaymentNotes ?? null,
         routeName: route?.routeName ?? null,
         courierName: route?.courierName ?? null,
+        items: itemsByOrderId.get(o.id) ?? [],
         createdAt: o.createdAt.toISOString(),
       };
     });

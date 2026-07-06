@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  BadgeCheck,
   Banknote,
   QrCode,
   CreditCard,
@@ -1026,6 +1027,49 @@ function PendingSettlementsPanel() {
                     "Sem endereço"}
                   {order.courierName && ` · Motoboy: ${order.courierName}`}
                 </p>
+                {order.items && order.items.length > 0 && (
+                  <div className="mt-2 space-y-1 rounded-lg bg-muted/40 p-2">
+                    {order.items.map((item) => {
+                      const isMultiflavor = item.itemType === "multiflavor";
+                      const flavorSummary = item.flavors
+                        ?.map((flavor) => flavor.productName)
+                        .filter(Boolean)
+                        .join(" + ");
+                      const addonSummary = item.addons
+                        ?.map((addon) =>
+                          addon.quantity > 1
+                            ? `${addon.quantity}x ${addon.addonName}`
+                            : addon.addonName,
+                        )
+                        .filter(Boolean)
+                        .join(", ");
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="text-xs text-muted-foreground"
+                        >
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-medium text-foreground">
+                              {item.quantity}x{" "}
+                              {item.displayName || "Item do pedido"}
+                            </span>
+                            {isMultiflavor && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold uppercase text-orange-700 dark:bg-orange-950/40 dark:text-orange-300">
+                                <BadgeCheck className="h-3 w-3" /> Multisabor
+                              </span>
+                            )}
+                            <span>{fmt(item.totalPrice)}</span>
+                          </div>
+                          {flavorSummary && <div>Sabores: {flavorSummary}</div>}
+                          {addonSummary && (
+                            <div>Adicionais: {addonSummary}</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className="font-bold text-sm text-green-700 dark:text-green-400">
                     {fmt(order.totalAmount)}

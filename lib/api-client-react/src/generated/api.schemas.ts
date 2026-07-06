@@ -1174,6 +1174,28 @@ export interface AwaitingSettlementOrder {
   routeName?: string | null;
   /** @nullable */
   courierName?: string | null;
+  items: {
+    id: number;
+    displayName: string;
+    itemType: string;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+    /** @nullable */
+    notes?: string | null;
+    flavors: {
+      productName: string;
+      tierName: string;
+      fractionNumerator: number;
+      fractionDenominator: number;
+    }[];
+    addons: {
+      addonGroupName: string;
+      addonName: string;
+      quantity: number;
+      totalPrice: number;
+    }[];
+  }[];
   createdAt: string;
 }
 
