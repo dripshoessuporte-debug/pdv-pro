@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLocation, useSearch } from "wouter";
 import { Layout } from "@/components/layout";
 import {
@@ -142,6 +142,7 @@ type MultisaborFlavor = {
   productId: number;
   productName: string;
   classificationId: number;
+  sortOrder?: number;
 };
 type MultisaborAddonGroup = {
   addonGroupId: number;
@@ -343,6 +344,7 @@ export default function NewOrder() {
   const [multisaborNotes, setMultisaborNotes] = useState("");
   const [multisaborQuote, setMultisaborQuote] =
     useState<MultisaborQuote | null>(null);
+  const [multisaborFlavorSearch, setMultisaborFlavorSearch] = useState("");
   const [quotingMultisabor, setQuotingMultisabor] = useState(false);
 
   // Delivery / takeaway fields
@@ -1164,6 +1166,7 @@ export default function NewOrder() {
     setMultisaborQuantity(1);
     setMultisaborNotes("");
     setMultisaborQuote(null);
+    setMultisaborFlavorSearch("");
   };
 
   const openMultisaborWizard = async (group: MultisaborGroup) => {
@@ -1171,6 +1174,7 @@ export default function NewOrder() {
     setMultisaborOpen(true);
     setMultisaborStep(1);
     setMultisaborQuote(null);
+    setMultisaborFlavorSearch("");
     try {
       const response = await fetch(
         `/api/menu/multisabor/groups/${group.id}/sales-config`,
@@ -1188,6 +1192,7 @@ export default function NewOrder() {
       setSelectedMultisaborAddons({});
       setMultisaborQuantity(1);
       setMultisaborNotes("");
+      setMultisaborFlavorSearch("");
     } catch (error) {
       toast({
         title: "Erro ao carregar Multisabor",
@@ -1208,6 +1213,69 @@ export default function NewOrder() {
     multisaborConfig?.flavors.filter((flavor) =>
       selectedMultisaborFlavorIds.includes(flavor.productId),
     ) ?? [];
+  const multisaborClassificationById = useMemo(() => {
+    const classifications = new Map<number, MultisaborClassification>();
+    multisaborConfig?.classifications.forEach((classification) => {
+      classifications.set(classification.id, classification);
+    });
+    return classifications;
+  }, [multisaborConfig]);
+  const normalizedMultisaborFlavorSearch = multisaborFlavorSearch
+    .trim()
+    .toLocaleLowerCase("pt-BR");
+  const groupedMultisaborFlavors = useMemo(() => {
+    if (!multisaborConfig) return [];
+    const classificationOrder = new Map<number, number>();
+    multisaborConfig.classifications.forEach((classification, index) => {
+      classificationOrder.set(classification.id, index);
+    });
+
+    const matchesSearch = (flavor: MultisaborFlavor) => {
+      if (!normalizedMultisaborFlavorSearch) return true;
+      const classificationName =
+        multisaborClassificationById.get(flavor.classificationId)?.name ??
+        "Sem classificação";
+      return `${flavor.productName} ${classificationName}`
+        .toLocaleLowerCase("pt-BR")
+        .includes(normalizedMultisaborFlavorSearch);
+    };
+
+    const flavorsByClassification = new Map<number, MultisaborFlavor[]>();
+    multisaborConfig.flavors.filter(matchesSearch).forEach((flavor) => {
+      const flavors =
+        flavorsByClassification.get(flavor.classificationId) ?? [];
+      flavors.push(flavor);
+      flavorsByClassification.set(flavor.classificationId, flavors);
+    });
+
+    return Array.from(flavorsByClassification.entries())
+      .map(([classificationId, flavors]) => ({
+        classificationId,
+        classificationName:
+          multisaborClassificationById.get(classificationId)?.name ??
+          "Sem classificação",
+        order:
+          classificationOrder.get(classificationId) ??
+          multisaborConfig.classifications.length,
+        flavors: flavors.sort((a, b) => {
+          const sortOrderA = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
+          const sortOrderB = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
+          if (sortOrderA !== sortOrderB) return sortOrderA - sortOrderB;
+          return a.productName.localeCompare(b.productName, "pt-BR");
+        }),
+      }))
+      .sort((a, b) => {
+        if (a.order !== b.order) return a.order - b.order;
+        return a.classificationName.localeCompare(
+          b.classificationName,
+          "pt-BR",
+        );
+      });
+  }, [
+    multisaborClassificationById,
+    multisaborConfig,
+    normalizedMultisaborFlavorSearch,
+  ]);
   const multisaborAddonPayload = Object.entries(selectedMultisaborAddons)
     .map(([addonOptionId, quantity]) => ({
       addonOptionId: Number(addonOptionId),
@@ -2498,30 +2566,78 @@ export default function NewOrder() {
                   Escolha de {selectedMultisaborSize?.minFlavors ?? 0} até{" "}
                   {selectedMultisaborSize?.maxFlavors ?? 0} sabores.
                 </p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {multisaborConfig.flavors.map((flavor) => {
-                    const selected = selectedMultisaborFlavorIds.includes(
-                      flavor.productId,
-                    );
-                    const classification =
-                      multisaborConfig.classifications.find(
-                        (item) => item.id === flavor.classificationId,
-                      );
-                    return (
-                      <button
-                        key={flavor.id}
-                        type="button"
-                        onClick={() => toggleMultisaborFlavor(flavor)}
-                        className={`rounded-lg border p-3 text-left ${selected ? "border-primary bg-primary/10" : "hover:bg-muted/60"}`}
-                      >
-                        <p className="font-medium">{flavor.productName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {classification?.name ?? "Sem classificação"}
-                        </p>
-                      </button>
-                    );
-                  })}
+                <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                  <p className="text-sm font-medium">Selecionados:</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedMultisaborFlavorList.length > 0
+                      ? selectedMultisaborFlavorList
+                          .map((flavor) => flavor.productName)
+                          .join(" · ")
+                      : "Nenhum sabor selecionado ainda."}
+                  </p>
                 </div>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={multisaborFlavorSearch}
+                    onChange={(event) =>
+                      setMultisaborFlavorSearch(event.target.value)
+                    }
+                    placeholder="Buscar sabor..."
+                    className="w-full pl-9"
+                  />
+                </div>
+                {groupedMultisaborFlavors.length === 0 ? (
+                  <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+                    Nenhum sabor encontrado para essa busca.
+                  </p>
+                ) : (
+                  <div className="space-y-5">
+                    {groupedMultisaborFlavors.map((group) => (
+                      <section
+                        key={group.classificationId}
+                        className="space-y-2"
+                      >
+                        <h4 className="text-sm font-semibold">
+                          {group.classificationName} — {group.flavors.length}{" "}
+                          {group.flavors.length === 1 ? "sabor" : "sabores"}
+                        </h4>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {group.flavors.map((flavor) => {
+                            const selected =
+                              selectedMultisaborFlavorIds.includes(
+                                flavor.productId,
+                              );
+                            return (
+                              <button
+                                key={flavor.id}
+                                type="button"
+                                onClick={() => toggleMultisaborFlavor(flavor)}
+                                className={`min-h-20 rounded-lg border p-3 text-left transition ${selected ? "border-primary bg-primary/10 ring-1 ring-primary" : "hover:bg-muted/60"}`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <p className="font-medium">
+                                      {flavor.productName}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {group.classificationName}
+                                    </p>
+                                  </div>
+                                  {selected && (
+                                    <Badge className="shrink-0">
+                                      Selecionado
+                                    </Badge>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                )}
                 {multisaborFlavorValidationError && (
                   <p className="text-sm text-destructive">
                     {multisaborFlavorValidationError}
