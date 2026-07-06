@@ -957,6 +957,21 @@ export const ListOrdersResponseItem = zod.object({
       variantId: zod.number().nullish(),
       variantName: zod.string().nullish(),
       variantPrice: zod.number().nullish(),
+      itemType: zod.string().nullish(),
+      displayName: zod.string().nullish(),
+      pizzaSizeName: zod.string().nullish(),
+      flavors: zod
+        .array(
+          zod.object({
+            productId: zod.number().nullish(),
+            productName: zod.string(),
+            tierId: zod.number().nullish(),
+            tierName: zod.string().nullish(),
+            fractionNumerator: zod.number(),
+            fractionDenominator: zod.number(),
+          }),
+        )
+        .optional(),
       addons: zod
         .array(
           zod.object({
@@ -1125,6 +1140,21 @@ export const GetOrderResponse = zod.object({
       variantId: zod.number().nullish(),
       variantName: zod.string().nullish(),
       variantPrice: zod.number().nullish(),
+      itemType: zod.string().nullish(),
+      displayName: zod.string().nullish(),
+      pizzaSizeName: zod.string().nullish(),
+      flavors: zod
+        .array(
+          zod.object({
+            productId: zod.number().nullish(),
+            productName: zod.string(),
+            tierId: zod.number().nullish(),
+            tierName: zod.string().nullish(),
+            fractionNumerator: zod.number(),
+            fractionDenominator: zod.number(),
+          }),
+        )
+        .optional(),
       addons: zod
         .array(
           zod.object({
@@ -1222,6 +1252,21 @@ export const UpdateOrderResponse = zod.object({
       variantId: zod.number().nullish(),
       variantName: zod.string().nullish(),
       variantPrice: zod.number().nullish(),
+      itemType: zod.string().nullish(),
+      displayName: zod.string().nullish(),
+      pizzaSizeName: zod.string().nullish(),
+      flavors: zod
+        .array(
+          zod.object({
+            productId: zod.number().nullish(),
+            productName: zod.string(),
+            tierId: zod.number().nullish(),
+            tierName: zod.string().nullish(),
+            fractionNumerator: zod.number(),
+            fractionDenominator: zod.number(),
+          }),
+        )
+        .optional(),
       addons: zod
         .array(
           zod.object({
@@ -1327,6 +1372,21 @@ export const SendOrderToKitchenResponse = zod.object({
       variantId: zod.number().nullish(),
       variantName: zod.string().nullish(),
       variantPrice: zod.number().nullish(),
+      itemType: zod.string().nullish(),
+      displayName: zod.string().nullish(),
+      pizzaSizeName: zod.string().nullish(),
+      flavors: zod
+        .array(
+          zod.object({
+            productId: zod.number().nullish(),
+            productName: zod.string(),
+            tierId: zod.number().nullish(),
+            tierName: zod.string().nullish(),
+            fractionNumerator: zod.number(),
+            fractionDenominator: zod.number(),
+          }),
+        )
+        .optional(),
       addons: zod
         .array(
           zod.object({
@@ -1415,6 +1475,21 @@ export const CancelOrderResponse = zod.object({
       variantId: zod.number().nullish(),
       variantName: zod.string().nullish(),
       variantPrice: zod.number().nullish(),
+      itemType: zod.string().nullish(),
+      displayName: zod.string().nullish(),
+      pizzaSizeName: zod.string().nullish(),
+      flavors: zod
+        .array(
+          zod.object({
+            productId: zod.number().nullish(),
+            productName: zod.string(),
+            tierId: zod.number().nullish(),
+            tierName: zod.string().nullish(),
+            fractionNumerator: zod.number(),
+            fractionDenominator: zod.number(),
+          }),
+        )
+        .optional(),
       addons: zod
         .array(
           zod.object({
@@ -1514,6 +1589,21 @@ export const UpdateDeliveryStatusResponse = zod.object({
       variantId: zod.number().nullish(),
       variantName: zod.string().nullish(),
       variantPrice: zod.number().nullish(),
+      itemType: zod.string().nullish(),
+      displayName: zod.string().nullish(),
+      pizzaSizeName: zod.string().nullish(),
+      flavors: zod
+        .array(
+          zod.object({
+            productId: zod.number().nullish(),
+            productName: zod.string(),
+            tierId: zod.number().nullish(),
+            tierName: zod.string().nullish(),
+            fractionNumerator: zod.number(),
+            fractionDenominator: zod.number(),
+          }),
+        )
+        .optional(),
       addons: zod
         .array(
           zod.object({
@@ -1671,6 +1761,21 @@ export const GetReceiptResponse = zod.object({
       variantId: zod.number().nullish(),
       variantName: zod.string().nullish(),
       variantPrice: zod.number().nullish(),
+      itemType: zod.string().nullish(),
+      displayName: zod.string().nullish(),
+      pizzaSizeName: zod.string().nullish(),
+      flavors: zod
+        .array(
+          zod.object({
+            productId: zod.number().nullish(),
+            productName: zod.string(),
+            tierId: zod.number().nullish(),
+            tierName: zod.string().nullish(),
+            fractionNumerator: zod.number(),
+            fractionDenominator: zod.number(),
+          }),
+        )
+        .optional(),
       addons: zod
         .array(
           zod.object({
@@ -1717,6 +1822,21 @@ export const GetKitchenQueueResponseItem = zod.object({
       variantId: zod.number().nullish(),
       variantName: zod.string().nullish(),
       variantPrice: zod.number().nullish(),
+      itemType: zod.string().nullish(),
+      displayName: zod.string().nullish(),
+      pizzaSizeName: zod.string().nullish(),
+      flavors: zod
+        .array(
+          zod.object({
+            productId: zod.number().nullish(),
+            productName: zod.string(),
+            tierId: zod.number().nullish(),
+            tierName: zod.string().nullish(),
+            fractionNumerator: zod.number(),
+            fractionDenominator: zod.number(),
+          }),
+        )
+        .optional(),
       addons: zod
         .array(
           zod.object({
@@ -1798,6 +1918,21 @@ export const MarkTicketReadyResponse = zod.object({
       variantId: zod.number().nullish(),
       variantName: zod.string().nullish(),
       variantPrice: zod.number().nullish(),
+      itemType: zod.string().nullish(),
+      displayName: zod.string().nullish(),
+      pizzaSizeName: zod.string().nullish(),
+      flavors: zod
+        .array(
+          zod.object({
+            productId: zod.number().nullish(),
+            productName: zod.string(),
+            tierId: zod.number().nullish(),
+            tierName: zod.string().nullish(),
+            fractionNumerator: zod.number(),
+            fractionDenominator: zod.number(),
+          }),
+        )
+        .optional(),
       addons: zod
         .array(
           zod.object({
@@ -1909,6 +2044,21 @@ export const GetRecentOrdersResponseItem = zod.object({
       variantId: zod.number().nullish(),
       variantName: zod.string().nullish(),
       variantPrice: zod.number().nullish(),
+      itemType: zod.string().nullish(),
+      displayName: zod.string().nullish(),
+      pizzaSizeName: zod.string().nullish(),
+      flavors: zod
+        .array(
+          zod.object({
+            productId: zod.number().nullish(),
+            productName: zod.string(),
+            tierId: zod.number().nullish(),
+            tierName: zod.string().nullish(),
+            fractionNumerator: zod.number(),
+            fractionDenominator: zod.number(),
+          }),
+        )
+        .optional(),
       addons: zod
         .array(
           zod.object({

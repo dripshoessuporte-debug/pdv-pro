@@ -165,6 +165,26 @@ const PAYABLE = ["open", "preparing", "ready"];
 const htmlErrorMessage =
   "A API retornou erro interno. Verifique os logs do Railway.";
 
+type OrderListItem = {
+  productName?: string | null;
+  displayName?: string | null;
+  externalProductName?: string | null;
+  itemType?: string | null;
+  flavors?: unknown[];
+  quantity: number;
+};
+
+const isMultisaborItem = (item: OrderListItem) =>
+  item.itemType === "multisabor" ||
+  item.itemType === "pizza_multi_flavor" ||
+  (Array.isArray(item.flavors) && item.flavors.length > 0);
+
+const getItemDisplayName = (item: OrderListItem) =>
+  item.displayName?.trim() ||
+  item.externalProductName?.trim() ||
+  item.productName?.trim() ||
+  (isMultisaborItem(item) ? "Pizza Multisabor" : "Item sem nome");
+
 const looksLikeHtml = (value: string) =>
   /<!doctype html|<html[\s>]|<body[\s>]|<pre[\s>]/i.test(value);
 
@@ -480,6 +500,15 @@ export default function Orders() {
                     </>
                   )}
                 </div>
+                {order.items.length > 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground truncate">
+                    {order.items
+                      .slice(0, 3)
+                      .map((item) => `${item.quantity}x ${getItemDisplayName(item)}`)
+                      .join(" · ")}
+                    {order.items.length > 3 ? " · ..." : ""}
+                  </p>
+                )}
 
                 {order.notes && (
                   <p className="text-xs text-muted-foreground italic mt-0.5 truncate">

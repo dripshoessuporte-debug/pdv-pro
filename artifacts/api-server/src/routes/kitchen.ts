@@ -9,6 +9,7 @@ import {
   productsTable,
   customersTable,
   orderItemAddonsTable,
+  orderItemFlavorsTable,
   deliveryRouteOrdersTable,
 } from "@workspace/db";
 import {
@@ -135,6 +136,9 @@ async function getTicketWithItems(ticketId: number, storeId?: number) {
       variantId: orderItemsTable.variantId,
       variantName: orderItemsTable.variantName,
       variantPrice: orderItemsTable.variantPrice,
+      itemType: orderItemsTable.itemType,
+      displayName: orderItemsTable.displayName,
+      pizzaSizeName: orderItemsTable.pizzaSizeName,
     })
     .from(orderItemsTable)
     .leftJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
@@ -165,6 +169,19 @@ async function getTicketWithItems(ticketId: number, storeId?: number) {
           ...addon,
           addonPrice: parseFloat(String(addon.addonPrice)),
           totalPrice: parseFloat(String(addon.totalPrice)),
+        })),
+        flavors: (
+          await db
+            .select()
+            .from(orderItemFlavorsTable)
+            .where(eq(orderItemFlavorsTable.orderItemId, item.id))
+        ).map((flavor) => ({
+          productId: flavor.productId,
+          productName: flavor.productNameSnapshot,
+          tierId: flavor.tierId,
+          tierName: flavor.tierNameSnapshot,
+          fractionNumerator: flavor.fractionNumerator,
+          fractionDenominator: flavor.fractionDenominator,
         })),
       })),
     ),
@@ -221,6 +238,9 @@ router.get("/kitchen/queue", async (req, res): Promise<void> => {
           variantId: orderItemsTable.variantId,
           variantName: orderItemsTable.variantName,
           variantPrice: orderItemsTable.variantPrice,
+          itemType: orderItemsTable.itemType,
+          displayName: orderItemsTable.displayName,
+          pizzaSizeName: orderItemsTable.pizzaSizeName,
         })
         .from(orderItemsTable)
         .leftJoin(
@@ -255,6 +275,19 @@ router.get("/kitchen/queue", async (req, res): Promise<void> => {
               ...addon,
               addonPrice: parseFloat(String(addon.addonPrice)),
               totalPrice: parseFloat(String(addon.totalPrice)),
+            })),
+            flavors: (
+              await db
+                .select()
+                .from(orderItemFlavorsTable)
+                .where(eq(orderItemFlavorsTable.orderItemId, item.id))
+            ).map((flavor) => ({
+              productId: flavor.productId,
+              productName: flavor.productNameSnapshot,
+              tierId: flavor.tierId,
+              tierName: flavor.tierNameSnapshot,
+              fractionNumerator: flavor.fractionNumerator,
+              fractionDenominator: flavor.fractionDenominator,
             })),
           })),
         ),

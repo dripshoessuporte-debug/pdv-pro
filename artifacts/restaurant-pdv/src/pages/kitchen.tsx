@@ -87,13 +87,30 @@ type KitchenTicketItem = {
   id: number;
   productName: string | null;
   displayName?: string | null;
-  flavors?: Array<{ productName: string; fractionNumerator: number; fractionDenominator: number }>;
+  itemType?: string | null;
+  pizzaSizeName?: string | null;
+  flavors?: Array<{
+    productName: string;
+    tierName?: string | null;
+    fractionNumerator: number;
+    fractionDenominator: number;
+  }>;
   quantity: number;
   totalPrice: number;
   notes?: string | null;
   variantName?: string | null;
   addons?: KitchenTicketItemAddon[];
 };
+
+const isMultisaborItem = (item: KitchenTicketItem) =>
+  item.itemType === "multisabor" ||
+  item.itemType === "pizza_multi_flavor" ||
+  (Array.isArray(item.flavors) && item.flavors.length > 0);
+
+const getItemDisplayName = (item: KitchenTicketItem) =>
+  item.displayName?.trim() ||
+  item.productName?.trim() ||
+  (isMultisaborItem(item) ? "Pizza Multisabor" : "Item sem nome");
 
 function formatAddonDetails(item: KitchenTicketItem) {
   if (!Array.isArray(item.addons)) return [];
@@ -521,6 +538,7 @@ export default function Kitchen() {
                   <div className="flex-1 bg-white px-4 pt-4 pb-3 space-y-3 dark:bg-card">
                     {ticket.items.map((item) => {
                       const addonDetails = formatAddonDetails(item);
+                      const multisabor = isMultisaborItem(item);
                       return (
                         <div
                           key={item.id}
@@ -533,18 +551,29 @@ export default function Kitchen() {
                             </span>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-start justify-between gap-2">
-                                <p className="font-bold text-foreground text-base leading-snug">
-                                  {item.displayName ?? item.productName ?? "Item sem nome"}
-                                </p>
+                                <div>
+                                  <p className="font-bold text-foreground text-base leading-snug">
+                                    {getItemDisplayName(item)}
+                                  </p>
+                                  {multisabor && (
+                                    <span className="mt-1 inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-orange-700">
+                                      Multisabor
+                                    </span>
+                                  )}
+                                </div>
                                 <span className="shrink-0 text-xs font-semibold text-muted-foreground">
                                   R$ {item.totalPrice.toFixed(2)}
                                 </span>
                               </div>
                               {Array.isArray(item.flavors) && item.flavors.length > 0 && (
-                                <div className="text-sm text-muted-foreground space-y-1">
+                                <div className="mt-2 rounded-lg bg-white px-2.5 py-2 text-sm text-slate-700 border border-slate-200 space-y-1">
+                                  <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                                    Sabores
+                                  </p>
                                   {item.flavors.map((flavor, flavorIndex) => (
                                     <div key={`${item.id}-flavor-${flavorIndex}`}>
                                       {flavor.fractionNumerator}/{flavor.fractionDenominator} {flavor.productName}
+                                      {flavor.tierName ? ` — ${flavor.tierName}` : ""}
                                     </div>
                                   ))}
                                 </div>
