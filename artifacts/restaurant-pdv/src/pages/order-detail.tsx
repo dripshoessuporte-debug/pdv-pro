@@ -112,6 +112,43 @@ const FINANCIAL_LABELS: Record<string, string> = {
   overpaid: "Pago com valor excedente",
 };
 
+type DisplayableOrderItem = {
+  productName?: string | null;
+  displayName?: string | null;
+  externalProductName?: string | null;
+  itemType?: string | null;
+  pizzaSizeName?: string | null;
+  flavors?: Array<{
+    productName: string;
+    tierName?: string | null;
+    fractionNumerator: number;
+    fractionDenominator: number;
+  }>;
+};
+
+const isMultisaborItem = (item: DisplayableOrderItem) =>
+  item.itemType === "multisabor" ||
+  item.itemType === "pizza_multi_flavor" ||
+  (Array.isArray(item.flavors) && item.flavors.length > 0);
+
+const getItemDisplayName = (item: DisplayableOrderItem) => {
+  const fallback = isMultisaborItem(item) ? "Pizza Multisabor" : "Item sem nome";
+  return (
+    item.displayName?.trim() ||
+    item.externalProductName?.trim() ||
+    item.productName?.trim() ||
+    fallback
+  );
+};
+
+const getMultisaborSubtext = (item: DisplayableOrderItem) => {
+  const flavors = Array.isArray(item.flavors) ? item.flavors : [];
+  if (!isMultisaborItem(item) || flavors.length === 0) return null;
+  const size = item.pizzaSizeName?.trim();
+  const flavorNames = flavors.map((flavor) => flavor.productName).join(" e ");
+  return [size, flavorNames].filter(Boolean).join(" com ");
+};
+
 // Sequência de status de entrega
 const DELIVERY_SEQUENCE = [
   "pending",
@@ -651,7 +688,11 @@ ${allowedFlavors.map((f: any) => `${f.productId} - ${f.productName} — ${f.tier
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {order.items.map((item) => (
+                    {order.items.map((item) => {
+                      const itemName = getItemDisplayName(item);
+                      const multisabor = isMultisaborItem(item);
+                      const multisaborSubtext = getMultisaborSubtext(item);
+                      return (
                       <div
                         key={item.id}
                         className="flex items-center justify-between p-3 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors"
@@ -662,10 +703,18 @@ ${allowedFlavors.map((f: any) => `${f.productId} - ${f.productName} — ${f.tier
                             <span className="font-bold text-primary">
                               {item.quantity}x
                             </span>
-                            <p className="font-medium truncate">
-                              {item.displayName ?? item.productName}
-                            </p>
+                            <p className="font-medium truncate">{itemName}</p>
+                            {multisabor && (
+                              <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+                                Multisabor
+                              </span>
+                            )}
                           </div>
+                          {multisaborSubtext && (
+                            <p className="text-sm text-muted-foreground">
+                              {multisaborSubtext}
+                            </p>
+                          )}
                           <p className="text-sm text-muted-foreground">
                             R$ {item.unitPrice.toFixed(2)} cada
                           </p>
@@ -693,6 +742,7 @@ ${allowedFlavors.map((f: any) => `${f.productId} - ${f.productName} — ${f.tier
                               {item.flavors.map((flavor, flavorIndex) => (
                                 <div key={`${item.id}-flavor-${flavorIndex}`}>
                                   {flavor.fractionNumerator}/{flavor.fractionDenominator} {flavor.productName}
+                                  {flavor.tierName ? ` — ${flavor.tierName}` : ""}
                                 </div>
                               ))}
                             </div>
@@ -726,7 +776,7 @@ ${allowedFlavors.map((f: any) => `${f.productId} - ${f.productName} — ${f.tier
                           )}
                         </div>
                       </div>
-                    ))}
+                    )})}
                   </div>
                 )}
               </CardContent>
@@ -1004,7 +1054,7 @@ ${allowedFlavors.map((f: any) => `${f.productId} - ${f.productName} — ${f.tier
                 {order.items.map((item) => (
                   <div key={item.id} className="flex justify-between text-sm">
                     <span className="text-muted-foreground truncate">
-                      {item.quantity}x {item.displayName ?? item.productName}
+                      {item.quantity}x {getItemDisplayName(item)}
                       {"addons" in item &&
                       Array.isArray(item.addons) &&
                       item.addons.length > 0
