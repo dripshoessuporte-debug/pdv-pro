@@ -303,6 +303,14 @@ function canAtendenteAccess(method: string, path: string): boolean {
   if (/^\/payments(?:\/|$)/.test(path)) return true;
   if (path === "/cash/current") return true;
 
+  if (method === "GET" && path === "/menu/multisabor/sales-config") return true;
+  if (
+    method === "GET" &&
+    /^\/menu\/multisabor\/groups\/\d+\/sales-config$/.test(path)
+  )
+    return true;
+  if (method === "POST" && path === "/menu/multisabor/quote") return true;
+
   if (method !== "GET") return false;
   if (path === "/menu/categories") return true;
   if (path === "/menu/products") return true;
