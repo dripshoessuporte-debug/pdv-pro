@@ -537,6 +537,45 @@ function fiscalCandidateText(member: { role: string; active: boolean; entitlemen
   return "Básico/Médio: upgrade necessário";
 }
 
+function healthToneClasses(tone: "ok" | "warning" | "critical") {
+  if (tone === "ok")
+    return "border-emerald-400/20 bg-emerald-500/10 text-emerald-200";
+  if (tone === "critical")
+    return "border-red-400/25 bg-red-500/10 text-red-200";
+  return "border-amber-400/25 bg-amber-500/10 text-amber-200";
+}
+
+function HealthBadge({
+  children,
+  tone,
+}: {
+  children: ReactNode;
+  tone: "ok" | "warning" | "critical";
+}) {
+  return (
+    <Badge className={`${healthToneClasses(tone)} hover:bg-transparent`}>
+      {children}
+    </Badge>
+  );
+}
+
+function HealthSection({
+  children,
+  title,
+  tone,
+}: {
+  children: ReactNode;
+  title: string;
+  tone: "ok" | "warning" | "critical";
+}) {
+  return (
+    <section className={`rounded-2xl border p-4 ${healthToneClasses(tone)}`}>
+      <h3 className="mb-3 font-semibold text-white">{title}</h3>
+      <div className="grid gap-2">{children}</div>
+    </section>
+  );
+}
+
 type StoreDetails = {
   store: PlatformStore;
   members: Array<{
@@ -558,6 +597,52 @@ type StoreDetails = {
   todayRevenue: number;
 };
 
+type OperationalHealth = {
+  storeId: number;
+  storeName: string;
+  status: string;
+  cash: {
+    open: boolean;
+    registerId: number | null;
+    operator: string | null;
+    openedAt: string | null;
+    openingAmount: number | null;
+  };
+  orders: {
+    open: number;
+    preparing: number;
+    ready: number;
+    closedToday: number;
+    cancelledToday: number;
+    lastOrderAt: string | null;
+  };
+  kitchen: {
+    pendingTickets: number;
+    oldestPendingTicketAt: string | null;
+  };
+  delivery: {
+    outForDelivery: number;
+    awaitingSettlement: number;
+  };
+  menu: {
+    productsCount: number;
+    multisaborGroupsCount: number;
+    lastImportAt: string | null;
+  };
+  fiscal: {
+    hasFiscalConfig: boolean | null;
+    hasFocusCredentials: boolean | null;
+    environment: string | null;
+    lastDocumentStatus: string | null;
+    lastDocumentAt: string | null;
+  };
+  alerts: Array<{
+    level: "info" | "warning" | "critical";
+    code: string;
+    message: string;
+  }>;
+};
+
 export function AdminMaxStoresPage() {
   const { platformRole } = useAuth();
   const [stores, setStores] = useState<PlatformStore[]>([]);
@@ -566,6 +651,8 @@ export function AdminMaxStoresPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [details, setDetails] = useState<StoreDetails | null>(null);
+  const [health, setHealth] = useState<OperationalHealth | null>(null);
+  const [healthLoadingStoreId, setHealthLoadingStoreId] = useState<number | null>(null);
   const loadStores = useCallback(() => {
     setIsLoading(true);
     setError(null);
@@ -616,6 +703,22 @@ export function AdminMaxStoresPage() {
       );
     } catch (e) {
       setError(getErrorMessage(e, "Não foi possível carregar detalhes."));
+    }
+  }
+  async function openOperationalHealth(storeId: number) {
+    try {
+      setHealthLoadingStoreId(storeId);
+      setHealth(
+        await fetchPlatformJson<OperationalHealth>(
+          `/api/platform/stores/${storeId}/operational-health`,
+        ),
+      );
+    } catch (e) {
+      setError(
+        getErrorMessage(e, "Não foi possível carregar a saúde da loja."),
+      );
+    } finally {
+      setHealthLoadingStoreId(null);
     }
   }
   async function startSupport(
@@ -728,6 +831,14 @@ export function AdminMaxStoresPage() {
                   onClick={() => void openDetails(store.id)}
                 >
                   Ver detalhes
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void openOperationalHealth(store.id)}
+                  disabled={healthLoadingStoreId === store.id}
+                >
+                  {healthLoadingStoreId === store.id ? "Carregando..." : "Saúde"}
                 </Button>
                 <Button
                   size="sm"
@@ -857,6 +968,81 @@ export function AdminMaxStoresPage() {
                 <div>{fiscalCandidateText(m)}</div>
               </div>
             ))}
+          </div>
+        </Modal>
+      )}
+      {health && (
+        <Modal
+          title={`Saúde operacional · ${health.storeName} (#${health.storeId})`}
+          onClose={() => setHealth(null)}
+        >
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <HealthBadge tone={health.cash.open ? "ok" : "warning"}>
+              Caixa {health.cash.open ? "aberto" : "fechado"}
+            </HealthBadge>
+            <HealthBadge
+              tone={
+                health.alerts.some((alert) => alert.level === "critical")
+                  ? "critical"
+                  : health.alerts.length
+                    ? "warning"
+                    : "ok"
+              }
+            >
+              {health.alerts.length ? `${health.alerts.length} alerta(s)` : "Sem alertas"}
+            </HealthBadge>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <HealthSection title="Caixa" tone={health.cash.open ? "ok" : "warning"}>
+              <Info label="Status" value={health.cash.open ? "Aberto" : "Fechado"} />
+              <Info label="Operador" value={health.cash.operator ?? "—"} />
+              <Info label="Aberto desde" value={formatDateTime(health.cash.openedAt)} />
+            </HealthSection>
+            <HealthSection title="Pedidos" tone={health.orders.open + health.orders.preparing > 0 ? "warning" : "ok"}>
+              <Info label="Abertos" value={String(health.orders.open)} />
+              <Info label="Em preparo" value={String(health.orders.preparing)} />
+              <Info label="Prontos" value={String(health.orders.ready)} />
+              <Info label="Fechados hoje" value={String(health.orders.closedToday)} />
+              <Info label="Cancelados hoje" value={String(health.orders.cancelledToday)} />
+              <Info label="Último pedido" value={formatDateTime(health.orders.lastOrderAt)} />
+            </HealthSection>
+            <HealthSection title="Cozinha" tone={health.kitchen.pendingTickets > 0 ? "warning" : "ok"}>
+              <Info label="Tickets pendentes" value={String(health.kitchen.pendingTickets)} />
+              <Info label="Ticket mais antigo" value={formatDateTime(health.kitchen.oldestPendingTicketAt)} />
+            </HealthSection>
+            <HealthSection title="Delivery" tone={health.delivery.awaitingSettlement > 0 ? "warning" : "ok"}>
+              <Info label="Em rota" value={String(health.delivery.outForDelivery)} />
+              <Info label="Aguardando baixa financeira" value={String(health.delivery.awaitingSettlement)} />
+            </HealthSection>
+            <HealthSection title="Cardápio" tone="ok">
+              <Info label="Produtos" value={String(health.menu.productsCount)} />
+              <Info label="Grupos Multisabor" value={String(health.menu.multisaborGroupsCount)} />
+              <Info label="Última importação" value={formatDateTime(health.menu.lastImportAt)} />
+            </HealthSection>
+            <HealthSection title="Fiscal" tone={health.fiscal.hasFiscalConfig ? "ok" : "warning"}>
+              <Info label="Configurado" value={health.fiscal.hasFiscalConfig === null ? "Indisponível" : health.fiscal.hasFiscalConfig ? "Sim" : "Não"} />
+              <Info label="Ambiente" value={health.fiscal.environment ?? "—"} />
+              <Info label="Credenciais Focus" value={health.fiscal.hasFocusCredentials === null ? "Indisponível" : health.fiscal.hasFocusCredentials ? "Sim" : "Não"} />
+              <Info label="Último documento" value={health.fiscal.lastDocumentStatus ?? "—"} />
+              <Info label="Data último documento" value={formatDateTime(health.fiscal.lastDocumentAt)} />
+            </HealthSection>
+          </div>
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+            <h3 className="font-semibold">Alertas</h3>
+            {health.alerts.length ? (
+              <div className="mt-3 space-y-2">
+                {health.alerts.map((alert) => (
+                  <div key={alert.code} className="flex gap-2 rounded-xl border border-white/10 p-3 text-sm">
+                    <HealthBadge tone={alert.level === "critical" ? "critical" : "warning"}>
+                      {alert.code}
+                    </HealthBadge>
+                    <span>{alert.message}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-slate-300">Nenhum alerta operacional no momento.</p>
+            )}
           </div>
         </Modal>
       )}

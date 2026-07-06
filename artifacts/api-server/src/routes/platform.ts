@@ -7,10 +7,16 @@ import {
   billingWebhookEventsTable,
   cashRegistersTable,
   db,
+  fiscalDocumentsTable,
+  fiscalProviderCredentialsTable,
+  kitchenTicketsTable,
   ordersTable,
   platformAdminsTable,
   platformAuditLogsTable,
   platformSupportSessionsTable,
+  productsTable,
+  pizzaPriceTiersTable,
+  storeFiscalSettingsTable,
   storeMembersTable,
   storesTable,
   userEntitlementsTable,
@@ -148,6 +154,227 @@ router.get(
       .leftJoin(memberCounts, eq(memberCounts.storeId, storesTable.id))
       .orderBy(storesTable.id);
     res.json({ stores });
+  },
+);
+
+router.get(
+  "/platform/stores/:storeId/operational-health",
+  canManageStores,
+  async (req, res): Promise<void> => {
+    const storeId = Number(req.params.storeId);
+    if (!Number.isInteger(storeId) || storeId <= 0) {
+      res.status(400).json({ error: "Loja inválida." });
+      return;
+    }
+
+    const alerts: Array<{ level: "info" | "warning" | "critical"; code: string; message: string }> = [];
+    const [store] = await db
+      .select({
+        id: storesTable.id,
+        name: storesTable.name,
+        status: storesTable.status,
+      })
+      .from(storesTable)
+      .where(eq(storesTable.id, storeId))
+      .limit(1);
+
+    if (!store) {
+      res.status(404).json({ error: "Loja não encontrada." });
+      return;
+    }
+
+    if (["blocked", "bloqueado", "bloqueada", "suspended"].includes(store.status.toLowerCase())) {
+      alerts.push({
+        level: "critical",
+        code: "STORE_BLOCKED",
+        message: "Loja bloqueada ou suspensa.",
+      });
+    }
+
+    const [cashRegister] = await db
+      .select({
+        id: cashRegistersTable.id,
+        operator: cashRegistersTable.operator,
+        openedAt: cashRegistersTable.openedAt,
+        openingAmount: cashRegistersTable.openingAmount,
+      })
+      .from(cashRegistersTable)
+      .where(
+        and(
+          eq(cashRegistersTable.storeId, storeId),
+          eq(cashRegistersTable.status, "open"),
+        ),
+      )
+      .orderBy(desc(cashRegistersTable.openedAt))
+      .limit(1);
+
+    if (!cashRegister) {
+      alerts.push({
+        level: "warning",
+        code: "CASH_CLOSED",
+        message: "Caixa fechado no momento.",
+      });
+    }
+
+    const [orderStats] = await db
+      .select({
+        open: sql<number>`count(*) filter (where ${ordersTable.status} = 'open')`,
+        preparing: sql<number>`count(*) filter (where ${ordersTable.status} = 'preparing' or ${ordersTable.deliveryStatus} = 'preparing')`,
+        ready: sql<number>`count(*) filter (where ${ordersTable.status} = 'ready' or ${ordersTable.deliveryStatus} = 'ready')`,
+        closedToday: sql<number>`count(*) filter (where ${ordersTable.status} in ('closed', 'paid') and date(${ordersTable.closedAt}) = current_date)`,
+        cancelledToday: sql<number>`count(*) filter (where ${ordersTable.status} = 'cancelled' and date(${ordersTable.updatedAt}) = current_date)`,
+        lastOrderAt: sql<Date | null>`max(${ordersTable.createdAt})`,
+      })
+      .from(ordersTable)
+      .where(eq(ordersTable.storeId, storeId));
+
+    const openOrders = Number(orderStats?.open ?? 0);
+    const preparingOrders = Number(orderStats?.preparing ?? 0);
+    if (openOrders + preparingOrders >= 20) {
+      alerts.push({
+        level: "warning",
+        code: "MANY_OPEN_ORDERS",
+        message: "Muitos pedidos abertos ou em preparo.",
+      });
+    }
+
+    const [kitchenStats] = await db
+      .select({
+        pendingTickets: count(kitchenTicketsTable.id),
+        oldestPendingTicketAt: sql<Date | null>`min(${kitchenTicketsTable.createdAt})`,
+      })
+      .from(kitchenTicketsTable)
+      .innerJoin(ordersTable, eq(kitchenTicketsTable.orderId, ordersTable.id))
+      .where(
+        and(
+          eq(ordersTable.storeId, storeId),
+          eq(kitchenTicketsTable.status, "pending"),
+        ),
+      );
+
+    const oldestPendingTicketAt = kitchenStats?.oldestPendingTicketAt ?? null;
+    if (oldestPendingTicketAt && Date.now() - oldestPendingTicketAt.getTime() > 30 * 60 * 1000) {
+      alerts.push({
+        level: "warning",
+        code: "OLD_KITCHEN_TICKET",
+        message: "Há ticket de cozinha pendente há mais de 30 minutos.",
+      });
+    }
+
+    const [deliveryStats] = await db
+      .select({
+        outForDelivery: sql<number>`count(*) filter (where ${ordersTable.deliveryStatus} in ('out_for_delivery', 'on_route', 'in_route'))`,
+        awaitingSettlement: sql<number>`count(*) filter (where ${ordersTable.type} = 'delivery' and ${ordersTable.paymentTiming} = 'on_delivery' and ${ordersTable.paidAt} is null and ${ordersTable.status} <> 'cancelled')`,
+      })
+      .from(ordersTable)
+      .where(eq(ordersTable.storeId, storeId));
+
+    const awaitingSettlement = Number(deliveryStats?.awaitingSettlement ?? 0);
+    if (awaitingSettlement > 0) {
+      alerts.push({
+        level: "warning",
+        code: "AWAITING_SETTLEMENT",
+        message: "Existem entregas aguardando baixa financeira.",
+      });
+    }
+
+    const [[productsCount], [multisaborGroupsCount]] = await Promise.all([
+      db.select({ total: count(productsTable.id) }).from(productsTable).where(eq(productsTable.storeId, storeId)),
+      db.select({ total: count(pizzaPriceTiersTable.id) }).from(pizzaPriceTiersTable).where(eq(pizzaPriceTiersTable.storeId, storeId)),
+    ]);
+
+    let fiscal = {
+      hasFiscalConfig: null as boolean | null,
+      hasFocusCredentials: null as boolean | null,
+      environment: null as string | null,
+      lastDocumentStatus: null as string | null,
+      lastDocumentAt: null as string | null,
+    };
+    try {
+      const [[settings], [credentials], [lastDocument]] = await Promise.all([
+        db.select({
+          setupStatus: storeFiscalSettingsTable.setupStatus,
+          environment: storeFiscalSettingsTable.environment,
+        }).from(storeFiscalSettingsTable).where(eq(storeFiscalSettingsTable.storeId, storeId)).limit(1),
+        db.select({ id: fiscalProviderCredentialsTable.id }).from(fiscalProviderCredentialsTable).where(eq(fiscalProviderCredentialsTable.storeId, storeId)).limit(1),
+        db.select({
+          status: fiscalDocumentsTable.status,
+          createdAt: fiscalDocumentsTable.createdAt,
+        }).from(fiscalDocumentsTable).where(eq(fiscalDocumentsTable.storeId, storeId)).orderBy(desc(fiscalDocumentsTable.createdAt)).limit(1),
+      ]);
+      fiscal = {
+        hasFiscalConfig: Boolean(settings && settings.setupStatus !== "not_configured"),
+        hasFocusCredentials: Boolean(credentials),
+        environment: settings?.environment ?? null,
+        lastDocumentStatus: lastDocument?.status ?? null,
+        lastDocumentAt: lastDocument?.createdAt?.toISOString() ?? null,
+      };
+      if (!fiscal.hasFiscalConfig) {
+        alerts.push({
+          level: "warning",
+          code: "FISCAL_NOT_CONFIGURED",
+          message: "Fiscal sem configuração ativa.",
+        });
+      }
+      if (fiscal.lastDocumentStatus && ["error", "rejected", "denied", "failed"].includes(fiscal.lastDocumentStatus)) {
+        alerts.push({
+          level: "critical",
+          code: "FISCAL_LAST_ERROR",
+          message: "Último documento fiscal está com erro ou rejeição.",
+        });
+      }
+    } catch (error) {
+      console.warn("[platform/operational-health] fiscal summary failed", { storeId, error });
+      alerts.push({
+        level: "warning",
+        code: "FISCAL_UNAVAILABLE",
+        message: "Resumo fiscal indisponível neste ambiente.",
+      });
+    }
+
+    res.json({
+      storeId: store.id,
+      storeName: store.name,
+      status: store.status,
+      cash: cashRegister
+        ? {
+            open: true,
+            registerId: cashRegister.id,
+            operator: cashRegister.operator,
+            openedAt: cashRegister.openedAt.toISOString(),
+            openingAmount: Number(cashRegister.openingAmount ?? 0),
+          }
+        : {
+            open: false,
+            registerId: null,
+            operator: null,
+            openedAt: null,
+            openingAmount: null,
+          },
+      orders: {
+        open: openOrders,
+        preparing: preparingOrders,
+        ready: Number(orderStats?.ready ?? 0),
+        closedToday: Number(orderStats?.closedToday ?? 0),
+        cancelledToday: Number(orderStats?.cancelledToday ?? 0),
+        lastOrderAt: orderStats?.lastOrderAt?.toISOString() ?? null,
+      },
+      kitchen: {
+        pendingTickets: kitchenStats?.pendingTickets ?? 0,
+        oldestPendingTicketAt: oldestPendingTicketAt?.toISOString() ?? null,
+      },
+      delivery: {
+        outForDelivery: Number(deliveryStats?.outForDelivery ?? 0),
+        awaitingSettlement,
+      },
+      menu: {
+        productsCount: productsCount?.total ?? 0,
+        multisaborGroupsCount: multisaborGroupsCount?.total ?? 0,
+        lastImportAt: null,
+      },
+      fiscal,
+      alerts,
+    });
   },
 );
 
