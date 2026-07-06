@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, sql, gte } from "drizzle-orm";
+import { eq, and, sql, gte, inArray } from "drizzle-orm";
 import {
   db,
   ordersTable,
@@ -22,7 +22,34 @@ import { getCurrentActor } from "../middleware/rbac";
 
 const router: IRouter = Router();
 
+function isDevRuntime(): boolean {
+  return process.env.NODE_ENV !== "production";
+}
+
+function logRoutePerformance(
+  req: {
+    log?: {
+      info?: (data: object, message: string) => void;
+      warn?: (data: object, message: string) => void;
+    };
+  },
+  data: {
+    route: string;
+    storeId: number;
+    durationMs: number;
+    orderCount?: number;
+    itemCount?: number;
+  },
+) {
+  if (data.durationMs > 1000) {
+    req.log?.warn?.(data, "slow operational route");
+  } else if (isDevRuntime()) {
+    req.log?.info?.(data, "operational route performance");
+  }
+}
+
 router.get("/dashboard/summary", async (req, res): Promise<void> => {
+  const startedAt = Date.now();
   const actor = await getCurrentActor(req);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -119,11 +146,17 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     pendingKitchenTickets: Number(pendingTickets?.count ?? 0),
     awaitingSettlement: Number(awaitingSettlement?.count ?? 0),
   };
+  logRoutePerformance(req, {
+    route: "/dashboard/summary",
+    storeId: actor.storeId,
+    durationMs: Date.now() - startedAt,
+  });
 
   res.json(GetDashboardSummaryResponse.parse(summary));
 });
 
 router.get("/dashboard/recent-orders", async (req, res): Promise<void> => {
+  const startedAt = Date.now();
   const actor = await getCurrentActor(req);
   const operationalStart = await getOperationalSessionStart();
   const orders = await db
@@ -155,9 +188,9 @@ router.get("/dashboard/recent-orders", async (req, res): Promise<void> => {
     .orderBy(sql`${ordersTable.createdAt} DESC`)
     .limit(10);
 
-  const ordersWithItems = await Promise.all(
-    orders.map(async (order) => {
-      const items = await db
+  const orderIds = orders.map((order) => order.id);
+  const items = orderIds.length
+    ? await db
         .select({
           id: orderItemsTable.id,
           orderId: orderItemsTable.orderId,
@@ -169,26 +202,45 @@ router.get("/dashboard/recent-orders", async (req, res): Promise<void> => {
           notes: orderItemsTable.notes,
         })
         .from(orderItemsTable)
+        .innerJoin(ordersTable, eq(orderItemsTable.orderId, ordersTable.id))
         .leftJoin(
           productsTable,
           eq(orderItemsTable.productId, productsTable.id),
         )
-        .where(eq(orderItemsTable.orderId, order.id));
+        .where(
+          and(
+            inArray(orderItemsTable.orderId, orderIds),
+            eq(ordersTable.storeId, actor.storeId),
+          ),
+        )
+    : [];
+  const itemsByOrderId = new Map<number, Array<(typeof items)[number]>>();
+  for (const item of items) {
+    const list = itemsByOrderId.get(item.orderId) ?? [];
+    list.push(item);
+    itemsByOrderId.set(item.orderId, list);
+  }
 
-      return {
-        ...order,
-        totalAmount: parseFloat(String(order.totalAmount)),
-        deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
-        createdAt: order.createdAt.toISOString(),
-        updatedAt: order.updatedAt.toISOString(),
-        items: items.map((item) => ({
-          ...item,
-          unitPrice: parseFloat(String(item.unitPrice)),
-          totalPrice: parseFloat(String(item.totalPrice)),
-        })),
-      };
-    }),
-  );
+  const ordersWithItems = orders.map((order) => ({
+    ...order,
+    totalAmount: parseFloat(String(order.totalAmount)),
+    deliveryFee: parseFloat(String(order.deliveryFee ?? "0")),
+    createdAt: order.createdAt.toISOString(),
+    updatedAt: order.updatedAt.toISOString(),
+    items: (itemsByOrderId.get(order.id) ?? []).map((item) => ({
+      ...item,
+      unitPrice: parseFloat(String(item.unitPrice)),
+      totalPrice: parseFloat(String(item.totalPrice)),
+    })),
+  }));
+
+  logRoutePerformance(req, {
+    route: "/dashboard/recent-orders",
+    storeId: actor.storeId,
+    orderCount: ordersWithItems.length,
+    itemCount: items.length,
+    durationMs: Date.now() - startedAt,
+  });
 
   res.json(GetRecentOrdersResponse.parse(ordersWithItems));
 });

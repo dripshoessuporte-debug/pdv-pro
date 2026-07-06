@@ -144,6 +144,28 @@ function isDevRuntime(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
+function logRoutePerformance(
+  req: {
+    log?: {
+      info?: (data: object, message: string) => void;
+      warn?: (data: object, message: string) => void;
+    };
+  },
+  data: {
+    route: string;
+    storeId: number;
+    durationMs: number;
+    orderCount?: number;
+    itemCount?: number;
+  },
+) {
+  if (data.durationMs > 1000) {
+    req.log?.warn?.(data, "slow operational route");
+  } else if (isDevRuntime()) {
+    req.log?.info?.(data, "operational route performance");
+  }
+}
+
 function createOrderErrorResponse(error: unknown): {
   error: string;
   details?: string;
@@ -321,6 +343,224 @@ async function getOrderWithItems(orderId: number, storeId?: number) {
       })),
     ),
   };
+}
+
+async function getOrdersWithItemsBatch(orderIds: number[], storeId: number) {
+  if (orderIds.length === 0) return [];
+
+  const orderRows = await db
+    .select({
+      id: ordersTable.id,
+      tableId: ordersTable.tableId,
+      tableNumber: tablesTable.number,
+      customerId: ordersTable.customerId,
+      customerName: ordersTable.customerName,
+      customerNameRegistered: customersTable.name,
+      status: ordersTable.status,
+      type: ordersTable.type,
+      notes: ordersTable.notes,
+      totalAmount: ordersTable.totalAmount,
+      customerPhone: ordersTable.customerPhone,
+      deliveryCep: ordersTable.deliveryCep,
+      deliveryAddress: ordersTable.deliveryAddress,
+      deliveryNumber: ordersTable.deliveryNumber,
+      deliveryNeighborhood: ordersTable.deliveryNeighborhood,
+      deliveryCity: ordersTable.deliveryCity,
+      deliveryState: ordersTable.deliveryState,
+      deliveryComplement: ordersTable.deliveryComplement,
+      deliveryReference: ordersTable.deliveryReference,
+      deliveryFee: ordersTable.deliveryFee,
+      deliveryNotes: ordersTable.deliveryNotes,
+      deliveryStatus: ordersTable.deliveryStatus,
+      paymentTiming: ordersTable.paymentTiming,
+      deliveryPaymentMethod: ordersTable.deliveryPaymentMethod,
+      needsChange: ordersTable.needsChange,
+      changeFor: ordersTable.changeFor,
+      deliveryPaymentNotes: ordersTable.deliveryPaymentNotes,
+      kitchenAcceptedAt: ordersTable.kitchenAcceptedAt,
+      readyAt: ordersTable.readyAt,
+      paidAt: ordersTable.paidAt,
+      closedAt: ordersTable.closedAt,
+      source: ordersTable.source,
+      externalOrderId: ordersTable.externalOrderId,
+      integrationStatus: ordersTable.integrationStatus,
+      estimatedDistanceKm: ordersTable.estimatedDistanceKm,
+      deliveryFeeCalculated: ordersTable.deliveryFeeCalculated,
+      deliveryFeeSource: ordersTable.deliveryFeeSource,
+      deliveryDistanceSource: ordersTable.deliveryDistanceSource,
+      createdAt: ordersTable.createdAt,
+      updatedAt: ordersTable.updatedAt,
+    })
+    .from(ordersTable)
+    .leftJoin(tablesTable, eq(ordersTable.tableId, tablesTable.id))
+    .leftJoin(customersTable, eq(ordersTable.customerId, customersTable.id))
+    .where(
+      and(inArray(ordersTable.id, orderIds), eq(ordersTable.storeId, storeId)),
+    );
+
+  const itemRows = await db
+    .select({
+      id: orderItemsTable.id,
+      orderId: orderItemsTable.orderId,
+      productId: orderItemsTable.productId,
+      productName: sql<
+        string | null
+      >`coalesce(${orderItemsTable.displayName}, ${orderItemsTable.externalProductName}, ${productsTable.name})`,
+      variantId: orderItemsTable.variantId,
+      variantName: orderItemsTable.variantName,
+      variantPrice: orderItemsTable.variantPrice,
+      quantity: orderItemsTable.quantity,
+      unitPrice: orderItemsTable.unitPrice,
+      totalPrice: orderItemsTable.totalPrice,
+      notes: orderItemsTable.notes,
+      itemType: orderItemsTable.itemType,
+      displayName: orderItemsTable.displayName,
+      pizzaSizeName: orderItemsTable.pizzaSizeName,
+      pricingMode: orderItemsTable.pricingMode,
+      basePizzaTierName: orderItemsTable.basePizzaTierName,
+    })
+    .from(orderItemsTable)
+    .innerJoin(ordersTable, eq(orderItemsTable.orderId, ordersTable.id))
+    .leftJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
+    .where(
+      and(
+        inArray(orderItemsTable.orderId, orderIds),
+        eq(ordersTable.storeId, storeId),
+      ),
+    );
+
+  const itemIds = itemRows.map((item) => item.id);
+  const [addonRows, flavorRows] = itemIds.length
+    ? await Promise.all([
+        db
+          .select({ addon: orderItemAddonsTable })
+          .from(orderItemAddonsTable)
+          .innerJoin(
+            orderItemsTable,
+            eq(orderItemAddonsTable.orderItemId, orderItemsTable.id),
+          )
+          .innerJoin(ordersTable, eq(orderItemsTable.orderId, ordersTable.id))
+          .where(
+            and(
+              inArray(orderItemAddonsTable.orderItemId, itemIds),
+              eq(ordersTable.storeId, storeId),
+            ),
+          ),
+        db
+          .select({ flavor: orderItemFlavorsTable })
+          .from(orderItemFlavorsTable)
+          .innerJoin(
+            orderItemsTable,
+            eq(orderItemFlavorsTable.orderItemId, orderItemsTable.id),
+          )
+          .innerJoin(ordersTable, eq(orderItemsTable.orderId, ordersTable.id))
+          .where(
+            and(
+              inArray(orderItemFlavorsTable.orderItemId, itemIds),
+              eq(ordersTable.storeId, storeId),
+            ),
+          ),
+      ])
+    : [[], []];
+
+  const addonsByItemId = new Map<
+    number,
+    Array<typeof orderItemAddonsTable.$inferSelect>
+  >();
+  for (const row of addonRows) {
+    const addon = row.addon;
+    const list = addonsByItemId.get(addon.orderItemId) ?? [];
+    list.push(addon);
+    addonsByItemId.set(addon.orderItemId, list);
+  }
+
+  const flavorsByItemId = new Map<
+    number,
+    Array<typeof orderItemFlavorsTable.$inferSelect>
+  >();
+  for (const row of flavorRows) {
+    const flavor = row.flavor;
+    const list = flavorsByItemId.get(flavor.orderItemId) ?? [];
+    list.push(flavor);
+    flavorsByItemId.set(flavor.orderItemId, list);
+  }
+
+  const itemsByOrderId = new Map<number, Array<(typeof itemRows)[number]>>();
+  for (const item of itemRows) {
+    const list = itemsByOrderId.get(item.orderId) ?? [];
+    list.push(item);
+    itemsByOrderId.set(item.orderId, list);
+  }
+
+  const ordersById = new Map(orderRows.map((order) => [order.id, order]));
+  return Promise.all(
+    orderIds.map(async (orderId) => {
+      const order = ordersById.get(orderId);
+      if (!order) return null;
+      const financial = await getOrderFinancialState(orderId).catch((error) => {
+        console.error(
+          { error, orderId },
+          "failed to load order financial state",
+        );
+        return {
+          totalAmount: numberOrZero(order.totalAmount),
+          paidAmount: 0,
+          outstandingAmount: numberOrZero(order.totalAmount),
+          paymentState: "unpaid" as const,
+        };
+      });
+      const { customerNameRegistered, ...orderRest } = order;
+      return {
+        ...orderRest,
+        customerName: order.customerName ?? customerNameRegistered ?? null,
+        totalAmount: financial.totalAmount,
+        financial,
+        paidAmount: financial.paidAmount,
+        outstandingAmount: financial.outstandingAmount,
+        paymentState: financial.paymentState,
+        deliveryFee: numberOrZero(order.deliveryFee),
+        needsChange:
+          order.needsChange == null ? null : order.needsChange === "true",
+        changeFor: order.changeFor ? numberOrZero(order.changeFor) : null,
+        kitchenAcceptedAt: dateToIsoOrNull(order.kitchenAcceptedAt),
+        readyAt: dateToIsoOrNull(order.readyAt),
+        paidAt: dateToIsoOrNull(order.paidAt),
+        closedAt: dateToIsoOrNull(order.closedAt),
+        estimatedDistanceKm:
+          order.estimatedDistanceKm != null
+            ? numberOrZero(order.estimatedDistanceKm)
+            : null,
+        deliveryFeeCalculated: order.deliveryFeeCalculated === "true",
+        createdAt:
+          dateToIsoOrNull(order.createdAt) ?? new Date(0).toISOString(),
+        updatedAt: dateToIsoOrNull(order.updatedAt) ?? undefined,
+        items: (itemsByOrderId.get(orderId) ?? []).map((item) => ({
+          ...item,
+          productName: item.productName ?? "Produto removido",
+          variantPrice: item.variantPrice
+            ? numberOrZero(item.variantPrice)
+            : null,
+          unitPrice: numberOrZero(item.unitPrice),
+          totalPrice: numberOrZero(item.totalPrice),
+          addons: (addonsByItemId.get(item.id) ?? []).map((addon) => ({
+            ...addon,
+            addonGroupName: addon.addonGroupName ?? "Adicionais",
+            addonName: addon.addonName ?? "Adicional removido",
+            addonPrice: numberOrZero(addon.addonPrice),
+            totalPrice: numberOrZero(addon.totalPrice),
+          })),
+          flavors: (flavorsByItemId.get(item.id) ?? []).map((flavor) => ({
+            productId: flavor.productId,
+            productName: flavor.productNameSnapshot,
+            tierId: flavor.tierId,
+            tierName: flavor.tierNameSnapshot,
+            fractionNumerator: flavor.fractionNumerator,
+            fractionDenominator: flavor.fractionDenominator,
+          })),
+        })),
+      };
+    }),
+  );
 }
 
 class OrderFlowError extends Error {
@@ -902,6 +1142,7 @@ async function recalcOrderTotal(orderId: number, client: any = db) {
 }
 
 router.get("/orders", async (req, res): Promise<void> => {
+  const startedAt = Date.now();
   const queryParams = ListOrdersQueryParams.safeParse(req.query);
   const { status, tableId } = queryParams.success
     ? queryParams.data
@@ -926,20 +1167,22 @@ router.get("/orders", async (req, res): Promise<void> => {
       .limit(100);
 
     const ordersWithItems = (
-      await Promise.all(
-        orders.map(async (order) => {
-          try {
-            return await getOrderWithItems(order.id, scope.actor.storeId);
-          } catch (error) {
-            req.log.error(
-              { error, orderId: order.id, storeId: scope.actor.storeId },
-              "failed to hydrate order for list",
-            );
-            return null;
-          }
-        }),
+      await getOrdersWithItemsBatch(
+        orders.map((order) => order.id),
+        scope.actor.storeId,
       )
     ).filter((order): order is NonNullable<typeof order> => order != null);
+    const itemCount = ordersWithItems.reduce(
+      (sum, order) => sum + order.items.length,
+      0,
+    );
+    logRoutePerformance(req, {
+      route: "/orders",
+      storeId: scope.actor.storeId,
+      orderCount: ordersWithItems.length,
+      itemCount,
+      durationMs: Date.now() - startedAt,
+    });
 
     const parsed = ListOrdersResponse.safeParse(ordersWithItems);
     if (!parsed.success) {
