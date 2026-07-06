@@ -10,6 +10,7 @@ import {
   categoriesTable,
   customersTable,
   paymentsTable,
+  orderItemFlavorsTable,
 } from "@workspace/db";
 
 import {
@@ -249,34 +250,65 @@ router.get("/dashboard/sales-by-category", async (req, res): Promise<void> => {
   const actor = await getCurrentActor(req);
   const operationalStart = await getOperationalSessionStart();
 
-  const rows = await db
-    .select({
-      categoryId: categoriesTable.id,
-      categoryName: categoriesTable.name,
-      totalSales: sql<string>`coalesce(sum(${orderItemsTable.totalPrice}), 0)`,
-      itemCount: sql<number>`count(${orderItemsTable.id})`,
-    })
-    .from(categoriesTable)
-    .leftJoin(productsTable, eq(productsTable.categoryId, categoriesTable.id))
-    .leftJoin(orderItemsTable, eq(orderItemsTable.productId, productsTable.id))
-    .leftJoin(ordersTable, eq(orderItemsTable.orderId, ordersTable.id))
-    .leftJoin(paymentsTable, eq(paymentsTable.orderId, ordersTable.id))
-    .where(
-      and(
-        eq(categoriesTable.storeId, actor.storeId),
-        eq(ordersTable.storeId, actor.storeId),
-        gte(ordersTable.createdAt, operationalStart),
-        gte(paymentsTable.createdAt, operationalStart),
-        eq(paymentsTable.status, "approved"),
-      ),
-    )
-    .groupBy(categoriesTable.id, categoriesTable.name)
-    .orderBy(sql`sum(${orderItemsTable.totalPrice}) DESC NULLS LAST`);
+  const categoryIdSql = sql<number>`
+    case
+      when ${orderItemsTable.itemType} = 'multisabor'
+        then coalesce(first_flavor_category.category_id, -1)
+      else coalesce(product_category.id, -2)
+    end
+  `;
+  const categoryNameSql = sql<string>`
+    case
+      when ${orderItemsTable.itemType} = 'multisabor'
+        then coalesce(first_flavor_category.category_name, 'Multisabor')
+      else coalesce(product_category.name, 'Sem categoria')
+    end
+  `;
 
-  const result = rows.map((row) => ({
-    categoryId: row.categoryId,
-    categoryName: row.categoryName,
-    totalSales: parseFloat(String(row.totalSales)),
+  const rows = await db.execute(sql`
+    select
+      ${categoryIdSql} as "categoryId",
+      ${categoryNameSql} as "categoryName",
+      coalesce(sum(${orderItemsTable.totalPrice}), 0) as "totalSales",
+      count(${orderItemsTable.id}) as "itemCount"
+    from ${orderItemsTable}
+    inner join ${ordersTable}
+      on ${orderItemsTable.orderId} = ${ordersTable.id}
+    left join ${productsTable}
+      on ${orderItemsTable.productId} = ${productsTable.id}
+    left join ${categoriesTable} as product_category
+      on ${productsTable.categoryId} = product_category.id
+    left join lateral (
+      select
+        flavor_category.id as category_id,
+        flavor_category.name as category_name
+      from ${orderItemFlavorsTable}
+      inner join ${productsTable} as flavor_product
+        on ${orderItemFlavorsTable.productId} = flavor_product.id
+      left join ${categoriesTable} as flavor_category
+        on flavor_product.category_id = flavor_category.id
+      where ${orderItemFlavorsTable.orderItemId} = ${orderItemsTable.id}
+      order by ${orderItemFlavorsTable.sortOrder} asc, ${orderItemFlavorsTable.id} asc
+      limit 1
+    ) as first_flavor_category on true
+    where
+      ${ordersTable.storeId} = ${actor.storeId}
+      and ${ordersTable.createdAt} >= ${operationalStart}
+      and exists (
+        select 1
+        from ${paymentsTable}
+        where ${paymentsTable.orderId} = ${ordersTable.id}
+          and ${paymentsTable.createdAt} >= ${operationalStart}
+          and ${paymentsTable.status} = 'approved'
+      )
+    group by ${categoryIdSql}, ${categoryNameSql}
+    order by sum(${orderItemsTable.totalPrice}) desc nulls last
+  `);
+
+  const result = rows.rows.map((row) => ({
+    categoryId: Number(row.categoryId),
+    categoryName: String(row.categoryName ?? "Sem categoria"),
+    totalSales: parseFloat(String(row.totalSales ?? 0)),
     itemCount: Number(row.itemCount),
   }));
 
