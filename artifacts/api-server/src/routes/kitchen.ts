@@ -27,6 +27,32 @@ import { releaseTableIfOrderClosed } from "../lib/table-release";
 
 const router: IRouter = Router();
 
+function isDevRuntime(): boolean {
+  return process.env.NODE_ENV !== "production";
+}
+
+function logRoutePerformance(
+  req: {
+    log?: {
+      info?: (data: object, message: string) => void;
+      warn?: (data: object, message: string) => void;
+    };
+  },
+  data: {
+    route: string;
+    storeId: number;
+    durationMs: number;
+    ticketCount?: number;
+    itemCount?: number;
+  },
+) {
+  if (data.durationMs > 1000) {
+    req.log?.warn?.(data, "slow operational route");
+  } else if (isDevRuntime()) {
+    req.log?.info?.(data, "operational route performance");
+  }
+}
+
 type TicketOrderRecord = {
   id: number;
   orderId: number;
@@ -189,6 +215,7 @@ async function getTicketWithItems(ticketId: number, storeId?: number) {
 }
 
 router.get("/kitchen/queue", async (req, res): Promise<void> => {
+  const startedAt = Date.now();
   const actor = await getCurrentActor(req);
   const operationalStart = await getOperationalSessionStart();
 
@@ -221,16 +248,16 @@ router.get("/kitchen/queue", async (req, res): Promise<void> => {
     )
     .orderBy(desc(kitchenTicketsTable.createdAt));
 
-  const ticketsWithItems = await Promise.all(
-    tickets.map(async (ticket) => {
-      const items = await db
+  const orderIds = tickets.map((ticket) => ticket.orderId);
+  const items = orderIds.length
+    ? await db
         .select({
           id: orderItemsTable.id,
           orderId: orderItemsTable.orderId,
           productId: orderItemsTable.productId,
           productName: sql<
             string | null
-          >`coalesce(${productsTable.name}, ${orderItemsTable.externalProductName})`,
+          >`coalesce(${orderItemsTable.displayName}, ${orderItemsTable.externalProductName}, ${productsTable.name})`,
           quantity: orderItemsTable.quantity,
           unitPrice: orderItemsTable.unitPrice,
           totalPrice: orderItemsTable.totalPrice,
@@ -243,57 +270,114 @@ router.get("/kitchen/queue", async (req, res): Promise<void> => {
           pizzaSizeName: orderItemsTable.pizzaSizeName,
         })
         .from(orderItemsTable)
+        .innerJoin(ordersTable, eq(orderItemsTable.orderId, ordersTable.id))
         .leftJoin(
           productsTable,
           eq(orderItemsTable.productId, productsTable.id),
         )
-        .where(eq(orderItemsTable.orderId, ticket.orderId));
+        .where(
+          and(
+            inArray(orderItemsTable.orderId, orderIds),
+            eq(ordersTable.storeId, actor.storeId),
+          ),
+        )
+    : [];
+  const itemIds = items.map((item) => item.id);
+  const [addons, flavors] = itemIds.length
+    ? await Promise.all([
+        db
+          .select({ addon: orderItemAddonsTable })
+          .from(orderItemAddonsTable)
+          .innerJoin(
+            orderItemsTable,
+            eq(orderItemAddonsTable.orderItemId, orderItemsTable.id),
+          )
+          .innerJoin(ordersTable, eq(orderItemsTable.orderId, ordersTable.id))
+          .where(
+            and(
+              inArray(orderItemAddonsTable.orderItemId, itemIds),
+              eq(ordersTable.storeId, actor.storeId),
+            ),
+          ),
+        db
+          .select({ flavor: orderItemFlavorsTable })
+          .from(orderItemFlavorsTable)
+          .innerJoin(
+            orderItemsTable,
+            eq(orderItemFlavorsTable.orderItemId, orderItemsTable.id),
+          )
+          .innerJoin(ordersTable, eq(orderItemsTable.orderId, ordersTable.id))
+          .where(
+            and(
+              inArray(orderItemFlavorsTable.orderItemId, itemIds),
+              eq(ordersTable.storeId, actor.storeId),
+            ),
+          ),
+      ])
+    : [[], []];
+  const addonsByItemId = new Map<
+    number,
+    Array<typeof orderItemAddonsTable.$inferSelect>
+  >();
+  for (const row of addons) {
+    const list = addonsByItemId.get(row.addon.orderItemId) ?? [];
+    list.push(row.addon);
+    addonsByItemId.set(row.addon.orderItemId, list);
+  }
+  const flavorsByItemId = new Map<
+    number,
+    Array<typeof orderItemFlavorsTable.$inferSelect>
+  >();
+  for (const row of flavors) {
+    const list = flavorsByItemId.get(row.flavor.orderItemId) ?? [];
+    list.push(row.flavor);
+    flavorsByItemId.set(row.flavor.orderItemId, list);
+  }
+  const itemsByOrderId = new Map<number, Array<(typeof items)[number]>>();
+  for (const item of items) {
+    const list = itemsByOrderId.get(item.orderId) ?? [];
+    list.push(item);
+    itemsByOrderId.set(item.orderId, list);
+  }
 
-      return {
-        ...ticket,
-        createdAt: ticket.createdAt.toISOString(),
-        orderCreatedAt: ticket.orderCreatedAt?.toISOString() ?? null,
-        kitchenAcceptedAt: ticket.kitchenAcceptedAt?.toISOString() ?? null,
-        ticketCreatedAt:
-          ticket.ticketCreatedAt?.toISOString() ??
-          ticket.createdAt.toISOString(),
-        items: await Promise.all(
-          items.map(async (item) => ({
-            ...item,
-            unitPrice: parseFloat(String(item.unitPrice)),
-            totalPrice: parseFloat(String(item.totalPrice)),
-            variantPrice:
-              item.variantPrice == null
-                ? null
-                : parseFloat(String(item.variantPrice)),
-            addons: (
-              await db
-                .select()
-                .from(orderItemAddonsTable)
-                .where(eq(orderItemAddonsTable.orderItemId, item.id))
-            ).map((addon) => ({
-              ...addon,
-              addonPrice: parseFloat(String(addon.addonPrice)),
-              totalPrice: parseFloat(String(addon.totalPrice)),
-            })),
-            flavors: (
-              await db
-                .select()
-                .from(orderItemFlavorsTable)
-                .where(eq(orderItemFlavorsTable.orderItemId, item.id))
-            ).map((flavor) => ({
-              productId: flavor.productId,
-              productName: flavor.productNameSnapshot,
-              tierId: flavor.tierId,
-              tierName: flavor.tierNameSnapshot,
-              fractionNumerator: flavor.fractionNumerator,
-              fractionDenominator: flavor.fractionDenominator,
-            })),
-          })),
-        ),
-      };
-    }),
-  );
+  const ticketsWithItems = tickets.map((ticket) => ({
+    ...ticket,
+    createdAt: ticket.createdAt.toISOString(),
+    orderCreatedAt: ticket.orderCreatedAt?.toISOString() ?? null,
+    kitchenAcceptedAt: ticket.kitchenAcceptedAt?.toISOString() ?? null,
+    ticketCreatedAt:
+      ticket.ticketCreatedAt?.toISOString() ?? ticket.createdAt.toISOString(),
+    items: (itemsByOrderId.get(ticket.orderId) ?? []).map((item) => ({
+      ...item,
+      unitPrice: parseFloat(String(item.unitPrice)),
+      totalPrice: parseFloat(String(item.totalPrice)),
+      variantPrice:
+        item.variantPrice == null
+          ? null
+          : parseFloat(String(item.variantPrice)),
+      addons: (addonsByItemId.get(item.id) ?? []).map((addon) => ({
+        ...addon,
+        addonPrice: parseFloat(String(addon.addonPrice)),
+        totalPrice: parseFloat(String(addon.totalPrice)),
+      })),
+      flavors: (flavorsByItemId.get(item.id) ?? []).map((flavor) => ({
+        productId: flavor.productId,
+        productName: flavor.productNameSnapshot,
+        tierId: flavor.tierId,
+        tierName: flavor.tierNameSnapshot,
+        fractionNumerator: flavor.fractionNumerator,
+        fractionDenominator: flavor.fractionDenominator,
+      })),
+    })),
+  }));
+
+  logRoutePerformance(req, {
+    route: "/kitchen/queue",
+    storeId: actor.storeId,
+    ticketCount: ticketsWithItems.length,
+    itemCount: items.length,
+    durationMs: Date.now() - startedAt,
+  });
 
   res.json(GetKitchenQueueResponse.parse(ticketsWithItems));
 });
