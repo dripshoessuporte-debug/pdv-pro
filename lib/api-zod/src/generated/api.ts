@@ -2477,6 +2477,33 @@ export const ListAwaitingSettlementResponseItem = zod.object({
   deliveryPaymentNotes: zod.string().nullish(),
   routeName: zod.string().nullish(),
   courierName: zod.string().nullish(),
+  items: zod.array(
+    zod.object({
+      id: zod.number(),
+      displayName: zod.string(),
+      itemType: zod.string(),
+      quantity: zod.number(),
+      unitPrice: zod.number(),
+      totalPrice: zod.number(),
+      notes: zod.string().nullish(),
+      flavors: zod.array(
+        zod.object({
+          productName: zod.string(),
+          tierName: zod.string(),
+          fractionNumerator: zod.number(),
+          fractionDenominator: zod.number(),
+        }),
+      ),
+      addons: zod.array(
+        zod.object({
+          addonGroupName: zod.string(),
+          addonName: zod.string(),
+          quantity: zod.number(),
+          totalPrice: zod.number(),
+        }),
+      ),
+    }),
+  ),
   createdAt: zod.string(),
 });
 export const ListAwaitingSettlementResponse = zod.array(
