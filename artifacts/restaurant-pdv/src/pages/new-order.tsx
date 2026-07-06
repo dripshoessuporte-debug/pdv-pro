@@ -83,7 +83,8 @@ type SelectedAddon = {
   quantity: number;
 };
 
-type CartItem = {
+type SimpleCartItem = {
+  itemType?: "simple";
   productId: number;
   variantId: number | null;
   name: string;
@@ -93,6 +94,99 @@ type CartItem = {
   notes: string;
   addons: SelectedAddon[];
   addonKey: string;
+};
+
+type MultisaborCartItem = {
+  itemType: "multisabor";
+  cartKey: string;
+  groupId: number;
+  sizeId: number;
+  flavorProductIds: number[];
+  name: string;
+  summary: string;
+  price: number;
+  quantity: number;
+  notes: string;
+  addons: Array<{
+    addonOptionId: number;
+    quantity: number;
+    name: string;
+    totalPrice: number;
+  }>;
+  flavors: Array<{
+    productId: number;
+    productName: string;
+    classificationName: string;
+  }>;
+  basePrice: number;
+  addonsTotal: number;
+  totalPrice: number;
+};
+
+type CartItem = SimpleCartItem | MultisaborCartItem;
+
+type MultisaborGroup = {
+  id: number;
+  name: string;
+  description?: string | null;
+};
+type MultisaborSize = {
+  id: number;
+  name: string;
+  minFlavors: number;
+  maxFlavors: number;
+};
+type MultisaborClassification = { id: number; name: string; rank: number };
+type MultisaborFlavor = {
+  id: number;
+  productId: number;
+  productName: string;
+  classificationId: number;
+};
+type MultisaborAddonGroup = {
+  addonGroupId: number;
+  addonGroupName: string;
+  required: boolean;
+  minSelected: number;
+  maxSelected?: number | null;
+  options: Array<{
+    id: number;
+    name: string;
+    price: number;
+    available: boolean;
+  }>;
+};
+type MultisaborConfig = {
+  group: MultisaborGroup;
+  sizes: MultisaborSize[];
+  classifications: MultisaborClassification[];
+  flavors: MultisaborFlavor[];
+  addonGroups: MultisaborAddonGroup[];
+};
+type MultisaborQuote = {
+  valid: boolean;
+  displayName: string;
+  summary: string;
+  group: MultisaborGroup;
+  size: MultisaborSize;
+  flavors: Array<{
+    productId: number;
+    productName: string;
+    classificationName: string;
+  }>;
+  addons: Array<{
+    addonOptionId: number;
+    addonName: string;
+    addonGroupName: string;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+  }>;
+  basePrice: number;
+  addonsTotal: number;
+  unitPrice: number;
+  quantity: number;
+  totalPrice: number;
 };
 
 type CustomerOption = {
@@ -229,6 +323,28 @@ export default function NewOrder() {
     Record<number, SelectedAddon>
   >({});
 
+  const [multisaborGroups, setMultisaborGroups] = useState<MultisaborGroup[]>(
+    [],
+  );
+  const [multisaborOpen, setMultisaborOpen] = useState(false);
+  const [multisaborStep, setMultisaborStep] = useState(1);
+  const [multisaborConfig, setMultisaborConfig] =
+    useState<MultisaborConfig | null>(null);
+  const [loadingMultisabor, setLoadingMultisabor] = useState(false);
+  const [selectedMultisaborSizeId, setSelectedMultisaborSizeId] = useState<
+    number | null
+  >(null);
+  const [selectedMultisaborFlavorIds, setSelectedMultisaborFlavorIds] =
+    useState<number[]>([]);
+  const [selectedMultisaborAddons, setSelectedMultisaborAddons] = useState<
+    Record<number, number>
+  >({});
+  const [multisaborQuantity, setMultisaborQuantity] = useState(1);
+  const [multisaborNotes, setMultisaborNotes] = useState("");
+  const [multisaborQuote, setMultisaborQuote] =
+    useState<MultisaborQuote | null>(null);
+  const [quotingMultisabor, setQuotingMultisabor] = useState(false);
+
   // Delivery / takeaway fields
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -336,6 +452,24 @@ export default function NewOrder() {
       setTableId(preselectedTableId);
     }
   }, [preselectedTableId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/menu/multisabor/sales-config")
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await response.text());
+        return response.json() as Promise<MultisaborGroup[]>;
+      })
+      .then((groups) => {
+        if (!cancelled) setMultisaborGroups(groups);
+      })
+      .catch(() => {
+        if (!cancelled) setMultisaborGroups([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Load store settings once for delivery fee calculation
   useEffect(() => {
@@ -584,12 +718,14 @@ export default function NewOrder() {
     setCart((prev) => {
       const existing = prev.find(
         (i) =>
+          i.itemType !== "multisabor" &&
           i.productId === product.id &&
           i.variantId === (variant?.id ?? null) &&
           i.addonKey === addonKey,
       );
       if (existing) {
         return prev.map((i) =>
+          i.itemType !== "multisabor" &&
           i.productId === product.id &&
           i.variantId === (variant?.id ?? null) &&
           i.addonKey === addonKey
@@ -639,12 +775,14 @@ export default function NewOrder() {
     setCart((prev) => {
       const existing = prev.find(
         (i) =>
+          i.itemType !== "multisabor" &&
           i.productId === productId &&
           i.variantId === variantId &&
           i.addonKey === addonKey,
       );
       if (existing && existing.quantity > 1) {
         return prev.map((i) =>
+          i.itemType !== "multisabor" &&
           i.productId === productId &&
           i.variantId === variantId &&
           i.addonKey === addonKey
@@ -655,6 +793,7 @@ export default function NewOrder() {
       return prev.filter(
         (i) =>
           !(
+            i.itemType !== "multisabor" &&
             i.productId === productId &&
             i.variantId === variantId &&
             i.addonKey === addonKey
@@ -671,6 +810,7 @@ export default function NewOrder() {
   ) => {
     setCart((prev) =>
       prev.map((i) =>
+        i.itemType !== "multisabor" &&
         i.productId === productId &&
         i.variantId === variantId &&
         i.addonKey === addonKey
@@ -849,20 +989,39 @@ export default function NewOrder() {
       if (tableId) orderData.tableId = parseInt(tableId);
       if (savedCustomerId) orderData.customerId = savedCustomerId;
       if (orderNotes.trim()) orderData.notes = orderNotes.trim();
-      orderData.items = cart.map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        ...(item.variantId != null ? { variantId: item.variantId } : {}),
-        ...(item.notes.trim() ? { notes: item.notes.trim() } : {}),
-        ...(item.addons.length
+      orderData.items = cart.map((item) =>
+        item.itemType === "multisabor"
           ? {
-              addons: item.addons.map((addon) => ({
-                addonOptionId: addon.addonOptionId,
-                quantity: addon.quantity,
-              })),
+              itemType: "multisabor",
+              groupId: item.groupId,
+              sizeId: item.sizeId,
+              flavorProductIds: item.flavorProductIds,
+              quantity: item.quantity,
+              ...(item.notes.trim() ? { notes: item.notes.trim() } : {}),
+              ...(item.addons.length
+                ? {
+                    addons: item.addons.map((addon) => ({
+                      addonOptionId: addon.addonOptionId,
+                      quantity: addon.quantity,
+                    })),
+                  }
+                : {}),
             }
-          : {}),
-      }));
+          : {
+              productId: item.productId,
+              quantity: item.quantity,
+              ...(item.variantId != null ? { variantId: item.variantId } : {}),
+              ...(item.notes.trim() ? { notes: item.notes.trim() } : {}),
+              ...(item.addons.length
+                ? {
+                    addons: item.addons.map((addon) => ({
+                      addonOptionId: addon.addonOptionId,
+                      quantity: addon.quantity,
+                    })),
+                  }
+                : {}),
+            },
+      );
 
       if (orderType === "delivery") {
         // All delivery fields
@@ -978,9 +1137,7 @@ export default function NewOrder() {
       const selectedCount = selectedAddonList.filter(
         (addon) => addon.groupId === group.id,
       ).length;
-      const minimum = group.required
-        ? Math.max(1, group.minSelected ?? 0)
-        : 0;
+      const minimum = group.required ? Math.max(1, group.minSelected ?? 0) : 0;
       if (selectedCount < minimum)
         return `Selecione pelo menos ${minimum} em ${group.name}.`;
       if (group.maxSelected != null && selectedCount > group.maxSelected)
@@ -996,6 +1153,189 @@ export default function NewOrder() {
       (sum, addon) => sum + addon.price * addon.quantity,
       0,
     );
+
+  const resetMultisaborWizard = () => {
+    setMultisaborOpen(false);
+    setMultisaborStep(1);
+    setMultisaborConfig(null);
+    setSelectedMultisaborSizeId(null);
+    setSelectedMultisaborFlavorIds([]);
+    setSelectedMultisaborAddons({});
+    setMultisaborQuantity(1);
+    setMultisaborNotes("");
+    setMultisaborQuote(null);
+  };
+
+  const openMultisaborWizard = async (group: MultisaborGroup) => {
+    setLoadingMultisabor(true);
+    setMultisaborOpen(true);
+    setMultisaborStep(1);
+    setMultisaborQuote(null);
+    try {
+      const response = await fetch(
+        `/api/menu/multisabor/groups/${group.id}/sales-config`,
+      );
+      const payload = (await response
+        .json()
+        .catch(() => ({}))) as MultisaborConfig & { error?: string };
+      if (!response.ok)
+        throw new Error(
+          payload.error || "Não foi possível carregar este Multisabor.",
+        );
+      setMultisaborConfig(payload);
+      setSelectedMultisaborSizeId(null);
+      setSelectedMultisaborFlavorIds([]);
+      setSelectedMultisaborAddons({});
+      setMultisaborQuantity(1);
+      setMultisaborNotes("");
+    } catch (error) {
+      toast({
+        title: "Erro ao carregar Multisabor",
+        description: extractErrorMessage(error),
+        variant: "destructive",
+      });
+      resetMultisaborWizard();
+    } finally {
+      setLoadingMultisabor(false);
+    }
+  };
+
+  const selectedMultisaborSize =
+    multisaborConfig?.sizes.find(
+      (size) => size.id === selectedMultisaborSizeId,
+    ) ?? null;
+  const selectedMultisaborFlavorList =
+    multisaborConfig?.flavors.filter((flavor) =>
+      selectedMultisaborFlavorIds.includes(flavor.productId),
+    ) ?? [];
+  const multisaborAddonPayload = Object.entries(selectedMultisaborAddons)
+    .map(([addonOptionId, quantity]) => ({
+      addonOptionId: Number(addonOptionId),
+      quantity,
+    }))
+    .filter((addon) => addon.quantity > 0);
+  const multisaborAddonValidationError = multisaborConfig?.addonGroups
+    .map((group) => {
+      const count = group.options.reduce(
+        (sum, option) => sum + (selectedMultisaborAddons[option.id] ?? 0),
+        0,
+      );
+      const minimum = group.required
+        ? Math.max(1, group.minSelected ?? 0)
+        : (group.minSelected ?? 0);
+      if (count < minimum)
+        return `Selecione pelo menos ${minimum} em ${group.addonGroupName}.`;
+      if (group.maxSelected != null && count > group.maxSelected)
+        return `Selecione no máximo ${group.maxSelected} em ${group.addonGroupName}.`;
+      return null;
+    })
+    .find(Boolean);
+  const multisaborFlavorValidationError = selectedMultisaborSize
+    ? selectedMultisaborFlavorIds.length < selectedMultisaborSize.minFlavors
+      ? `Escolha pelo menos ${selectedMultisaborSize.minFlavors} sabor(es).`
+      : selectedMultisaborFlavorIds.length > selectedMultisaborSize.maxFlavors
+        ? `Escolha no máximo ${selectedMultisaborSize.maxFlavors} sabor(es).`
+        : null
+    : "Escolha o tamanho.";
+
+  const toggleMultisaborFlavor = (flavor: MultisaborFlavor) => {
+    if (!selectedMultisaborSize) return;
+    setMultisaborQuote(null);
+    setSelectedMultisaborFlavorIds((prev) => {
+      if (prev.includes(flavor.productId))
+        return prev.filter((id) => id !== flavor.productId);
+      if (prev.length >= selectedMultisaborSize.maxFlavors) {
+        toast({
+          title: `Este tamanho permite até ${selectedMultisaborSize.maxFlavors} sabor(es).`,
+          variant: "destructive",
+        });
+        return prev;
+      }
+      return [...prev, flavor.productId];
+    });
+  };
+
+  const setMultisaborAddonQuantity = (optionId: number, quantity: number) => {
+    setMultisaborQuote(null);
+    setSelectedMultisaborAddons((prev) => {
+      const next = { ...prev };
+      if (quantity <= 0) delete next[optionId];
+      else next[optionId] = quantity;
+      return next;
+    });
+  };
+
+  const loadMultisaborQuote = async () => {
+    if (
+      !multisaborConfig ||
+      !selectedMultisaborSize ||
+      multisaborFlavorValidationError ||
+      multisaborAddonValidationError
+    )
+      return;
+    setQuotingMultisabor(true);
+    try {
+      const response = await fetch("/api/menu/multisabor/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          groupId: multisaborConfig.group.id,
+          sizeId: selectedMultisaborSize.id,
+          flavorProductIds: selectedMultisaborFlavorIds,
+          addons: multisaborAddonPayload,
+          quantity: multisaborQuantity,
+        }),
+      });
+      const payload = (await response
+        .json()
+        .catch(() => ({}))) as MultisaborQuote & { error?: string };
+      if (!response.ok || !payload.valid)
+        throw new Error(payload.error || "Não foi possível calcular o preço.");
+      setMultisaborQuote(payload);
+      setMultisaborStep(4);
+    } catch (error) {
+      setMultisaborQuote(null);
+      toast({
+        title: "Não foi possível calcular o Multisabor",
+        description: extractErrorMessage(error),
+        variant: "destructive",
+      });
+    } finally {
+      setQuotingMultisabor(false);
+    }
+  };
+
+  const addMultisaborToCart = () => {
+    if (!multisaborConfig || !selectedMultisaborSize || !multisaborQuote)
+      return;
+    const cartKey = `multisabor-${Date.now()}`;
+    setCart((prev) => [
+      ...prev,
+      {
+        itemType: "multisabor",
+        cartKey,
+        groupId: multisaborConfig.group.id,
+        sizeId: selectedMultisaborSize.id,
+        flavorProductIds: selectedMultisaborFlavorIds,
+        name: multisaborQuote.displayName,
+        summary: multisaborQuote.summary,
+        price: multisaborQuote.unitPrice,
+        quantity: multisaborQuote.quantity,
+        notes: multisaborNotes,
+        addons: multisaborQuote.addons.map((addon) => ({
+          addonOptionId: addon.addonOptionId,
+          quantity: addon.quantity,
+          name: addon.addonName,
+          totalPrice: addon.totalPrice,
+        })),
+        flavors: multisaborQuote.flavors,
+        basePrice: multisaborQuote.basePrice,
+        addonsTotal: multisaborQuote.addonsTotal,
+        totalPrice: multisaborQuote.totalPrice,
+      },
+    ]);
+    resetMultisaborWizard();
+  };
 
   const ORDER_TYPES: { value: OrderType; label: string }[] = [
     { value: "counter", label: "🍽 Balcão" },
@@ -1636,6 +1976,39 @@ export default function NewOrder() {
               </CardContent>
             </Card>
 
+            {multisaborGroups.length > 0 && (
+              <Card>
+                <CardContent className="p-5 space-y-4 sm:p-6">
+                  <div>
+                    <h2 className="text-xl font-semibold">
+                      Montagens Multisabor
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Monte tamanho, sabores e adicionais em um wizard rápido.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {multisaborGroups.map((group) => (
+                      <button
+                        key={group.id}
+                        type="button"
+                        onClick={() => void openMultisaborWizard(group)}
+                        className="rounded-xl border bg-card p-4 text-left transition hover:border-primary/60 hover:bg-primary/5"
+                        data-testid={`card-multisabor-group-${group.id}`}
+                      >
+                        <p className="font-semibold">{group.name}</p>
+                        {group.description && (
+                          <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
+                            {group.description}
+                          </p>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Cardápio */}
             <div className="space-y-4 pb-6">
               <div className="relative">
@@ -1684,7 +2057,9 @@ export default function NewOrder() {
                     ?.filter((p) => p.available)
                     .map((product) => {
                       const inCart = cart.find(
-                        (i) => i.productId === product.id,
+                        (i) =>
+                          i.itemType !== "multisabor" &&
+                          i.productId === product.id,
                       );
                       return (
                         <Card
@@ -1742,104 +2117,168 @@ export default function NewOrder() {
                   </div>
                 ) : (
                   <div className="mb-4 max-h-[45vh] space-y-4 overflow-y-auto pr-1 lg:max-h-[calc(100vh-22rem)]">
-                    {cart.map((item) => (
-                      <div
-                        key={`${item.productId}-${item.variantId ?? "base"}-${item.addonKey}`}
-                        data-testid={`cart-item-${item.productId}-${item.variantId ?? "base"}`}
-                        className="border-b pb-3 last:border-0"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">
-                              {item.name}
-                              {item.variantName ? ` — ${item.variantName}` : ""}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {item.quantity}x R$ {item.price.toFixed(2)} ={" "}
-                              <span className="font-semibold text-foreground">
-                                R$ {(item.price * item.quantity).toFixed(2)}
-                              </span>
-                            </p>
-                            {item.addons.length > 0 && (
-                              <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-                                {item.addons.map((addon) => (
-                                  <p key={addon.addonOptionId}>
-                                    ↳ {addon.name} · R$ {addon.price.toFixed(2)}
-                                  </p>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1 shrink-0">
+                    {cart.map((item) =>
+                      item.itemType === "multisabor" ? (
+                        <div
+                          key={item.cartKey}
+                          data-testid={`cart-item-${item.cartKey}`}
+                          className="border-b pb-3 last:border-0"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium">{item.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {item.summary}
+                              </p>
+                              {item.addons.length > 0 && (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Adicionais:{" "}
+                                  {item.addons
+                                    .map((addon) => addon.name)
+                                    .join(", ")}
+                                </p>
+                              )}
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {item.quantity}x R$ {item.price.toFixed(2)} ={" "}
+                                <span className="font-semibold text-foreground">
+                                  R$ {(item.price * item.quantity).toFixed(2)}
+                                </span>
+                              </p>
+                            </div>
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-7 w-7 p-0"
+                              className="h-8 px-2 text-xs"
                               onClick={() =>
-                                removeFromCart(
+                                setCart((prev) =>
+                                  prev.filter((cartItem) => cartItem !== item),
+                                )
+                              }
+                            >
+                              Remover
+                            </Button>
+                          </div>
+                          <div className="mt-1.5 flex items-center gap-1">
+                            <MessageSquare className="w-3 h-3 shrink-0 text-muted-foreground" />
+                            <Input
+                              placeholder="Observação (ex: sem cebola)"
+                              value={item.notes}
+                              onChange={(e) =>
+                                setCart((prev) =>
+                                  prev.map((cartItem) =>
+                                    cartItem === item
+                                      ? { ...item, notes: e.target.value }
+                                      : cartItem,
+                                  ),
+                                )
+                              }
+                              className="h-6 px-2 py-0 text-xs"
+                              data-testid={`cart-item-notes-${item.cartKey}`}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          key={`${item.productId}-${item.variantId ?? "base"}-${item.addonKey}`}
+                          data-testid={`cart-item-${item.productId}-${item.variantId ?? "base"}`}
+                          className="border-b pb-3 last:border-0"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">
+                                {item.name}
+                                {item.variantName
+                                  ? ` — ${item.variantName}`
+                                  : ""}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {item.quantity}x R$ {item.price.toFixed(2)} ={" "}
+                                <span className="font-semibold text-foreground">
+                                  R$ {(item.price * item.quantity).toFixed(2)}
+                                </span>
+                              </p>
+                              {item.addons.length > 0 && (
+                                <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                                  {item.addons.map((addon) => (
+                                    <p key={addon.addonOptionId}>
+                                      ↳ {addon.name} · R${" "}
+                                      {addon.price.toFixed(2)}
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 w-7 p-0"
+                                onClick={() =>
+                                  removeFromCart(
+                                    item.productId,
+                                    item.variantId,
+                                    item.addonKey,
+                                  )
+                                }
+                              >
+                                <Minus className="w-3 h-3" />
+                              </Button>
+                              <span className="text-sm font-bold w-6 text-center">
+                                {item.quantity}
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 w-7 p-0"
+                                onClick={() =>
+                                  addToCart(
+                                    {
+                                      id: item.productId,
+                                      name: item.name,
+                                      price: item.price,
+                                    },
+                                    item.variantId != null
+                                      ? {
+                                          id: item.variantId,
+                                          name: item.variantName ?? "",
+                                          price:
+                                            item.price -
+                                            item.addons.reduce(
+                                              (sum, addon) =>
+                                                sum +
+                                                addon.price * addon.quantity,
+                                              0,
+                                            ),
+                                        }
+                                      : undefined,
+                                    item.addons,
+                                  )
+                                }
+                              >
+                                <Plus className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="mt-1.5 flex items-center gap-1">
+                            <MessageSquare className="w-3 h-3 text-muted-foreground shrink-0" />
+                            <Input
+                              placeholder="Observação (ex: sem sal)"
+                              value={item.notes}
+                              onChange={(e) =>
+                                updateItemNotes(
                                   item.productId,
                                   item.variantId,
                                   item.addonKey,
+                                  e.target.value,
                                 )
                               }
-                            >
-                              <Minus className="w-3 h-3" />
-                            </Button>
-                            <span className="text-sm font-bold w-6 text-center">
-                              {item.quantity}
-                            </span>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 w-7 p-0"
-                              onClick={() =>
-                                addToCart(
-                                  {
-                                    id: item.productId,
-                                    name: item.name,
-                                    price: item.price,
-                                  },
-                                  item.variantId != null
-                                    ? {
-                                        id: item.variantId,
-                                        name: item.variantName ?? "",
-                                        price:
-                                          item.price -
-                                          item.addons.reduce(
-                                            (sum, addon) =>
-                                              sum +
-                                              addon.price * addon.quantity,
-                                            0,
-                                          ),
-                                      }
-                                    : undefined,
-                                  item.addons,
-                                )
-                              }
-                            >
-                              <Plus className="w-3 h-3" />
-                            </Button>
+                              className="h-6 text-xs px-2 py-0"
+                              data-testid={`cart-item-notes-${item.productId}`}
+                            />
                           </div>
                         </div>
-                        <div className="mt-1.5 flex items-center gap-1">
-                          <MessageSquare className="w-3 h-3 text-muted-foreground shrink-0" />
-                          <Input
-                            placeholder="Observação (ex: sem sal)"
-                            value={item.notes}
-                            onChange={(e) =>
-                              updateItemNotes(
-                                item.productId,
-                                item.variantId,
-                                item.addonKey,
-                                e.target.value,
-                              )
-                            }
-                            className="h-6 text-xs px-2 py-0"
-                            data-testid={`cart-item-notes-${item.productId}`}
-                          />
-                        </div>
-                      </div>
-                    ))}
+                      ),
+                    )}
                   </div>
                 )}
 
@@ -1985,6 +2424,306 @@ export default function NewOrder() {
                 Adicionar ao pedido
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={multisaborOpen}
+        onOpenChange={(open) =>
+          open ? setMultisaborOpen(true) : resetMultisaborWizard()
+        }
+      >
+        <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+          <DialogHeader className="border-b px-6 py-5 pr-12">
+            <DialogTitle className="text-xl">
+              {multisaborConfig?.group.name ?? "Montagem Multisabor"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+            <div className="grid grid-cols-4 gap-2 text-xs font-medium">
+              {[
+                "Escolha o tamanho",
+                "Escolha os sabores",
+                "Escolha adicionais",
+                "Revisar item",
+              ].map((label, index) => (
+                <div
+                  key={label}
+                  className={`rounded-full px-2 py-2 text-center ${multisaborStep === index + 1 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                >
+                  {index + 1}. {label}
+                </div>
+              ))}
+            </div>
+            {loadingMultisabor || !multisaborConfig ? (
+              <p className="text-sm text-muted-foreground">
+                Carregando configuração...
+              </p>
+            ) : multisaborStep === 1 ? (
+              <div className="space-y-3">
+                <h3 className="font-semibold">Escolha o tamanho</h3>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {multisaborConfig.sizes.map((size) => (
+                    <button
+                      key={size.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedMultisaborSizeId(size.id);
+                        setSelectedMultisaborFlavorIds([]);
+                        setMultisaborQuote(null);
+                      }}
+                      className={`rounded-xl border p-4 text-left ${selectedMultisaborSizeId === size.id ? "border-primary bg-primary/10" : "hover:bg-muted/60"}`}
+                    >
+                      <p className="font-semibold">{size.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {size.minFlavors === size.maxFlavors
+                          ? `${size.maxFlavors} sabor(es)`
+                          : `de ${size.minFlavors} até ${size.maxFlavors} sabores`}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : multisaborStep === 2 ? (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-semibold">Escolha os sabores</h3>
+                  <Badge variant="outline">
+                    {selectedMultisaborFlavorIds.length} de{" "}
+                    {selectedMultisaborSize?.maxFlavors ?? 0} sabores
+                    selecionados
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Escolha de {selectedMultisaborSize?.minFlavors ?? 0} até{" "}
+                  {selectedMultisaborSize?.maxFlavors ?? 0} sabores.
+                </p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {multisaborConfig.flavors.map((flavor) => {
+                    const selected = selectedMultisaborFlavorIds.includes(
+                      flavor.productId,
+                    );
+                    const classification =
+                      multisaborConfig.classifications.find(
+                        (item) => item.id === flavor.classificationId,
+                      );
+                    return (
+                      <button
+                        key={flavor.id}
+                        type="button"
+                        onClick={() => toggleMultisaborFlavor(flavor)}
+                        className={`rounded-lg border p-3 text-left ${selected ? "border-primary bg-primary/10" : "hover:bg-muted/60"}`}
+                      >
+                        <p className="font-medium">{flavor.productName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {classification?.name ?? "Sem classificação"}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+                {multisaborFlavorValidationError && (
+                  <p className="text-sm text-destructive">
+                    {multisaborFlavorValidationError}
+                  </p>
+                )}
+              </div>
+            ) : multisaborStep === 3 ? (
+              <div className="space-y-4">
+                <h3 className="font-semibold">Escolha adicionais</h3>
+                {multisaborConfig.addonGroups.length === 0 ? (
+                  <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                    Nenhum adicional disponível
+                  </p>
+                ) : (
+                  multisaborConfig.addonGroups.map((group) => (
+                    <div
+                      key={group.addonGroupId}
+                      className="rounded-xl border p-4"
+                    >
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">
+                            {group.addonGroupName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {group.required ? "Obrigatório" : "Opcional"} · mín.{" "}
+                            {group.required
+                              ? Math.max(1, group.minSelected ?? 0)
+                              : (group.minSelected ?? 0)}
+                            {group.maxSelected != null
+                              ? ` · máx. ${group.maxSelected}`
+                              : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {group.options.map((option) => {
+                          const quantity =
+                            selectedMultisaborAddons[option.id] ?? 0;
+                          return (
+                            <div
+                              key={option.id}
+                              className={`rounded-lg border p-3 ${quantity > 0 ? "border-primary bg-primary/10" : ""}`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium">
+                                  {option.name}
+                                </span>
+                                <span className="font-semibold text-primary">
+                                  R$ {option.price.toFixed(2)}
+                                </span>
+                              </div>
+                              <div className="mt-2 flex items-center gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() =>
+                                    setMultisaborAddonQuantity(
+                                      option.id,
+                                      quantity - 1,
+                                    )
+                                  }
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <span className="w-8 text-center font-bold">
+                                  {quantity}
+                                </span>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() =>
+                                    setMultisaborAddonQuantity(
+                                      option.id,
+                                      quantity + 1,
+                                    )
+                                  }
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+                )}
+                {multisaborAddonValidationError && (
+                  <p className="text-sm text-destructive">
+                    {multisaborAddonValidationError}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <h3 className="font-semibold">Revisar item</h3>
+                {multisaborQuote ? (
+                  <div className="space-y-3 rounded-xl border p-4 text-sm">
+                    <p className="text-base font-semibold">
+                      {multisaborQuote.displayName}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {multisaborQuote.summary}
+                    </p>
+                    <p>
+                      Sabores:{" "}
+                      {multisaborQuote.flavors
+                        .map(
+                          (flavor) =>
+                            `${flavor.productName} — ${flavor.classificationName}`,
+                        )
+                        .join(", ")}
+                    </p>
+                    <p>
+                      Adicionais:{" "}
+                      {multisaborQuote.addons.length
+                        ? multisaborQuote.addons
+                            .map(
+                              (addon) =>
+                                `${addon.addonName} (${addon.quantity}x)`,
+                            )
+                            .join(", ")
+                        : "Nenhum"}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 border-t pt-3 sm:grid-cols-5">
+                      <span>
+                        Base: R$ {multisaborQuote.basePrice.toFixed(2)}
+                      </span>
+                      <span>
+                        Adic.: R$ {multisaborQuote.addonsTotal.toFixed(2)}
+                      </span>
+                      <span>
+                        Unit.: R$ {multisaborQuote.unitPrice.toFixed(2)}
+                      </span>
+                      <span>Qtd.: {multisaborQuote.quantity}</span>
+                      <strong>
+                        Total: R$ {multisaborQuote.totalPrice.toFixed(2)}
+                      </strong>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Calcule o preço para revisar.
+                  </p>
+                )}
+                <div>
+                  <Label>Observação do item (opcional)</Label>
+                  <Textarea
+                    rows={2}
+                    placeholder="Ex: Sem cebola"
+                    value={multisaborNotes}
+                    onChange={(e) => setMultisaborNotes(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 border-t bg-background px-6 py-4 sm:justify-between sm:space-x-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                multisaborStep === 1
+                  ? resetMultisaborWizard()
+                  : setMultisaborStep((step) => step - 1)
+              }
+            >
+              {multisaborStep === 1 ? "Cancelar" : "Voltar"}
+            </Button>
+            {multisaborStep < 3 ? (
+              <Button
+                disabled={
+                  multisaborStep === 1
+                    ? !selectedMultisaborSizeId
+                    : Boolean(multisaborFlavorValidationError)
+                }
+                onClick={() => setMultisaborStep((step) => step + 1)}
+              >
+                Continuar
+              </Button>
+            ) : multisaborStep === 3 ? (
+              <Button
+                disabled={
+                  Boolean(
+                    multisaborAddonValidationError ||
+                    multisaborFlavorValidationError,
+                  ) || quotingMultisabor
+                }
+                onClick={() => void loadMultisaborQuote()}
+              >
+                {quotingMultisabor ? "Calculando..." : "Revisar item"}
+              </Button>
+            ) : (
+              <Button disabled={!multisaborQuote} onClick={addMultisaborToCart}>
+                Adicionar ao pedido
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
