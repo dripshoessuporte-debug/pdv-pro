@@ -1457,6 +1457,109 @@ router.post("/menu/import", async (req, res): Promise<void> => {
   res.json({ ok: true, summary, errors: [], warnings: preview.warnings });
 });
 
+
+const FULL_IMPORT_HEADERS = ["tipo_registro","categoria","produto","descricao","preco","sku","ativo","disponivel","tamanho","preco_tamanho","grupo_complemento","complemento","preco_complemento","obrigatorio","min_escolhas","max_escolhas","serve_quantas_pessoas","controlar_estoque","estoque_atual","estoque_minimo","vender_sem_estoque","tempo_preparo_min","unidade","grupo_multisabor","categoria_multisabor","tamanho_multisabor","min_sabores","max_sabores","classificacao","rank","preco_multisabor","produto_sabor","grupo_adicional","nome_etapa_quantidade","nome_opcoes","regra_preco","ordem","observacao_teste"];
+type FullRow = Record<string, string> & { rowNumber: string; tipo_registro: string };
+type FullCounters = { categorias: number; produtos: number; variacoes: number; gruposAdicionais: number; opcoesAdicionais: number; gruposMultisabor: number; tamanhosMultisabor: number; classificacoesMultisabor: number; precosMultisabor: number; saboresMultisabor: number; adicionaisMultisabor: number; erros: number };
+const emptyFullCounters = (): FullCounters => ({ categorias: 0, produtos: 0, variacoes: 0, gruposAdicionais: 0, opcoesAdicionais: 0, gruposMultisabor: 0, tamanhosMultisabor: 0, classificacoesMultisabor: 0, precosMultisabor: 0, saboresMultisabor: 0, adicionaisMultisabor: 0, erros: 0 });
+const fullCell = (r: FullRow, key: string) => String(r[key] ?? "").trim();
+const fullKey = (v: string) => normalizeHeader(v);
+function parseFullRows(csv: string) {
+  const errors: ImportError[] = [];
+  const parsed = parseCsv(csv || "");
+  const headers = parsed[0]?.map(normalizeHeader) ?? [];
+  const missing = ["tipo_registro"].filter((h) => !headers.includes(h));
+  missing.forEach((h) => errors.push({ rowNumber: 1, field: h, message: `Coluna obrigatória ausente: ${h}.` }));
+  const rows: FullRow[] = parsed.slice(1).map((raw, i) => {
+    const obj: Record<string, string> = { rowNumber: String(i + 2) };
+    headers.forEach((h, idx) => { obj[h] = raw[idx] ?? ""; });
+    obj.tipo_registro = fullKey(obj.tipo_registro || "");
+    return obj as FullRow;
+  }).filter((r) => Object.keys(r).some((k) => k !== "rowNumber" && String(r[k]).trim()));
+  return { rows, errors };
+}
+async function buildFullImportPreview(storeId: number, csv: string) {
+  const { rows, errors } = parseFullRows(csv);
+  const counters = emptyFullCounters();
+  const previewRows: Array<{ rowNumber: number; tipo: string; resumo: string }> = [];
+  const [cats, prods, addons, groups, sizes, classes] = await Promise.all([
+    db.select().from(categoriesTable).where(eq(categoriesTable.storeId, storeId)),
+    db.select().from(productsTable).where(eq(productsTable.storeId, storeId)),
+    db.select().from(addonGroupsTable).where(eq(addonGroupsTable.storeId, storeId)),
+    db.select().from(multiflavorGroupsTable).where(eq(multiflavorGroupsTable.storeId, storeId)),
+    db.select({ id: multiflavorSizesTable.id, name: multiflavorSizesTable.name, groupName: multiflavorGroupsTable.name }).from(multiflavorSizesTable).innerJoin(multiflavorGroupsTable, eq(multiflavorSizesTable.groupId, multiflavorGroupsTable.id)).where(and(eq(multiflavorSizesTable.storeId, storeId), eq(multiflavorGroupsTable.storeId, storeId))),
+    db.select({ id: multiflavorClassificationsTable.id, name: multiflavorClassificationsTable.name, groupName: multiflavorGroupsTable.name }).from(multiflavorClassificationsTable).innerJoin(multiflavorGroupsTable, eq(multiflavorClassificationsTable.groupId, multiflavorGroupsTable.id)).where(and(eq(multiflavorClassificationsTable.storeId, storeId), eq(multiflavorGroupsTable.storeId, storeId))),
+  ]);
+  const catNames = new Set(cats.map((c) => fullKey(c.name)));
+  const prodNames = new Set(prods.map((p) => fullKey(p.name)));
+  const skuNames = new Set(prods.map((p) => fullKey(p.sku ?? "")).filter(Boolean));
+  const addonNames = new Set(addons.map((a) => fullKey(a.name)));
+  const groupNames = new Set(groups.map((g) => fullKey(g.name)));
+  const sizeNames = new Set(sizes.map((s) => `${fullKey(s.groupName)}|${fullKey(s.name)}`));
+  const classNames = new Set(classes.map((c) => `${fullKey(c.groupName)}|${fullKey(c.name)}`));
+  for (const r of rows) {
+    const rn = Number(r.rowNumber), tipo = r.tipo_registro;
+    const addErr = (field: string, message: string) => errors.push({ rowNumber: rn, field, message });
+    if (tipo === "produto") { const cat = fullCell(r,"categoria"), prod = fullCell(r,"produto"), price = parseNumberValue(fullCell(r,"preco"), "preco", rn, errors, true, prod); if (!cat) addErr("categoria","categoria obrigatória."); if (!prod) addErr("produto","produto obrigatório."); if (cat) catNames.add(fullKey(cat)); if (prod) prodNames.add(fullKey(prod)); if (fullCell(r,"sku")) skuNames.add(fullKey(fullCell(r,"sku"))); if (price != null) counters.produtos++; if (cat) counters.categorias = new Set(rows.filter(x=>x.tipo_registro==='produto').map(x=>fullKey(fullCell(x,'categoria'))).filter(Boolean)).size; previewRows.push({ rowNumber: rn, tipo, resumo: `${cat} / ${prod}` }); }
+    else if (tipo === "tamanho") { if (!fullCell(r,"produto") && !fullCell(r,"sku")) addErr("produto","produto ou sku obrigatório."); if (!fullCell(r,"tamanho")) addErr("tamanho","tamanho obrigatório."); parseNumberValue(fullCell(r,"preco_tamanho"), "preco_tamanho", rn, errors, true); counters.variacoes++; previewRows.push({ rowNumber: rn, tipo, resumo: fullCell(r,"tamanho") }); }
+    else if (tipo === "complemento") { const g=fullCell(r,"grupo_complemento"), o=fullCell(r,"complemento"); if (!fullCell(r,"produto") && !fullCell(r,"sku")) addErr("produto","produto ou sku obrigatório."); if (!g) addErr("grupo_complemento","grupo obrigatório."); if (!o) addErr("complemento","complemento obrigatório."); parseNumberValue(fullCell(r,"preco_complemento") || "0", "preco_complemento", rn, errors); if (g) { addonNames.add(fullKey(g)); counters.gruposAdicionais = new Set(rows.filter(x=>x.tipo_registro==='complemento').map(x=>fullKey(fullCell(x,'grupo_complemento'))).filter(Boolean)).size; } counters.opcoesAdicionais++; previewRows.push({ rowNumber: rn, tipo, resumo: `${g} / ${o}` }); }
+    else if (tipo === "grupo_multisabor") { const g=fullCell(r,"grupo_multisabor"), c=fullCell(r,"categoria_multisabor"); if (!g) addErr("grupo_multisabor","grupo Multisabor obrigatório."); if (c && !catNames.has(fullKey(c))) addErr("categoria_multisabor",`categoria "${c}" não encontrada nesta loja ou no CSV.`); if (g) groupNames.add(fullKey(g)); counters.gruposMultisabor++; previewRows.push({ rowNumber: rn, tipo, resumo: g }); }
+    else if (tipo === "tamanho_multisabor") { const g=fullCell(r,"grupo_multisabor"), t=fullCell(r,"tamanho_multisabor"); if (!groupNames.has(fullKey(g))) addErr("grupo_multisabor",`grupo "${g}" não encontrado.`); if (!t) addErr("tamanho_multisabor","tamanho obrigatório."); const min=parseIntegerValue(fullCell(r,"min_sabores")||"1","min_sabores",rn,errors)??1, max=parseIntegerValue(fullCell(r,"max_sabores")||"1","max_sabores",rn,errors)??1; if (max < min) addErr("max_sabores","max_sabores menor que min_sabores."); if (g&&t) sizeNames.add(`${fullKey(g)}|${fullKey(t)}`); counters.tamanhosMultisabor++; previewRows.push({ rowNumber: rn, tipo, resumo: t }); }
+    else if (tipo === "classificacao_multisabor") { const g=fullCell(r,"grupo_multisabor"), c=fullCell(r,"classificacao"); if (!groupNames.has(fullKey(g))) addErr("grupo_multisabor",`grupo "${g}" não encontrado.`); if (!c) addErr("classificacao","classificação obrigatória."); if (g&&c) classNames.add(`${fullKey(g)}|${fullKey(c)}`); counters.classificacoesMultisabor++; previewRows.push({ rowNumber: rn, tipo, resumo: c }); }
+    else if (tipo === "preco_multisabor") { const g=fullCell(r,"grupo_multisabor"), t=fullCell(r,"tamanho_multisabor"), c=fullCell(r,"classificacao"); if (!sizeNames.has(`${fullKey(g)}|${fullKey(t)}`)) addErr("tamanho_multisabor",`tamanho "${t}" não encontrado.`); if (!classNames.has(`${fullKey(g)}|${fullKey(c)}`)) addErr("classificacao",`classificação "${c}" não encontrada.`); parseNumberValue(fullCell(r,"preco_multisabor"), "preco_multisabor", rn, errors, true); counters.precosMultisabor++; previewRows.push({ rowNumber: rn, tipo, resumo: `${t} / ${c}` }); }
+    else if (tipo === "sabor_multisabor") { const g=fullCell(r,"grupo_multisabor"), p=fullCell(r,"produto_sabor"), c=fullCell(r,"classificacao"); if (!groupNames.has(fullKey(g))) addErr("grupo_multisabor",`grupo "${g}" não encontrado.`); if (!prodNames.has(fullKey(p))) addErr("produto_sabor",`produto "${p}" não encontrado nesta loja ou no CSV.`); if (!classNames.has(`${fullKey(g)}|${fullKey(c)}`)) addErr("classificacao",`classificação "${c}" não encontrada.`); counters.saboresMultisabor++; previewRows.push({ rowNumber: rn, tipo, resumo: p }); }
+    else if (tipo === "adicional_multisabor") { const g=fullCell(r,"grupo_multisabor"), a=fullCell(r,"grupo_adicional"); if (!groupNames.has(fullKey(g))) addErr("grupo_multisabor",`grupo "${g}" não encontrado.`); if (!addonNames.has(fullKey(a))) addErr("grupo_adicional",`grupo de adicional "${a}" não encontrado nesta loja ou no CSV.`); counters.adicionaisMultisabor++; previewRows.push({ rowNumber: rn, tipo, resumo: a }); }
+    else addErr("tipo_registro", `tipo_registro "${tipo}" inválido.`);
+  }
+  counters.erros = errors.length;
+  return { ok: errors.length === 0, counters, errors, rows: previewRows, parsedRows: rows };
+}
+
+
+router.get("/menu/import-full-template", async (_req, res): Promise<void> => {
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", 'attachment; filename="00_importacao_unica_cardapio_e_multisabor_gestor_max.csv"');
+  res.send(toCsv([FULL_IMPORT_HEADERS]));
+});
+router.post("/menu/import-full-preview", async (req, res): Promise<void> => {
+  const actor = await getCurrentActor(req);
+  const preview = await buildFullImportPreview(actor.storeId, String(req.body?.csv ?? ""));
+  res.status(preview.ok ? 200 : 400).json({ ok: preview.ok, counters: preview.counters, errors: preview.errors, rows: preview.rows });
+});
+router.post("/menu/import-full", async (req, res): Promise<void> => {
+  const actor = await getCurrentActor(req);
+  const preview = await buildFullImportPreview(actor.storeId, String(req.body?.csv ?? ""));
+  if (!preview.ok) { res.status(400).json({ ok: false, counters: preview.counters, errors: preview.errors }); return; }
+  await db.transaction(async (tx) => {
+    const categoryMap = new Map((await tx.select().from(categoriesTable).where(eq(categoriesTable.storeId, actor.storeId))).map((x) => [fullKey(x.name), x]));
+    const productMap = new Map<string, any>();
+    const skuMap = new Map<string, any>();
+    for (const p of await tx.select().from(productsTable).where(eq(productsTable.storeId, actor.storeId))) { productMap.set(fullKey(p.name), p); if (p.sku) skuMap.set(fullKey(p.sku), p); }
+    const addonMap = new Map((await tx.select().from(addonGroupsTable).where(eq(addonGroupsTable.storeId, actor.storeId))).map((x) => [fullKey(x.name), x]));
+    const groupMap = new Map((await tx.select().from(multiflavorGroupsTable).where(eq(multiflavorGroupsTable.storeId, actor.storeId))).map((x) => [fullKey(x.name), x]));
+    const sizeMap = new Map<string, any>(); const classMap = new Map<string, any>();
+    const findProduct = (r: FullRow) => fullCell(r,"sku") ? skuMap.get(fullKey(fullCell(r,"sku"))) : productMap.get(fullKey(fullCell(r,"produto") || fullCell(r,"produto_sabor")));
+    for (const r of preview.parsedRows.filter((x) => x.tipo_registro === "produto")) {
+      let cat = categoryMap.get(fullKey(fullCell(r,"categoria"))); if (!cat) { [cat] = await tx.insert(categoriesTable).values({ storeId: actor.storeId, name: fullCell(r,"categoria") }).returning(); categoryMap.set(fullKey(cat.name), cat); }
+      const values = { storeId: actor.storeId, categoryId: cat.id, name: fullCell(r,"produto"), description: fullCell(r,"descricao") || null, price: String(normalizePriceValue(fullCell(r,"preco")).value ?? 0), sku: fullCell(r,"sku") || null, active: parseBooleanValue(fullCell(r,"ativo"), true), available: parseBooleanValue(fullCell(r,"disponivel"), true), trackStock: parseBooleanValue(fullCell(r,"controlar_estoque"), false), stockQty: fullCell(r,"estoque_atual") || null, stockMinQty: fullCell(r,"estoque_minimo") || null, allowSaleWithoutStock: parseBooleanValue(fullCell(r,"vender_sem_estoque"), true), preparationTimeMinutes: Number(fullCell(r,"tempo_preparo_min") || 0) || null, unit: fullCell(r,"unidade") || "unidade" };
+      let prod = fullCell(r,"sku") ? skuMap.get(fullKey(fullCell(r,"sku"))) : undefined; if (!prod) prod = productMap.get(fullKey(values.name));
+      if (prod) [prod] = await tx.update(productsTable).set({ categoryId: values.categoryId, name: values.name, description: values.description, price: values.price, sku: values.sku, active: values.active, available: values.available, trackStock: values.trackStock, stockQty: values.stockQty, stockMinQty: values.stockMinQty, allowSaleWithoutStock: values.allowSaleWithoutStock, preparationTimeMinutes: values.preparationTimeMinutes, unit: values.unit }).where(and(eq(productsTable.storeId, actor.storeId), eq(productsTable.id, prod.id))).returning(); else [prod] = await tx.insert(productsTable).values(values).returning();
+      productMap.set(fullKey(prod.name), prod); if (prod.sku) skuMap.set(fullKey(prod.sku), prod);
+    }
+    for (const r of preview.parsedRows.filter((x) => x.tipo_registro === "tamanho")) { const p = findProduct(r); const name = fullCell(r,"tamanho"); const [old] = await tx.select().from(productVariantsTable).where(and(eq(productVariantsTable.storeId, actor.storeId), eq(productVariantsTable.productId, p.id), ilike(productVariantsTable.name, name))).limit(1); const vals = { price: String(normalizePriceValue(fullCell(r,"preco_tamanho")).value ?? 0), active: true, available: true, updatedAt: new Date() }; if (old) await tx.update(productVariantsTable).set(vals).where(eq(productVariantsTable.id, old.id)); else await tx.insert(productVariantsTable).values({ storeId: actor.storeId, productId: p.id, name, price: vals.price, active: true, available: true }); }
+    for (const r of preview.parsedRows.filter((x) => x.tipo_registro === "complemento")) { const p = findProduct(r); const gname = fullCell(r,"grupo_complemento"); let g = addonMap.get(fullKey(gname)); const gvals = { required: parseBooleanValue(fullCell(r,"obrigatorio"), false), minSelected: Number(fullCell(r,"min_escolhas") || 0), maxSelected: fullCell(r,"max_escolhas") ? Number(fullCell(r,"max_escolhas")) : null, active: true, updatedAt: new Date() }; if (g) [g] = await tx.update(addonGroupsTable).set(gvals).where(eq(addonGroupsTable.id, g.id)).returning(); else [g] = await tx.insert(addonGroupsTable).values({ storeId: actor.storeId, name: gname, ...gvals }).returning(); addonMap.set(fullKey(g.name), g); const oname=fullCell(r,"complemento"); const [oldOpt]=await tx.select().from(addonOptionsTable).where(and(eq(addonOptionsTable.storeId, actor.storeId), eq(addonOptionsTable.groupId, g.id), ilike(addonOptionsTable.name,oname))).limit(1); const price=String(normalizePriceValue(fullCell(r,"preco_complemento")||"0").value ?? 0); if (oldOpt) await tx.update(addonOptionsTable).set({ price, available: true, updatedAt: new Date() }).where(eq(addonOptionsTable.id, oldOpt.id)); else await tx.insert(addonOptionsTable).values({ storeId: actor.storeId, groupId: g.id, name: oname, price, available: true }); await tx.insert(productAddonGroupsTable).values({ storeId: actor.storeId, productId: p.id, addonGroupId: g.id }).onConflictDoNothing(); }
+    for (const r of preview.parsedRows.filter((x) => x.tipo_registro === "grupo_multisabor")) { const cname=fullCell(r,"categoria_multisabor"), cat=cname?categoryMap.get(fullKey(cname)):null, name=fullCell(r,"grupo_multisabor"), old=groupMap.get(fullKey(name)); const vals={ categoryId: cat?.id ?? null, quantityStepLabel: fullCell(r,"nome_etapa_quantidade") || "Quantidade de sabores", optionsStepLabel: fullCell(r,"nome_opcoes") || "Sabores", pricingMode: "highest_classification", active: parseBooleanValue(fullCell(r,"ativo"), true), available: parseBooleanValue(fullCell(r,"ativo"), true), sortOrder: Number(fullCell(r,"ordem")||0), updatedAt: new Date() }; let row; if (old) [row]=await tx.update(multiflavorGroupsTable).set(vals).where(eq(multiflavorGroupsTable.id, old.id)).returning(); else [row]=await tx.insert(multiflavorGroupsTable).values({ storeId: actor.storeId, name, ...vals }).returning(); groupMap.set(fullKey(row.name), row); }
+    for (const s of await tx.select({ id: multiflavorSizesTable.id, name: multiflavorSizesTable.name, groupName: multiflavorGroupsTable.name }).from(multiflavorSizesTable).innerJoin(multiflavorGroupsTable, eq(multiflavorSizesTable.groupId, multiflavorGroupsTable.id)).where(eq(multiflavorSizesTable.storeId, actor.storeId))) sizeMap.set(`${fullKey(s.groupName)}|${fullKey(s.name)}`, s);
+    for (const c of await tx.select({ id: multiflavorClassificationsTable.id, name: multiflavorClassificationsTable.name, groupName: multiflavorGroupsTable.name }).from(multiflavorClassificationsTable).innerJoin(multiflavorGroupsTable, eq(multiflavorClassificationsTable.groupId, multiflavorGroupsTable.id)).where(eq(multiflavorClassificationsTable.storeId, actor.storeId))) classMap.set(`${fullKey(c.groupName)}|${fullKey(c.name)}`, c);
+    for (const r of preview.parsedRows.filter((x) => x.tipo_registro === "tamanho_multisabor")) { const g=groupMap.get(fullKey(fullCell(r,"grupo_multisabor")))!, name=fullCell(r,"tamanho_multisabor"), key=`${fullKey(g.name)}|${fullKey(name)}`, old=sizeMap.get(key); const vals={ minFlavors:Number(fullCell(r,"min_sabores")||1), maxFlavors:Number(fullCell(r,"max_sabores")||1), active:parseBooleanValue(fullCell(r,"ativo"),true), available:parseBooleanValue(fullCell(r,"ativo"),true), sortOrder:Number(fullCell(r,"ordem")||0), updatedAt:new Date() }; let row; if(old)[row]=await tx.update(multiflavorSizesTable).set(vals).where(eq(multiflavorSizesTable.id,old.id)).returning(); else [row]=await tx.insert(multiflavorSizesTable).values({storeId:actor.storeId,groupId:g.id,name,...vals}).returning(); sizeMap.set(key,row); }
+    for (const r of preview.parsedRows.filter((x) => x.tipo_registro === "classificacao_multisabor")) { const g=groupMap.get(fullKey(fullCell(r,"grupo_multisabor")))!, name=fullCell(r,"classificacao"), key=`${fullKey(g.name)}|${fullKey(name)}`, old=classMap.get(key); const vals={ rank:Number(fullCell(r,"rank")||0), active:parseBooleanValue(fullCell(r,"ativo"),true), sortOrder:Number(fullCell(r,"ordem")||0), updatedAt:new Date() }; let row; if(old)[row]=await tx.update(multiflavorClassificationsTable).set(vals).where(eq(multiflavorClassificationsTable.id,old.id)).returning(); else [row]=await tx.insert(multiflavorClassificationsTable).values({storeId:actor.storeId,groupId:g.id,name,...vals}).returning(); classMap.set(key,row); }
+    for (const r of preview.parsedRows.filter((x) => x.tipo_registro === "preco_multisabor")) { const g=groupMap.get(fullKey(fullCell(r,"grupo_multisabor")))!, sz=sizeMap.get(`${fullKey(g.name)}|${fullKey(fullCell(r,"tamanho_multisabor"))}`), cl=classMap.get(`${fullKey(g.name)}|${fullKey(fullCell(r,"classificacao"))}`); await tx.insert(multiflavorSizeClassificationPricesTable).values({ storeId:actor.storeId, groupId:g.id, sizeId:sz!.id, classificationId:cl!.id, price:String(normalizePriceValue(fullCell(r,"preco_multisabor")).value ?? 0) }).onConflictDoUpdate({ target:[multiflavorSizeClassificationPricesTable.storeId,multiflavorSizeClassificationPricesTable.sizeId,multiflavorSizeClassificationPricesTable.classificationId], set:{ groupId:g.id, price:String(normalizePriceValue(fullCell(r,"preco_multisabor")).value ?? 0), updatedAt:new Date() } }); }
+    for (const r of preview.parsedRows.filter((x) => x.tipo_registro === "sabor_multisabor")) { const g=groupMap.get(fullKey(fullCell(r,"grupo_multisabor")))!, p=productMap.get(fullKey(fullCell(r,"produto_sabor"))), cl=classMap.get(`${fullKey(g.name)}|${fullKey(fullCell(r,"classificacao"))}`); await tx.insert(multiflavorFlavorsTable).values({ storeId:actor.storeId, groupId:g.id, productId:p!.id, classificationId:cl!.id, active:parseBooleanValue(fullCell(r,"ativo"),true), available:parseBooleanValue(fullCell(r,"ativo"),true), sortOrder:Number(fullCell(r,"ordem")||0) }).onConflictDoUpdate({ target:[multiflavorFlavorsTable.storeId,multiflavorFlavorsTable.groupId,multiflavorFlavorsTable.productId], set:{ classificationId:cl!.id, active:parseBooleanValue(fullCell(r,"ativo"),true), available:parseBooleanValue(fullCell(r,"ativo"),true), sortOrder:Number(fullCell(r,"ordem")||0), updatedAt:new Date() } }); }
+    for (const r of preview.parsedRows.filter((x) => x.tipo_registro === "adicional_multisabor")) { const g=groupMap.get(fullKey(fullCell(r,"grupo_multisabor")))!, a=addonMap.get(fullKey(fullCell(r,"grupo_adicional"))); await tx.insert(multiflavorGroupAddonGroupsTable).values({ storeId:actor.storeId, groupId:g.id, addonGroupId:a!.id, sortOrder:Number(fullCell(r,"ordem")||0) }).onConflictDoUpdate({ target:[multiflavorGroupAddonGroupsTable.storeId,multiflavorGroupAddonGroupsTable.groupId,multiflavorGroupAddonGroupsTable.addonGroupId], set:{ sortOrder:Number(fullCell(r,"ordem")||0) } }); }
+  });
+  res.json({ ok: true, counters: preview.counters });
+});
+
 // ─── Categories ───────────────────────────────────────────────────────────────
 
 router.get("/menu/categories", async (req, res): Promise<void> => {

@@ -58,6 +58,8 @@ type PreviewResponse = {
   warnings?: { rowNumber: number; message: string }[];
 };
 
+type FullPreviewResponse = { ok: boolean; counters: Record<string, number>; errors?: { rowNumber: number; field: string; message: string }[]; rows?: { rowNumber: number; tipo: string; resumo: string }[] };
+
 type ImportResponse = {
   ok: boolean;
   summary?: Record<string, number>;
@@ -78,6 +80,9 @@ export function ImportMenuDialog({
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [validating, setValidating] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [fullCsv, setFullCsv] = useState("");
+  const [fullPreview, setFullPreview] = useState<FullPreviewResponse | null>(null);
+  const [fullBusy, setFullBusy] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -96,6 +101,10 @@ export function ImportMenuDialog({
 
   const downloadAdvancedTemplate = () => {
     window.location.href = "/api/menu/import-template/advanced";
+  };
+
+  const downloadFullTemplate = () => {
+    window.location.href = "/api/menu/import-full-template";
   };
 
   const readFile = async (file: File | undefined) => {
@@ -136,6 +145,10 @@ export function ImportMenuDialog({
   const validate = async () => {
     if (!csv.trim()) {
       toast({ title: "A planilha está vazia.", variant: "destructive" });
+      return;
+    }
+    if (/tipo_registro/i.test(csv.split(/\r?\n/, 1)[0] ?? "") && /grupo(;|,)|grupo_multisabor/i.test(csv.split(/\r?\n/, 1)[0] ?? "")) {
+      toast({ title: "Este arquivo parece ser de Multisabor. Use a importação completa ou a aba Multisabor.", variant: "destructive" });
       return;
     }
     setValidating(true);
@@ -190,6 +203,48 @@ export function ImportMenuDialog({
     } finally {
       setImporting(false);
     }
+  };
+
+
+  const readFullFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      toast({ title: "Formato não suportado. Envie um arquivo CSV.", variant: "destructive" });
+      return;
+    }
+    setFullCsv(await file.text());
+    setFullPreview(null);
+  };
+
+  const validateFull = async () => {
+    if (!fullCsv.trim()) {
+      toast({ title: "A importação completa está vazia.", variant: "destructive" });
+      return;
+    }
+    setFullBusy(true);
+    try {
+      const res = await fetch("/api/menu/import-full-preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ csv: fullCsv }) });
+      const body = (await res.json()) as FullPreviewResponse;
+      setFullPreview(body);
+      toast({ title: res.ok ? "Importação completa validada." : "Importação completa contém erros.", variant: res.ok ? "default" : "destructive" });
+    } finally { setFullBusy(false); }
+  };
+
+  const importFullNow = async () => {
+    setFullBusy(true);
+    try {
+      const res = await fetch("/api/menu/import-full", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ csv: fullCsv }) });
+      const body = (await res.json()) as FullPreviewResponse;
+      if (!res.ok) { setFullPreview(body); throw new Error(body.errors?.[0]?.message ?? "Corrija os erros antes de importar."); }
+      queryClient.invalidateQueries({ queryKey: getListCategoriesQueryKey() });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu/products"] });
+      queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+      queryClient.invalidateQueries({ queryKey: getListAddonGroupsQueryKey() });
+      toast({ title: "Importação completa concluída." });
+      setFullCsv(""); setFullPreview(null); onOpenChange(false);
+    } catch (error) {
+      toast({ title: error instanceof Error ? error.message : "Erro ao importar cardápio completo.", variant: "destructive" });
+    } finally { setFullBusy(false); }
   };
 
   return (
@@ -323,6 +378,43 @@ export function ImportMenuDialog({
             </CardContent>
           </Card>
         </div>
+
+
+
+        <Card>
+          <CardContent className="space-y-4 p-4">
+            <div>
+              <h3 className="font-semibold">Importação completa</h3>
+              <p className="text-sm text-muted-foreground">Use um único CSV para produtos simples, variações, adicionais e Multisabor genérico.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={downloadFullTemplate}>
+                <Download className="mr-2 h-4 w-4" /> Baixar modelo completo
+              </Button>
+              <Input className="max-w-xs" type="file" accept=".csv,text/csv" onChange={(e) => readFullFile(e.target.files?.[0])} />
+            </div>
+            <Textarea rows={8} value={fullCsv} onChange={(e) => { setFullCsv(e.target.value); setFullPreview(null); }} placeholder="tipo_registro;categoria;produto;..." />
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={validateFull} disabled={fullBusy || !fullCsv.trim()}>Pré-visualizar importação completa</Button>
+              <Button onClick={importFullNow} disabled={fullBusy || !fullPreview?.ok}>Confirmar importação completa</Button>
+            </div>
+            {fullPreview?.counters ? (
+              <div className="grid gap-2 md:grid-cols-4">
+                {Object.entries(fullPreview.counters).map(([key, value]) => (
+                  <Badge key={key} variant={key === "erros" && value ? "destructive" : "outline"}>{key}: {value}</Badge>
+                ))}
+              </div>
+            ) : null}
+            {fullPreview?.errors?.length ? (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                <p className="font-semibold text-destructive">Erros da importação completa</p>
+                <ul className="max-h-32 overflow-auto">
+                  {fullPreview.errors.map((e, i) => <li key={i}>Linha {e.rowNumber}: {e.message}</li>)}
+                </ul>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
 
         {preview?.summary ? (
           <div className="grid gap-2 md:grid-cols-4">
