@@ -10,6 +10,8 @@ type DbExecutor = Pick<typeof db, "select">;
 const paymentMap: Record<string,string> = { ...FOCUS_NFCE_PAYMENT_CODES };
 const PLATFORM_PAYMENT_MESSAGE = "Pagamento online de plataforma ainda precisa de mapeamento fiscal antes da emissão.";
 const MULTISABOR_FISCAL_ERROR = "Não foi possível emitir NFC-e: o item Multisabor não possui sabor com configuração fiscal válida.";
+const DELIVERY_FEE_FISCAL_ERROR = "Não foi possível emitir NFC-e: configure a regra fiscal da taxa de entrega.";
+const DELIVERY_FEE_DESCRIPTION = "Taxa de entrega";
 const NFCE_DESCRIPTION_MAX_LENGTH = 120;
 const cents = (v: unknown) => Math.round(Number(v ?? 0) * 100);
 const money = (c: number) => (c/100).toFixed(2);
@@ -18,6 +20,26 @@ function safeFiscalDescription(value:string){ const text = String(value ?? "").r
 function sortedFlavors(flavors:any[]){ return [...flavors].sort((a,b)=>(Number(a.sortOrder ?? 0)-Number(b.sortOrder ?? 0)) || (Number(a.id ?? 0)-Number(b.id ?? 0)) || (Number(a.productId ?? 0)-Number(b.productId ?? 0))); }
 export function multisaborFiscalReferenceForTests(item:any, flavors:any[], validStoreProductIds:Set<number>){ if (!isMultisaborItem(item)) return item.productId; const flavor = sortedFlavors(flavors).find(f => f.productId != null && validStoreProductIds.has(Number(f.productId))); if (!flavor) throw new NfceServiceError("PRODUCT_FISCAL_RULE_MISSING", MULTISABOR_FISCAL_ERROR, 422); return Number(flavor.productId); }
 export function multisaborFiscalDescriptionForTests(item:any, flavors:any[]){ const flavorNames = sortedFlavors(flavors).map(f=>String(f.productNameSnapshot ?? "").trim()).filter(Boolean); const size = String(item.pizzaSizeName ?? "").trim(); const rawBase = String(item.displayName || item.externalProductName || "Pizza Multisabor").replace(/\s*-\s*\d+\s*sabores?\s*$/i, "").trim(); const base = size && !rawBase.toLowerCase().includes(size.toLowerCase()) ? `${rawBase} ${size}` : rawBase; return safeFiscalDescription(flavorNames.length ? `${base} - ${flavorNames.join(" / ")}` : base); }
+function isDeliveryFeeFiscalGroupName(name: unknown){ return /(?:taxa\s+de\s+entrega|entrega|delivery|frete)/i.test(String(name ?? "")); }
+function isDefaultFiscalGroupName(name: unknown){ return /(?:padr[aã]o|default|geral)/i.test(String(name ?? "")); }
+export function selectDeliveryFeeFiscalRuleForTests(groups:any[], groupRules:any[]){
+  const valid = groups
+    .map((group) => ({ group, rule: groupRules.find((rule) => Number(rule.fiscalGroupId) === Number(group.id)) }))
+    .filter((entry) => entry.rule && isFiscalRuleComplete(entry.rule));
+  const specific = valid.find((entry) => isDeliveryFeeFiscalGroupName(entry.group.name));
+  if (specific) return { code: Number(specific.group.id), rule: specific.rule };
+  const defaultGroup = valid.find((entry) => isDefaultFiscalGroupName(entry.group.name));
+  if (defaultGroup) return { code: Number(defaultGroup.group.id), rule: defaultGroup.rule };
+  if (valid.length === 1) return { code: Number(valid[0].group.id), rule: valid[0].rule };
+  throw new NfceServiceError("DELIVERY_FEE_FISCAL_MAPPING_REQUIRED", DELIVERY_FEE_FISCAL_ERROR);
+}
+async function resolveDeliveryFeeFiscalRule(executor: DbExecutor, storeId:number){
+  const groups = (await executor.select({ id:fiscalGroupsTable.id, name:fiscalGroupsTable.name }).from(fiscalGroupsTable).where(eq(fiscalGroupsTable.storeId, storeId))) as any[];
+  if (!groups.length) throw new NfceServiceError("DELIVERY_FEE_FISCAL_MAPPING_REQUIRED", DELIVERY_FEE_FISCAL_ERROR);
+  const groupIds = groups.map(g=>g.id);
+  const groupRules = (await executor.select().from(fiscalGroupRulesTable).where(and(eq(fiscalGroupRulesTable.storeId, storeId), inArray(fiscalGroupRulesTable.fiscalGroupId, groupIds)))) as any[];
+  return selectDeliveryFeeFiscalRuleForTests(groups, groupRules);
+}
 export function stableNfceReference(storeId:number, orderId:number, environment:"homologation"|"production"="homologation"){ const env = environment === "production" ? "prod" : "hom"; const ref = `gm-nfce-${env}-${storeId}-${orderId}`.slice(0, FOCUS_NFCE_REF_MAX_LENGTH); if (!FOCUS_NFCE_REF_PATTERN.test(ref)) throw new NfceServiceError("FISCAL_SETUP_NOT_READY", "Referência fiscal inválida para a Focus NFC-e."); return ref; }
 export function payloadHash(payload: unknown){ return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex"); }
 export async function assertHomologationSetupReady(storeId:number) {
@@ -46,9 +68,9 @@ export async function buildNfcePayload(input:{ db: DbExecutor; storeId:number; o
   const payments = (await executor.select().from(paymentsTable).where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "approved")))) as any[];
   if (!payments.length) throw new NfceServiceError("ORDER_NOT_PAID", "Pedido não possui pagamento aprovado.");
   const delivery = cents(order.deliveryFee);
-  if (delivery > 0) throw new NfceServiceError("DELIVERY_FEE_FISCAL_MAPPING_REQUIRED", "A taxa de entrega ainda precisa de configuração fiscal antes da emissão da NFC-e.");
+  const deliveryFeeFiscal = delivery > 0 ? await resolveDeliveryFeeFiscalRule(executor, storeId) : null;
   const pagamentos = payments.map(p => { if (p.method === "ifood_online" || p.method === "platform") throw new NfceServiceError("PAYMENT_METHOD_UNSUPPORTED", PLATFORM_PAYMENT_MESSAGE, 400); const forma_pagamento = paymentMap[p.method]; if (!forma_pagamento) throw new NfceServiceError("PAYMENT_METHOD_UNSUPPORTED", "Método de pagamento não suportado.", 400); return { forma_pagamento, valor_pagamento: money(cents(p.amount)), valor_troco: p.change ? money(cents(p.change)) : undefined }; });
-  const itemTotal = items.reduce((s,i)=>s+cents(i.totalPrice),0); const fiscalTotal = itemTotal; const orderTotal = cents(order.totalAmount); const paid = payments.reduce((s,p)=>s+cents(p.amount)-cents(p.change),0);
+  const itemTotal = items.reduce((s,i)=>s+cents(i.totalPrice),0); const fiscalTotal = itemTotal + delivery; const orderTotal = cents(order.totalAmount); const paid = payments.reduce((s,p)=>s+cents(p.amount)-cents(p.change),0);
   if (orderTotal <= 0 || fiscalTotal !== orderTotal || paid !== fiscalTotal) throw new NfceServiceError("ORDER_TOTAL_MISMATCH", "Totais do pedido, itens, entrega e pagamentos não fecham.");
   const baseProductIds = items.map(i=>i.productId).filter((v):v is number=>v!=null);
   const flavors = (await executor.select().from(orderItemFlavorsTable).where(inArray(orderItemFlavorsTable.orderItemId, items.map(i=>i.id)))) as any[];
@@ -79,6 +101,7 @@ export async function buildNfcePayload(input:{ db: DbExecutor; storeId:number; o
     itemsPayload = [...grouped.entries()].map(([gid,g],idx)=>buildFocusNfceFiscalLineForTests(idx+1, gid, groupNames.get(gid)!, g.q, g.total, byGroup.get(gid)!));
     itemsPayload.push(...multisaborLines.map((line,idx)=>({ ...line, numero_item:String(itemsPayload.length + idx + 1) })));
   }
+  if (deliveryFeeFiscal) itemsPayload.push(buildFocusNfceFiscalLineForTests(itemsPayload.length + 1, deliveryFeeFiscal.code, safeFiscalDescription(DELIVERY_FEE_DESCRIPTION), 1, delivery, deliveryFeeFiscal.rule));
   return { cnpj_emitente: settings.cnpj, natureza_operacao: settings.natureOperation, data_emissao: new Date().toISOString(), tipo_documento:"1", finalidade_emissao:"1", consumidor_final:"1", presenca_comprador:"1", modalidade_frete:"9", serie: String(series), numero: String(number), ambiente: environment === "production" ? "1" : "2", items: itemsPayload, formas_pagamento: pagamentos };
 }
 export const buildHomologationNfcePayload = (input:{ db: DbExecutor; storeId:number; orderId:number; series:number; number:number }) => buildNfcePayload({ ...input, environment:"homologation" });

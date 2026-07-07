@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { buildFocusNfceFiscalLineForTests, multisaborFiscalDescriptionForTests, multisaborFiscalReferenceForTests, stableNfceReference } from "../nfce-payload";
+import { buildFocusNfceFiscalLineForTests, selectDeliveryFeeFiscalRuleForTests, multisaborFiscalDescriptionForTests, multisaborFiscalReferenceForTests, stableNfceReference } from "../nfce-payload";
 import { FOCUS_NFCE_ENDPOINTS, FOCUS_NFCE_PAYMENT_CODES, FOCUS_NFCE_REF_PATTERN, normalizeFocusNfceStatus } from "../nfce-contract";
 
 const payloadSource = readFileSync(resolve("src/integrations/focus-nfe/nfce-payload.ts"), "utf8");
@@ -48,11 +48,28 @@ test("códigos oficiais de pagamento permanecem mapeados", () => {
   assert.equal(FOCUS_NFCE_PAYMENT_CODES.voucher, "10");
 });
 
-test("plataforma, iFood e taxa de entrega seguem bloqueados", () => {
+test("plataforma e iFood seguem bloqueados, mas taxa de entrega vira item fiscal separado", () => {
   assert.match(payloadSource, /ifood_online/);
   assert.match(payloadSource, /platform/);
   assert.match(payloadSource, /DELIVERY_FEE_FISCAL_MAPPING_REQUIRED/);
+  assert.match(payloadSource, /DELIVERY_FEE_DESCRIPTION = "Taxa de entrega"/);
+  assert.match(payloadSource, /itemTotal \+ delivery/);
+  assert.match(payloadSource, /itemsPayload\.push\(buildFocusNfceFiscalLineForTests\(itemsPayload\.length \+ 1/);
+  assert.doesNotMatch(payloadSource, /A taxa de entrega ainda precisa de configuração fiscal/);
   assert.doesNotMatch(payloadSource, /platform[\s\S]{0,80}pix|pix[\s\S]{0,80}platform/);
+});
+
+test("taxa de entrega usa grupo fiscal específico, padrão ou fallback único sem NCM hardcoded", () => {
+  const deliveryRule = { ...sampleRule, fiscalGroupId: 20 };
+  const defaultRule = { ...sampleRule, fiscalGroupId: 30 };
+  assert.equal(selectDeliveryFeeFiscalRuleForTests([{ id: 20, name: "Taxa de entrega" }], [deliveryRule]).code, 20);
+  assert.equal(selectDeliveryFeeFiscalRuleForTests([{ id: 30, name: "Padrão" }], [defaultRule]).code, 30);
+  assert.equal(selectDeliveryFeeFiscalRuleForTests([{ id: 40, name: "Grupo único" }], [{ ...sampleRule, fiscalGroupId: 40 }]).code, 40);
+  assert.throws(
+    () => selectDeliveryFeeFiscalRuleForTests([{ id: 50, name: "Bebidas" }, { id: 60, name: "Pizzas" }], [{ ...sampleRule, fiscalGroupId: 50 }, { ...sampleRule, fiscalGroupId: 60 }]),
+    /Não foi possível emitir NFC-e: configure a regra fiscal da taxa de entrega\./,
+  );
+  assert.doesNotMatch(payloadSource, /delivery[\s\S]{0,120}ncm:\s*["'`]/i);
 });
 
 test("dados mínimos do emitente são enviados e ausência bloqueia antes da Focus", () => {
