@@ -135,3 +135,25 @@ test("payload de produção usa ambiente 1 sem alterar montagem homologada", () 
   assert.match(payloadSource, /buildHomologationNfcePayload/);
   assert.match(payloadSource, /buildProductionNfcePayload/);
 });
+
+test("cancelamento seguro usa documento da loja, status autorizado, ambiente original e não expõe secrets", () => {
+  assert.match(serviceSource, /cancelDocument\(documentId:number, actorStoreId:number/);
+  assert.match(serviceSource, /findFiscalDocumentByIdForStore\(documentId, actorStoreId\)/);
+  assert.match(serviceSource, /doc\.status!=="authorized"/);
+  assert.match(serviceSource, /doc\.status==="cancelled"/);
+  assert.match(serviceSource, /doc\.environment === "production" \? "production" : "homologation"/);
+  assert.match(serviceSource, /resolveStoreFocusCredentials\(\{ storeId: actorStoreId, environment \}\)/);
+  assert.match(serviceSource, /FOCUS_NFCE_ENDPOINTS\.cancelPath\(doc\.providerReference\)/);
+  assert.match(serviceSource, /justificativa: justification/);
+  assert.doesNotMatch(serviceSource, /rawResponse/);
+});
+
+test("cancelamento valida justificativa e persiste status cancelled sem migration", () => {
+  const repositorySource = readFileSync(resolve("src/integrations/focus-nfe/nfce-repository.ts"), "utf8");
+  const schemaSource = readFileSync(resolve("../../lib/db/src/schema/fiscal.ts"), "utf8");
+  assert.match(serviceSource, /justification\.length < 15 \|\| justification\.length > 255/);
+  assert.match(repositorySource, /findFiscalDocumentByIdForStore/);
+  assert.match(repositorySource, /markFiscalDocumentCancelled/);
+  assert.match(repositorySource, /status:"cancelled"/);
+  assert.match(schemaSource, /"cancelled"/);
+});
