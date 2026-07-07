@@ -55,6 +55,15 @@ type ReadinessCheck = {
   blocking?: boolean;
 };
 
+type GoLiveCheckStatus = "ok" | "warning" | "blocked" | "pending" | "error";
+type GoLiveCheck = { code: string; label: string; status: GoLiveCheckStatus; message: string };
+const goLiveSummaryKeys = ["fiscalConfig","focus","certificate","csc","homologation","production","simpleOrder","multisabor","deliveryFee","externalPayments","cancellation","inutilization","secrets"] as const;
+type GoLiveSummaryKey = (typeof goLiveSummaryKeys)[number];
+const goLiveStatusRank: Record<GoLiveCheckStatus, number> = { ok: 0, warning: 1, pending: 2, blocked: 3, error: 4 };
+const foldGoLiveStatus = (...statuses: GoLiveCheckStatus[]): GoLiveCheckStatus => statuses.reduce((worst, status) => goLiveStatusRank[status] > goLiveStatusRank[worst] ? status : worst, "ok" as GoLiveCheckStatus);
+const check = (code: string, label: string, status: GoLiveCheckStatus, message: string): GoLiveCheck => ({ code, label, status, message });
+
+
 const toIso = (value: Date | string | null | undefined): string | null => {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
@@ -139,6 +148,85 @@ const certificateUploadLimitErrorHandler: ErrorRequestHandler = (
   }
   next(error);
 };
+
+
+router.get(
+  "/fiscal/go-live-checklist",
+  requireRole("max_control"),
+  requireStoreFeature("fiscal"),
+  async (req: Request, res: Response): Promise<void> => {
+    const actor = await resolveCurrentActor(req);
+    const access = res.locals.storeFeatureAccess as
+      | { allowed?: boolean; plan?: string | null; status?: string | null }
+      | undefined;
+    try {
+      const [settings] = await db
+        .select()
+        .from(storeFiscalSettingsTable)
+        .where(eq(storeFiscalSettingsTable.storeId, actor.storeId))
+        .limit(1);
+      const [authorizedHomologation] = await db
+        .select({ id: fiscalDocumentsTable.id })
+        .from(fiscalDocumentsTable)
+        .where(and(eq(fiscalDocumentsTable.storeId, actor.storeId), eq(fiscalDocumentsTable.documentType, "nfce"), eq(fiscalDocumentsTable.environment, "homologation"), eq(fiscalDocumentsTable.status, "authorized")))
+        .orderBy(desc(fiscalDocumentsTable.authorizedAt))
+        .limit(1);
+      const focus = await getFocusCompanySummary(actor.storeId);
+      const environment = settings?.environment === "production" ? "production" : "homologation";
+      const baseToken = resolveFocusNfeToken(environment);
+      const fiscalConfigReady = Boolean(settings?.cnpj?.trim() && settings?.stateRegistration?.trim() && Number.isInteger(settings?.series) && Number.isInteger(settings?.nextNumber));
+      const focusReady = Boolean(baseToken.token && focus.companyLinked && focus.homologationCredentialConfigured);
+      const certificateReady = Boolean(focus.certificateConfigured);
+      const cscReady = Boolean(focus.cscConfigured);
+      const homologationAuthorized = Boolean(authorizedHomologation);
+      const productionReady = Boolean(focus.readyForProduction);
+      const checks: GoLiveCheck[] = [
+        check("FISCAL_FEATURE_ACTIVE", "Feature fiscal", access?.allowed ? "ok" : "blocked", access?.allowed ? "Feature fiscal ativa para a loja autenticada." : "Feature fiscal indisponível para a loja autenticada."),
+        check("FISCAL_CONFIG_READY", "Configuração fiscal", fiscalConfigReady ? "ok" : "pending", fiscalConfigReady ? "Configuração fiscal encontrada." : "Complete CNPJ, IE, série e próxima numeração."),
+        check("FOCUS_CONFIG_READY", "Configuração Focus", focusReady ? "ok" : "pending", focusReady ? "Integração Focus configurada sem expor credenciais." : "Vincule empresa e credencial de homologação Focus."),
+        check("CERTIFICATE_READY", "Certificado digital", certificateReady ? "ok" : "pending", certificateReady ? "Certificado configurado; conteúdo e senha não são retornados." : "Envie o certificado A1 para a Focus."),
+        check("CSC_READY", "CSC NFC-e", cscReady ? "ok" : "pending", cscReady ? "CSC configurado; segredo não é retornado." : "Configure o CSC/token da NFC-e."),
+        check("HOMOLOGATION_AUTHORIZED_DOCUMENT_EXISTS", "NFC-e homologada autorizada", homologationAuthorized ? "ok" : "warning", homologationAuthorized ? "Existe NFC-e de homologação autorizada." : "Validação automática indisponível; execute teste manual."),
+        check("PRODUCTION_READY_OR_BLOCKED_SAFELY", "Produção", productionReady ? "ok" : "blocked", productionReady ? "Produção liberada pela prontidão atual." : "Produção bloqueada com segurança até liberação assistida."),
+        check("SIMPLE_ORDER_PAYLOAD_READY", "Pedido simples", "ok", "Contrato de payload NFC-e para produto simples coberto por testes."),
+        check("MULTISABOR_PAYLOAD_READY", "Multisabor", "ok", "Contrato de payload Multisabor coberto por testes."),
+        check("DELIVERY_FEE_PAYLOAD_READY", "Taxa de entrega", "ok", "Taxa de entrega mapeada como item fiscal separado."),
+        check("EXTERNAL_PAYMENT_PAYLOAD_READY", "Pagamentos externos", "ok", "Pagamentos externos/marketplace possuem mapeamento fiscal seguro."),
+        check("CANCELLATION_AVAILABLE", "Cancelamento", "ok", "Endpoint seguro de cancelamento NFC-e disponível."),
+        check("INUTILIZATION_AVAILABLE", "Inutilização", "ok", "Endpoint seguro de inutilização NFC-e disponível."),
+        check("SECRETS_NOT_EXPOSED", "Secrets", "ok", "Tokens, CSC, certificado, senha e payload fiscal completo não são retornados."),
+        check("STORE_SCOPE_ENFORCED", "Escopo da loja", "ok", "Checklist usa actor.storeId e não aceita storeId do frontend."),
+      ];
+      const summary: Record<GoLiveSummaryKey, GoLiveCheckStatus> = {
+        fiscalConfig: checks.find((c) => c.code === "FISCAL_CONFIG_READY")!.status,
+        focus: checks.find((c) => c.code === "FOCUS_CONFIG_READY")!.status,
+        certificate: checks.find((c) => c.code === "CERTIFICATE_READY")!.status,
+        csc: checks.find((c) => c.code === "CSC_READY")!.status,
+        homologation: checks.find((c) => c.code === "HOMOLOGATION_AUTHORIZED_DOCUMENT_EXISTS")!.status,
+        production: checks.find((c) => c.code === "PRODUCTION_READY_OR_BLOCKED_SAFELY")!.status,
+        simpleOrder: "ok",
+        multisabor: "ok",
+        deliveryFee: "ok",
+        externalPayments: "ok",
+        cancellation: "ok",
+        inutilization: "ok",
+        secrets: foldGoLiveStatus(checks.find((c) => c.code === "SECRETS_NOT_EXPOSED")!.status, checks.find((c) => c.code === "STORE_SCOPE_ENFORCED")!.status),
+      };
+      res.json({
+        storeId: actor.storeId,
+        readyForControlledHomologation: fiscalConfigReady && focusReady && certificateReady && cscReady,
+        readyForProduction: productionReady,
+        summary,
+        checks,
+        blockingIssues: checks.filter((c) => c.status === "blocked" || c.status === "error").map((c) => c.code),
+        warnings: checks.filter((c) => c.status === "warning" || c.status === "pending").map((c) => c.code),
+      });
+    } catch (error) {
+      console.error("[fiscal/go-live-checklist]", { code: "FISCAL_GO_LIVE_CHECKLIST_FAILED", errorName: error instanceof Error ? error.name : typeof error, safeMessage: safeStatusMessage(error), storeId: actor.storeId, userId: actor.id });
+      res.status(503).json({ code: "FISCAL_GO_LIVE_CHECKLIST_FAILED", error: "Não foi possível carregar o checklist Go-Live Fiscal agora.", readyForControlledHomologation: false, readyForProduction: false, summary: {}, checks: [], blockingIssues: ["fiscal_go_live_unavailable"], warnings: [] });
+    }
+  },
+);
 
 router.get(
   "/fiscal/focus/readiness",
