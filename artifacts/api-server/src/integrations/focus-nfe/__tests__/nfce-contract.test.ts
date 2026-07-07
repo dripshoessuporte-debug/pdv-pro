@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { buildFocusNfceFiscalLineForTests, selectDeliveryFeeFiscalRuleForTests, multisaborFiscalDescriptionForTests, multisaborFiscalReferenceForTests, stableNfceReference } from "../nfce-payload";
+import { buildFocusNfceFiscalLineForTests, buildNfcePaymentLinesForTests, resolveFocusNfcePaymentCodeForTests, selectDeliveryFeeFiscalRuleForTests, multisaborFiscalDescriptionForTests, multisaborFiscalReferenceForTests, stableNfceReference } from "../nfce-payload";
 import { FOCUS_NFCE_ENDPOINTS, FOCUS_NFCE_PAYMENT_CODES, FOCUS_NFCE_REF_PATTERN, normalizeFocusNfceStatus } from "../nfce-contract";
 
 const payloadSource = readFileSync(resolve("src/integrations/focus-nfe/nfce-payload.ts"), "utf8");
@@ -48,15 +48,36 @@ test("códigos oficiais de pagamento permanecem mapeados", () => {
   assert.equal(FOCUS_NFCE_PAYMENT_CODES.voucher, "10");
 });
 
-test("plataforma e iFood seguem bloqueados, mas taxa de entrega vira item fiscal separado", () => {
-  assert.match(payloadSource, /ifood_online/);
-  assert.match(payloadSource, /platform/);
+test("plataforma, iFood e aliases externos usam mapeamento fiscal seguro sem bloquear taxa de entrega", () => {
+  assert.equal(resolveFocusNfcePaymentCodeForTests("ifood_online"), FOCUS_NFCE_PAYMENT_CODES.other);
+  assert.equal(resolveFocusNfcePaymentCodeForTests("platform"), FOCUS_NFCE_PAYMENT_CODES.other);
+  assert.equal(resolveFocusNfcePaymentCodeForTests("99_online"), FOCUS_NFCE_PAYMENT_CODES.other);
+  assert.equal(resolveFocusNfcePaymentCodeForTests("marketplace"), FOCUS_NFCE_PAYMENT_CODES.other);
+  assert.equal(resolveFocusNfcePaymentCodeForTests("external"), FOCUS_NFCE_PAYMENT_CODES.other);
+  assert.equal(resolveFocusNfcePaymentCodeForTests("paid_online"), FOCUS_NFCE_PAYMENT_CODES.other);
+  assert.equal(resolveFocusNfcePaymentCodeForTests("delivery_platform"), FOCUS_NFCE_PAYMENT_CODES.other);
+  assert.equal(resolveFocusNfcePaymentCodeForTests("cash"), FOCUS_NFCE_PAYMENT_CODES.cash);
+  assert.equal(resolveFocusNfcePaymentCodeForTests("credit_card"), FOCUS_NFCE_PAYMENT_CODES.credit_card);
+  assert.equal(resolveFocusNfcePaymentCodeForTests("pix"), FOCUS_NFCE_PAYMENT_CODES.pix);
   assert.match(payloadSource, /DELIVERY_FEE_FISCAL_MAPPING_REQUIRED/);
   assert.match(payloadSource, /DELIVERY_FEE_DESCRIPTION = "Taxa de entrega"/);
   assert.match(payloadSource, /itemTotal \+ delivery/);
   assert.match(payloadSource, /itemsPayload\.push\(buildFocusNfceFiscalLineForTests\(itemsPayload\.length \+ 1/);
-  assert.doesNotMatch(payloadSource, /A taxa de entrega ainda precisa de configuração fiscal/);
+  assert.doesNotMatch(payloadSource, /Pagamento online de plataforma ainda precisa de mapeamento fiscal/);
+  assert.doesNotMatch(payloadSource, /if \(p\.method === "ifood_online" \|\| p\.method === "platform"\) throw/);
   assert.doesNotMatch(payloadSource, /platform[\s\S]{0,80}pix|pix[\s\S]{0,80}platform/);
+});
+
+test("pagamentos NFC-e agregam por forma fiscal, validam total e retornam erros seguros", () => {
+  assert.deepEqual(buildNfcePaymentLinesForTests([{ method: "ifood_online", amount: "30.00" }, { method: "99_online", amount: "20.00" }], 5000), [
+    { forma_pagamento: FOCUS_NFCE_PAYMENT_CODES.other, valor_pagamento: "50.00", valor_troco: undefined },
+  ]);
+  assert.deepEqual(buildNfcePaymentLinesForTests([{ method: "cash", amount: "40.00", change: "5.00" }, { method: "pix", amount: "10.00" }], 4500), [
+    { forma_pagamento: FOCUS_NFCE_PAYMENT_CODES.cash, valor_pagamento: "40.00", valor_troco: "5.00" },
+    { forma_pagamento: FOCUS_NFCE_PAYMENT_CODES.pix, valor_pagamento: "10.00", valor_troco: undefined },
+  ]);
+  assert.throws(() => resolveFocusNfcePaymentCodeForTests("unknown_gateway"), /Não foi possível emitir NFC-e: forma de pagamento sem mapeamento fiscal\./);
+  assert.throws(() => buildNfcePaymentLinesForTests([{ method: "cash", amount: "10.00" }], 1100), /Não foi possível emitir NFC-e: total de pagamentos não confere com o total do pedido\./);
 });
 
 test("taxa de entrega usa grupo fiscal específico, padrão ou fallback único sem NCM hardcoded", () => {

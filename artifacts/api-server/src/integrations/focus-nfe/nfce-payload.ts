@@ -7,8 +7,27 @@ import { FOCUS_NFCE_PAYMENT_CODES, FOCUS_NFCE_REF_MAX_LENGTH, FOCUS_NFCE_REF_PAT
 import { NfceServiceError, type FiscalMode } from "./nfce-types";
 
 type DbExecutor = Pick<typeof db, "select">;
-const paymentMap: Record<string,string> = { ...FOCUS_NFCE_PAYMENT_CODES };
-const PLATFORM_PAYMENT_MESSAGE = "Pagamento online de plataforma ainda precisa de mapeamento fiscal antes da emissão.";
+const EXTERNAL_MARKETPLACE_PAYMENT_METHODS = [
+  "ifood_online",
+  "marketplace",
+  "platform",
+  "external",
+  "paid_online",
+  "delivery_platform",
+  "99_online",
+  "99food_online",
+  "ninenine_online",
+  "platform_online",
+  "online_platform",
+  "external_online",
+  "marketplace_online",
+] as const;
+const paymentMap: Record<string,string> = {
+  ...FOCUS_NFCE_PAYMENT_CODES,
+  ...Object.fromEntries(EXTERNAL_MARKETPLACE_PAYMENT_METHODS.map((method) => [method, FOCUS_NFCE_PAYMENT_CODES.other])),
+};
+const PAYMENT_METHOD_UNMAPPED_MESSAGE = "Não foi possível emitir NFC-e: forma de pagamento sem mapeamento fiscal.";
+const PAYMENT_TOTAL_MISMATCH_MESSAGE = "Não foi possível emitir NFC-e: total de pagamentos não confere com o total do pedido.";
 const MULTISABOR_FISCAL_ERROR = "Não foi possível emitir NFC-e: o item Multisabor não possui sabor com configuração fiscal válida.";
 const DELIVERY_FEE_FISCAL_ERROR = "Não foi possível emitir NFC-e: configure a regra fiscal da taxa de entrega.";
 const DELIVERY_FEE_DESCRIPTION = "Taxa de entrega";
@@ -69,9 +88,9 @@ export async function buildNfcePayload(input:{ db: DbExecutor; storeId:number; o
   if (!payments.length) throw new NfceServiceError("ORDER_NOT_PAID", "Pedido não possui pagamento aprovado.");
   const delivery = cents(order.deliveryFee);
   const deliveryFeeFiscal = delivery > 0 ? await resolveDeliveryFeeFiscalRule(executor, storeId) : null;
-  const pagamentos = payments.map(p => { if (p.method === "ifood_online" || p.method === "platform") throw new NfceServiceError("PAYMENT_METHOD_UNSUPPORTED", PLATFORM_PAYMENT_MESSAGE, 400); const forma_pagamento = paymentMap[p.method]; if (!forma_pagamento) throw new NfceServiceError("PAYMENT_METHOD_UNSUPPORTED", "Método de pagamento não suportado.", 400); return { forma_pagamento, valor_pagamento: money(cents(p.amount)), valor_troco: p.change ? money(cents(p.change)) : undefined }; });
-  const itemTotal = items.reduce((s,i)=>s+cents(i.totalPrice),0); const fiscalTotal = itemTotal + delivery; const orderTotal = cents(order.totalAmount); const paid = payments.reduce((s,p)=>s+cents(p.amount)-cents(p.change),0);
-  if (orderTotal <= 0 || fiscalTotal !== orderTotal || paid !== fiscalTotal) throw new NfceServiceError("ORDER_TOTAL_MISMATCH", "Totais do pedido, itens, entrega e pagamentos não fecham.");
+  const itemTotal = items.reduce((s,i)=>s+cents(i.totalPrice),0); const fiscalTotal = itemTotal + delivery; const orderTotal = cents(order.totalAmount);
+  const pagamentos = buildNfcePaymentLinesForTests(payments, fiscalTotal);
+  if (orderTotal <= 0 || fiscalTotal !== orderTotal) throw new NfceServiceError("ORDER_TOTAL_MISMATCH", PAYMENT_TOTAL_MISMATCH_MESSAGE);
   const baseProductIds = items.map(i=>i.productId).filter((v):v is number=>v!=null);
   const flavors = (await executor.select().from(orderItemFlavorsTable).where(inArray(orderItemFlavorsTable.orderItemId, items.map(i=>i.id)))) as any[];
   const flavorsByItem = new Map<number, any[]>();
@@ -107,3 +126,22 @@ export async function buildNfcePayload(input:{ db: DbExecutor; storeId:number; o
 export const buildHomologationNfcePayload = (input:{ db: DbExecutor; storeId:number; orderId:number; series:number; number:number }) => buildNfcePayload({ ...input, environment:"homologation" });
 export const buildProductionNfcePayload = (input:{ db: DbExecutor; storeId:number; orderId:number; series:number; number:number }) => buildNfcePayload({ ...input, environment:"production" });
 export function buildFocusNfceFiscalLineForTests(n:number, code:number, desc:string, qty:number, total:number, r:any){ if (qty <= 0 || total % qty !== 0) throw new NfceServiceError("ORDER_TOTAL_MISMATCH", "Totais do pedido, itens, entrega e pagamentos não fecham."); return { numero_item:String(n), codigo_produto:String(code), descricao:desc, ncm:r.ncm, cest:r.cest ?? undefined, cfop:r.cfop, unidade_comercial:r.commercialUnit, quantidade_comercial:qty.toFixed(4), valor_unitario_comercial:money(total/qty), valor_bruto:money(total), unidade_tributavel:r.commercialUnit, quantidade_tributavel:qty.toFixed(4), valor_unitario_tributavel:money(total/qty), inclui_no_total:"1", icms_origem:r.origin, icms_situacao_tributaria:r.icmsCode, pis_situacao_tributaria:r.pisCode, cofins_situacao_tributaria:r.cofinsCode }; }
+
+export function resolveFocusNfcePaymentCodeForTests(method: unknown){
+  const code = paymentMap[String(method ?? "")];
+  if (!code) throw new NfceServiceError("PAYMENT_METHOD_UNSUPPORTED", PAYMENT_METHOD_UNMAPPED_MESSAGE, 400);
+  return code;
+}
+export function buildNfcePaymentLinesForTests(payments:any[], fiscalTotal:number){
+  const byCode = new Map<string,{ value:number; change:number }>();
+  for (const p of payments) {
+    const forma_pagamento = resolveFocusNfcePaymentCodeForTests(p.method);
+    const current = byCode.get(forma_pagamento) ?? { value:0, change:0 };
+    current.value += cents(p.amount);
+    current.change += cents(p.change);
+    byCode.set(forma_pagamento, current);
+  }
+  const paid = [...byCode.values()].reduce((sum, p) => sum + p.value - p.change, 0);
+  if (paid !== fiscalTotal) throw new NfceServiceError("ORDER_TOTAL_MISMATCH", PAYMENT_TOTAL_MISMATCH_MESSAGE);
+  return [...byCode.entries()].map(([forma_pagamento, totals]) => ({ forma_pagamento, valor_pagamento: money(totals.value), valor_troco: totals.change > 0 ? money(totals.change) : undefined }));
+}
