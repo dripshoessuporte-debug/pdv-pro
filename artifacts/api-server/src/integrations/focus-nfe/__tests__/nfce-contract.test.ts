@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { buildFocusNfceFiscalLineForTests, stableNfceReference } from "../nfce-payload";
+import { buildFocusNfceFiscalLineForTests, multisaborFiscalDescriptionForTests, multisaborFiscalReferenceForTests, stableNfceReference } from "../nfce-payload";
 import { FOCUS_NFCE_ENDPOINTS, FOCUS_NFCE_PAYMENT_CODES, FOCUS_NFCE_REF_PATTERN, normalizeFocusNfceStatus } from "../nfce-contract";
 
 const payloadSource = readFileSync(resolve("src/integrations/focus-nfe/nfce-payload.ts"), "utf8");
@@ -86,4 +86,38 @@ test("script smoke é manual, protegido por variáveis e testes não chamam Focu
   assert.match(smokeSource, /FOCUS_NFE_SMOKE_TOKEN/);
   assert.match(smokeSource, /FOCUS_NFE_SMOKE_REF/);
   assert.doesNotMatch(smokeSource.replace(/reason: .*$/gm, "reason redacted"), /console\.log\([^)]*TOKEN|console\.log\([^)]*token/);
+});
+
+test("Multisabor usa primeiro sabor válido da loja como referência fiscal estável", () => {
+  const item = { itemType: "multisabor", productId: null };
+  const flavors = [
+    { id: 30, productId: 300, sortOrder: 2, productNameSnapshot: "Quatro Queijos" },
+    { id: 20, productId: 200, sortOrder: 1, productNameSnapshot: "Calabresa" },
+  ];
+  assert.equal(multisaborFiscalReferenceForTests(item, flavors, new Set([200, 300])), 200);
+});
+
+test("Multisabor monta descrição legível com tamanho e sabores sem recalcular preço", () => {
+  const desc = multisaborFiscalDescriptionForTests(
+    { itemType: "multisabor", displayName: "Pizza Multisabor Completa - 2 sabores", externalProductName: "Pizza Multisabor Completa", pizzaSizeName: "Grande" },
+    [
+      { id: 1, productId: 10, sortOrder: 0, productNameSnapshot: "Calabresa" },
+      { id: 2, productId: 11, sortOrder: 1, productNameSnapshot: "Quatro Queijos" },
+    ],
+  );
+  assert.equal(desc, "Pizza Multisabor Completa Grande - Calabresa / Quatro Queijos");
+  const line = buildFocusNfceFiscalLineForTests(1, 10, desc, 1, 7990, sampleRule) as Record<string, unknown>;
+  assert.equal(line.valor_bruto, "79.90");
+  assert.equal(line.valor_unitario_comercial, "79.90");
+});
+
+test("Multisabor sem sabor ou com sabor fora da loja retorna erro seguro", () => {
+  assert.throws(
+    () => multisaborFiscalReferenceForTests({ itemType: "multisabor", productId: null }, [], new Set([1])),
+    /Não foi possível emitir NFC-e: o item Multisabor não possui sabor com configuração fiscal válida\./,
+  );
+  assert.throws(
+    () => multisaborFiscalReferenceForTests({ itemType: "multisabor", productId: null }, [{ productId: 99, productNameSnapshot: "Outra loja" }], new Set([1])),
+    /Não foi possível emitir NFC-e: o item Multisabor não possui sabor com configuração fiscal válida\./,
+  );
 });
