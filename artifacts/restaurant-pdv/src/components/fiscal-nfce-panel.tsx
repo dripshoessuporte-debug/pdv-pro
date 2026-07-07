@@ -48,6 +48,10 @@ const FISCAL_ERROR_MESSAGES: Record<string, string> = {
   FISCAL_DOCUMENT_SYNC_PENDING: "A situação da NFC-e está pendente de sincronização.",
   FOCUS_NFCE_VALIDATION_ERROR: "A Focus rejeitou os dados da NFC-e.",
   FOCUS_NFCE_UNAVAILABLE: "A Focus NFe está indisponível no momento.",
+  NFCE_CANCEL_NOT_ALLOWED: "Não foi possível cancelar a NFC-e: documento não está autorizado ou não pertence a esta loja.",
+  NFCE_ALREADY_CANCELLED: "Esta NFC-e já está cancelada.",
+  NFCE_CANCEL_JUSTIFICATION_INVALID: "Informe uma justificativa válida para o cancelamento.",
+  FOCUS_NFCE_CANCEL_REJECTED: "Cancelamento rejeitado pela Focus/SEFAZ. Verifique os detalhes do documento fiscal.",
 };
 
 function fiscalErrorMessage(error: unknown): string {
@@ -85,13 +89,17 @@ export function FiscalNfcePanel({ order }: { order: Order }) {
   const [loading, setLoading] = useState(false);
   const [issuing, setIssuing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelJustification, setCancelJustification] = useState("");
   const validOrder = isPaidOrder(order) && !(["cancelled", "canceled"] as string[]).includes(String(order.status));
   const canCheckFiscalAccess = isAuthenticated && Boolean(currentStore) && currentStore?.role === "max_control" && validOrder;
   const allowedByAccess = hasFiscalIssueAccess({ isAuthenticated, currentStore, accessStatus });
   const shouldShow = allowedByAccess && validOrder;
   const issuableStatuses = ["draft", "error"] as const;
   const canIssue = shouldShow && !issuing && (!document || issuableStatuses.includes(document.status as "draft" | "error"));
+  const canCancel = shouldShow && document?.status === "authorized" && !cancelling;
 
 
   const loadAccessStatus = useCallback(async () => {
@@ -147,6 +155,27 @@ export function FiscalNfcePanel({ order }: { order: Order }) {
     }
   }
 
+  async function cancelNfce() {
+    if (!document || !canCancel) return;
+    const justification = cancelJustification.trim();
+    if (justification.length < 15 || justification.length > 255) {
+      toast({ title: "Justificativa inválida", description: "Informe uma justificativa válida para o cancelamento.", variant: "destructive" });
+      return;
+    }
+    setCancelling(true);
+    try {
+      const next = await authFetchJson<NfceDocument>(`/api/fiscal/nfce/documents/${document.id}/cancel`, { method: "POST", body: JSON.stringify({ justification }) });
+      setDocument(next);
+      setCancelOpen(false);
+      setCancelJustification("");
+      toast({ title: "NFC-e cancelada" });
+    } catch (error) {
+      toast({ title: "Erro ao cancelar NFC-e", description: fiscalErrorMessage(error), variant: "destructive" });
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   async function refresh() {
     if (refreshing || !document) return;
     setRefreshing(true);
@@ -196,6 +225,15 @@ export function FiscalNfcePanel({ order }: { order: Order }) {
             </div>
           </div>
         )}
+        {status === "cancelled" && document && (
+          <div className="space-y-3">
+            <p className="flex items-center gap-2 font-semibold text-slate-700"><XCircle className="h-4 w-4" />NFC-e cancelada.</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Field label="Protocolo" value={document.protocol ?? "—"} />
+              <Field label="Mensagem" value={document.rejectionMessage ?? "Cancelamento registrado."} />
+            </div>
+          </div>
+        )}
         {status === "rejected" && document && (
           <div className="space-y-3">
             <p className="flex items-center gap-2 font-semibold text-red-700"><XCircle className="h-4 w-4" />NFC-e rejeitada.</p>
@@ -208,6 +246,11 @@ export function FiscalNfcePanel({ order }: { order: Order }) {
         {(status === "none" || status === "draft" || status === "error") && (
           <Button type="button" onClick={() => setConfirmOpen(true)} disabled={!canIssue} className="bg-[#D91F16] text-white hover:bg-[#b91c1c]">
             Emitir NFC-e de teste
+          </Button>
+        )}
+        {status === "authorized" && document && (
+          <Button type="button" variant="outline" onClick={() => setCancelOpen(true)} disabled={!canCancel} className="border-red-300 text-red-700 hover:bg-red-50">
+            Cancelar NFC-e
           </Button>
         )}
         {(status === "processing" || status === "sync_pending") && (
@@ -230,6 +273,34 @@ export function FiscalNfcePanel({ order }: { order: Order }) {
             <Button type="button" onClick={() => void issue()} disabled={issuing} className="bg-[#D91F16] text-white hover:bg-[#b91c1c]">
               {issuing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Emitir teste
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={cancelOpen} onOpenChange={(open) => !cancelling && setCancelOpen(open)}>
+        <DialogContent className="max-w-md bg-white text-slate-950">
+          <DialogHeader>
+            <DialogTitle>Cancelar NFC-e?</DialogTitle>
+            <DialogDescription>
+              Esta ação cancela uma NFC-e já autorizada. Confira antes de confirmar.
+              {document?.environment === "production" ? <strong className="mt-2 block text-red-700">AMBIENTE DE PRODUÇÃO REAL.</strong> : null}
+            </DialogDescription>
+          </DialogHeader>
+          <label className="space-y-2 text-sm font-semibold text-slate-700">
+            Justificativa do cancelamento
+            <textarea
+              className="min-h-24 w-full rounded-md border border-slate-300 p-2 text-sm font-normal"
+              value={cancelJustification}
+              onChange={(event) => setCancelJustification(event.target.value)}
+              maxLength={255}
+              placeholder="Cancelamento solicitado pelo responsável da loja."
+            />
+          </label>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCancelOpen(false)} disabled={cancelling}>Voltar</Button>
+            <Button type="button" onClick={() => void cancelNfce()} disabled={cancelling || cancelJustification.trim().length < 15} className="bg-red-700 text-white hover:bg-red-800">
+              {cancelling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Confirmar cancelamento
             </Button>
           </DialogFooter>
         </DialogContent>
