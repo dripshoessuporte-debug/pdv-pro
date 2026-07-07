@@ -34,9 +34,10 @@ Checks retornados:
 - `CSC_CONFIGURED`: verifica CSC/token configurado, sem retornar CSC nem segredo.
 - `HOMOLOGATION_TEST_DONE`: verifica se já existe documento de homologação autorizado.
 - `LAST_DOCUMENT_NOT_REJECTED`: alerta quando o último documento fiscal estiver rejeitado ou com erro.
-- `PRODUCTION_ENV_NOT_ENABLED_YET`: mantém produção bloqueada nesta etapa.
+- `PRODUCTION_TOKEN_CONFIGURED`: verifica token Focus de produção salvo, sem retornar o token.
+- `PRODUCTION_ADMIN_RELEASE`: exige liberação administrativa explícita antes de qualquer emissão real.
 
-`readyForHomologation` só deve ficar verdadeiro quando os itens básicos de plano, configuração fiscal, Focus, certificado e CSC estiverem OK ou apenas com aviso não bloqueante. `readyForProduction` permanece sempre `false` neste PR.
+`readyForHomologation` só deve ficar verdadeiro quando os itens básicos de plano, configuração fiscal, Focus, certificado e CSC estiverem OK ou apenas com aviso não bloqueante. `readyForProduction` só fica `true` quando, além disso, houver token Focus de produção, certificado válido, CSC configurado, ao menos uma NFC-e de homologação autorizada, nenhum bloqueio crítico e liberação administrativa explícita (`setupStatus = production`). Sem essa liberação, a API mantém `readyForProduction = false` e informa: "Produção depende de liberação administrativa em etapa futura."
 
 ## Segurança
 
@@ -55,7 +56,7 @@ As respostas usam booleanos, datas de validade, status e identificadores públic
 
 Este PR não libera nem implementa:
 
-- emissão NFC-e em produção;
+- liberação automática de emissão NFC-e em produção;
 - cancelamento de NFC-e;
 - inutilização;
 - tratamento fiscal de taxa de entrega;
@@ -67,6 +68,6 @@ Este PR não libera nem implementa:
 
 1. Finalizar validação assistida de homologação por loja.
 2. Definir processo operacional para revisar rejeições do último documento.
-3. Implementar liberação controlada de produção em PR separado.
+3. Operacionalizar a liberação administrativa controlada de produção por loja.
 4. Implementar cancelamento e inutilização em PRs separados.
 5. Planejar regras fiscais específicas para taxa de entrega e Multisabor sem misturar com a liberação de produção.

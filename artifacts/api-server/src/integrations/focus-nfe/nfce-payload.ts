@@ -18,15 +18,20 @@ function safeFiscalDescription(value:string){ const text = String(value ?? "").r
 function sortedFlavors(flavors:any[]){ return [...flavors].sort((a,b)=>(Number(a.sortOrder ?? 0)-Number(b.sortOrder ?? 0)) || (Number(a.id ?? 0)-Number(b.id ?? 0)) || (Number(a.productId ?? 0)-Number(b.productId ?? 0))); }
 export function multisaborFiscalReferenceForTests(item:any, flavors:any[], validStoreProductIds:Set<number>){ if (!isMultisaborItem(item)) return item.productId; const flavor = sortedFlavors(flavors).find(f => f.productId != null && validStoreProductIds.has(Number(f.productId))); if (!flavor) throw new NfceServiceError("PRODUCT_FISCAL_RULE_MISSING", MULTISABOR_FISCAL_ERROR, 422); return Number(flavor.productId); }
 export function multisaborFiscalDescriptionForTests(item:any, flavors:any[]){ const flavorNames = sortedFlavors(flavors).map(f=>String(f.productNameSnapshot ?? "").trim()).filter(Boolean); const size = String(item.pizzaSizeName ?? "").trim(); const rawBase = String(item.displayName || item.externalProductName || "Pizza Multisabor").replace(/\s*-\s*\d+\s*sabores?\s*$/i, "").trim(); const base = size && !rawBase.toLowerCase().includes(size.toLowerCase()) ? `${rawBase} ${size}` : rawBase; return safeFiscalDescription(flavorNames.length ? `${base} - ${flavorNames.join(" / ")}` : base); }
-export function stableNfceReference(storeId:number, orderId:number){ const ref = `gm-nfce-hom-${storeId}-${orderId}`.slice(0, FOCUS_NFCE_REF_MAX_LENGTH); if (!FOCUS_NFCE_REF_PATTERN.test(ref)) throw new NfceServiceError("FISCAL_SETUP_NOT_READY", "Referência fiscal inválida para a Focus NFC-e."); return ref; }
+export function stableNfceReference(storeId:number, orderId:number, environment:"homologation"|"production"="homologation"){ const env = environment === "production" ? "prod" : "hom"; const ref = `gm-nfce-${env}-${storeId}-${orderId}`.slice(0, FOCUS_NFCE_REF_MAX_LENGTH); if (!FOCUS_NFCE_REF_PATTERN.test(ref)) throw new NfceServiceError("FISCAL_SETUP_NOT_READY", "Referência fiscal inválida para a Focus NFC-e."); return ref; }
 export function payloadHash(payload: unknown){ return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex"); }
 export async function assertHomologationSetupReady(storeId:number) {
   const summary = await getFocusCompanySummary(storeId);
   if (!summary.readyForHomologationTest) throw new NfceServiceError("FISCAL_SETUP_NOT_READY", "Configuração fiscal não está pronta para homologação.");
 }
-export async function buildHomologationNfcePayload(input:{ db: DbExecutor; storeId:number; orderId:number; series:number; number:number }) {
+export async function assertProductionSetupReady(storeId:number) {
+  const summary = await getFocusCompanySummary(storeId);
+  if (!summary.readyForProduction) throw new NfceServiceError("FISCAL_PRODUCTION_NOT_READY" as any, "Emissão em produção bloqueada: finalize a configuração fiscal da loja antes de emitir NFC-e real.", 409);
+}
+export async function buildNfcePayload(input:{ db: DbExecutor; storeId:number; orderId:number; series:number; number:number; environment?:"homologation"|"production" }) {
   const executor = input.db;
   const { storeId, orderId, series, number } = input;
+  const environment = input.environment === "production" ? "production" : "homologation";
   const [settings] = await executor.select().from(storeFiscalSettingsTable).where(eq(storeFiscalSettingsTable.storeId, storeId)).limit(1);
   const [presentation] = await executor.select().from(storeFiscalPresentationTable).where(eq(storeFiscalPresentationTable.storeId, storeId)).limit(1);
   const mode = getHomologationRuleMode(presentation) as FiscalMode;
@@ -74,6 +79,8 @@ export async function buildHomologationNfcePayload(input:{ db: DbExecutor; store
     itemsPayload = [...grouped.entries()].map(([gid,g],idx)=>buildFocusNfceFiscalLineForTests(idx+1, gid, groupNames.get(gid)!, g.q, g.total, byGroup.get(gid)!));
     itemsPayload.push(...multisaborLines.map((line,idx)=>({ ...line, numero_item:String(itemsPayload.length + idx + 1) })));
   }
-  return { cnpj_emitente: settings.cnpj, natureza_operacao: settings.natureOperation, data_emissao: new Date().toISOString(), tipo_documento:"1", finalidade_emissao:"1", consumidor_final:"1", presenca_comprador:"1", modalidade_frete:"9", serie: String(series), numero: String(number), ambiente:"2", items: itemsPayload, formas_pagamento: pagamentos };
+  return { cnpj_emitente: settings.cnpj, natureza_operacao: settings.natureOperation, data_emissao: new Date().toISOString(), tipo_documento:"1", finalidade_emissao:"1", consumidor_final:"1", presenca_comprador:"1", modalidade_frete:"9", serie: String(series), numero: String(number), ambiente: environment === "production" ? "1" : "2", items: itemsPayload, formas_pagamento: pagamentos };
 }
+export const buildHomologationNfcePayload = (input:{ db: DbExecutor; storeId:number; orderId:number; series:number; number:number }) => buildNfcePayload({ ...input, environment:"homologation" });
+export const buildProductionNfcePayload = (input:{ db: DbExecutor; storeId:number; orderId:number; series:number; number:number }) => buildNfcePayload({ ...input, environment:"production" });
 export function buildFocusNfceFiscalLineForTests(n:number, code:number, desc:string, qty:number, total:number, r:any){ if (qty <= 0 || total % qty !== 0) throw new NfceServiceError("ORDER_TOTAL_MISMATCH", "Totais do pedido, itens, entrega e pagamentos não fecham."); return { numero_item:String(n), codigo_produto:String(code), descricao:desc, ncm:r.ncm, cest:r.cest ?? undefined, cfop:r.cfop, unidade_comercial:r.commercialUnit, quantidade_comercial:qty.toFixed(4), valor_unitario_comercial:money(total/qty), valor_bruto:money(total), unidade_tributavel:r.commercialUnit, quantidade_tributavel:qty.toFixed(4), valor_unitario_tributavel:money(total/qty), inclui_no_total:"1", icms_origem:r.origin, icms_situacao_tributaria:r.icmsCode, pis_situacao_tributaria:r.pisCode, cofins_situacao_tributaria:r.cofinsCode }; }

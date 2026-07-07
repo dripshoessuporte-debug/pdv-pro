@@ -91,6 +91,7 @@ type FiscalReadiness = {
   readyForProduction: boolean;
   blockingIssues: string[];
   warnings: string[];
+  productionReleaseEnabled?: boolean;
 };
 
 type ApiError = {
@@ -391,7 +392,7 @@ function FiscalReadinessCard({
             <div className="text-xs text-muted-foreground">Ambiente</div>
             <b>
               {readiness.focus.environment === "production"
-                ? "Produção"
+                ? "Produção · PRODUÇÃO REAL"
                 : "Homologação"}
             </b>
           </div>
@@ -426,9 +427,13 @@ function FiscalReadinessCard({
             </Button>
           )}
         </div>
-        {!readiness.readyForProduction && (
+        {readiness.readyForProduction ? (
+          <div className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm font-semibold text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
+            PRODUÇÃO REAL liberada. Confirme sempre: “Estou ciente que esta NFC-e será emitida em ambiente de produção.”
+          </div>
+        ) : (
           <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-            Emissão em produção será liberada em etapa futura.
+            Produção fiscal ainda não liberada para esta loja.
           </p>
         )}
       </CardContent>

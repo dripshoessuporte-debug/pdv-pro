@@ -2,6 +2,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import {
   db,
   fiscalAuditLogsTable,
+  fiscalDocumentsTable,
   fiscalGroupRulesTable,
   fiscalGroupsTable,
   productFiscalSettingsTable,
@@ -142,8 +143,18 @@ export async function getFocusCompanySummary(storeId: number) {
   }
   if (credentialStatusStage !== "ok")
     missingRequirements.push("credential_status_unavailable");
+  const [authorizedHomologation] = await db.select({ id: fiscalDocumentsTable.id }).from(fiscalDocumentsTable).where(and(eq(fiscalDocumentsTable.storeId, storeId), eq(fiscalDocumentsTable.documentType, "nfce"), eq(fiscalDocumentsTable.environment, "homologation"), eq(fiscalDocumentsTable.status, "authorized"))).limit(1);
   const readyForHomologationTest = missingRequirements.length === 0;
   const readyForHomologation = readyForHomologationTest && certificateValid;
+  const productionReleaseEnabled = settings?.setupStatus === "production";
+  const readyForProduction = readyForHomologation && productionCredentialConfigured && cscConfigured && Boolean(authorizedHomologation) && productionReleaseEnabled;
+  const productionMissingRequirements = [
+    ...(productionCredentialConfigured ? [] : ["production_token_missing"]),
+    ...(certificateValid ? [] : ["certificate_not_valid"]),
+    ...(cscConfigured ? [] : ["production_csc_missing"]),
+    ...(authorizedHomologation ? [] : ["homologation_authorized_nfce_missing"]),
+    ...(productionReleaseEnabled ? [] : ["production_admin_release_missing"]),
+  ];
   return {
     provider: settings?.provider ?? "focus_nfe",
     environment:
@@ -160,8 +171,9 @@ export async function getFocusCompanySummary(storeId: number) {
     setupStatus: settings?.setupStatus ?? "not_configured",
     readyForHomologationTest,
     readyForHomologation,
-    readyForProduction: false,
-    missingRequirements: [...new Set(missingRequirements)],
+    productionReleaseEnabled,
+    readyForProduction,
+    missingRequirements: [...new Set([...missingRequirements, ...productionMissingRequirements])],
     credentialStatusStage,
     rulesStatusStage,
   };

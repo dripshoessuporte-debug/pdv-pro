@@ -5,7 +5,7 @@ import express, {
   type Request,
   type Response,
 } from "express";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   db,
   fiscalDocumentsTable,
@@ -190,11 +190,14 @@ router.get(
       );
       const serieConfigured = Number.isInteger(settings?.series);
       const nextNumberConfigured = Number.isInteger(settings?.nextNumber);
-      const homTestDone = Boolean(
-        lastDocument &&
-        lastDocument.environment === "homologation" &&
-        lastDocument.status === "authorized",
-      );
+      const [authorizedHomologation] = await db
+        .select({ id: fiscalDocumentsTable.id })
+        .from(fiscalDocumentsTable)
+        .where(and(eq(fiscalDocumentsTable.storeId, actor.storeId), eq(fiscalDocumentsTable.documentType, "nfce"), eq(fiscalDocumentsTable.environment, "homologation"), eq(fiscalDocumentsTable.status, "authorized")))
+        .orderBy(desc(fiscalDocumentsTable.authorizedAt))
+        .limit(1);
+      const homTestDone = Boolean(authorizedHomologation);
+      const productionReleaseEnabled = focus.setupStatus === "production";
       const lastRejectedOrErrored = Boolean(
         lastDocument && ["rejected", "error"].includes(lastDocument.status),
       );
@@ -237,7 +240,7 @@ router.get(
         },
         {
           code: "FOCUS_TOKEN_CONFIGURED",
-          label: "Token Focus NFe configurado",
+          label: "Token Focus NFe homologação configurado",
           status: focus.homologationCredentialConfigured ? "ok" : "error",
           message: focus.homologationCredentialConfigured
             ? "Token de homologação configurado."
@@ -307,10 +310,18 @@ router.get(
             : "Nenhuma rejeição crítica recente encontrada.",
         },
         {
-          code: "PRODUCTION_ENV_NOT_ENABLED_YET",
-          label: "Produção ainda não liberada",
-          status: "pending",
-          message: "Emissão em produção será liberada em etapa futura.",
+          code: "PRODUCTION_TOKEN_CONFIGURED",
+          label: "Token Focus produção configurado",
+          status: focus.productionCredentialConfigured ? "ok" : "error",
+          message: focus.productionCredentialConfigured ? "Token de produção configurado." : "Configure o token de produção da Focus NFe.",
+          blocking: !focus.productionCredentialConfigured,
+        },
+        {
+          code: "PRODUCTION_ADMIN_RELEASE",
+          label: "Liberação administrativa de produção",
+          status: productionReleaseEnabled ? "ok" : "pending",
+          message: productionReleaseEnabled ? "Loja explicitamente liberada para produção fiscal." : "Produção depende de liberação administrativa em etapa futura.",
+          blocking: !productionReleaseEnabled,
         },
       ];
       const basicCodes = new Set([
@@ -373,7 +384,8 @@ router.get(
           : null,
         checks,
         readyForHomologation,
-        readyForProduction: false,
+        productionReleaseEnabled,
+        readyForProduction: focus.readyForProduction,
         blockingIssues: checks
           .filter((check) => check.blocking || check.status === "error")
           .map((check) => check.code),

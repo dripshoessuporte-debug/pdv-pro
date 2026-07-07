@@ -121,3 +121,17 @@ test("Multisabor sem sabor ou com sabor fora da loja retorna erro seguro", () =>
     /Não foi possível emitir NFC-e: o item Multisabor não possui sabor com configuração fiscal válida\./,
   );
 });
+
+test("produção NFC-e exige readiness forte antes da Focus e usa ambiente production", () => {
+  assert.match(serviceSource, /issueProduction/);
+  assert.match(serviceSource, /FISCAL_PRODUCTION_NOT_READY/);
+  assert.match(serviceSource, /readyForProduction/);
+  assert.match(serviceSource, /environment === "production"/);
+  assert.doesNotMatch(serviceSource, /console\.log/);
+});
+
+test("payload de produção usa ambiente 1 sem alterar montagem homologada", () => {
+  assert.match(payloadSource, /environment === "production" \? "1" : "2"/);
+  assert.match(payloadSource, /buildHomologationNfcePayload/);
+  assert.match(payloadSource, /buildProductionNfcePayload/);
+});
