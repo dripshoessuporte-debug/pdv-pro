@@ -101,5 +101,13 @@ test("diagnóstico debug protegido retorna apenas campos seguros", () => {
 });
 
 test("nenhuma chamada real à Focus e nenhuma NFC-e é emitida no status", () => {
-  assert.doesNotMatch(routeSource, /new FocusNfeClient|emit|nfce/i);
+  const statusBlock = routeSource.slice(
+    routeSource.indexOf('"/fiscal/focus/status"'),
+    routeSource.indexOf('"/fiscal/focus/status/debug"'),
+  );
+  assert.match(statusBlock, /getFocusCompanySummary\(actor\.storeId\)/);
+  assert.doesNotMatch(
+    statusBlock,
+    /new FocusNfeClient|NfceService|issueHomologation|FOCUS_NFCE_ENDPOINTS|\/v2\/nfce|client\.request/i,
+  );
 });
