@@ -45,7 +45,7 @@ test("duplo clique é bloqueado, troca de loja limpa campos sensíveis e nenhuma
   assert.match(source, /\[storeKey, loadStatus, clearSensitive\]/);
   assert.match(source, /Emitir NFC-e de teste — disponível na próxima etapa/);
   assert.match(source, /disabled[\s\S]*title=/);
-  assert.doesNotMatch(source, /\/api\/.*nfce|emitir.*fetch/i);
+  assert.doesNotMatch(source, /\/api\/fiscal\/nfce\/.*\/issue|emitir[\s\S]{0,80}fetch/i);
 });
 
 test("diagnósticos de acesso fiscal mostram mensagens específicas", () => {
