@@ -13,6 +13,7 @@ import {
   RefreshCcw,
   ShieldAlert,
   ShieldCheck,
+  Timer,
   XCircle,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
@@ -52,6 +53,46 @@ type Status = {
   readyForProduction: boolean;
   missingRequirements: MissingRequirement[];
 };
+type ReadinessCheck = {
+  code: string;
+  label: string;
+  status: "ok" | "warning" | "error" | "pending";
+  message: string;
+  blocking?: boolean;
+};
+type FiscalReadiness = {
+  plan: { allowed: boolean; status: string | null };
+  focus: {
+    tokenConfigured: boolean;
+    companyLinked: boolean;
+    environment: string;
+  };
+  certificate: {
+    configured: boolean;
+    expiresAt: string | null;
+    daysToExpire: number | null;
+    status: string | null;
+  };
+  csc: { configured: boolean };
+  fiscalConfig: {
+    configured: boolean;
+    cnpjConfigured: boolean;
+    stateRegistrationConfigured: boolean;
+  };
+  lastDocument: {
+    id: number;
+    status: string;
+    environment: string;
+    createdAt: string | null;
+    errorMessage: string | null;
+  } | null;
+  checks: ReadinessCheck[];
+  readyForHomologation: boolean;
+  readyForProduction: boolean;
+  blockingIssues: string[];
+  warnings: string[];
+};
+
 type ApiError = {
   error?: string | null;
   code?: string | null;
@@ -230,11 +271,169 @@ function AccessBlock({ error }: { error: ApiError }) {
     </Card>
   );
 }
-function StatusIcon({ state }: { state: "done" | "pending" | "error" }) {
+function StatusIcon({
+  state,
+}: {
+  state: "done" | "pending" | "error" | "warning";
+}) {
   if (state === "done")
     return <CheckCircle2 className="h-5 w-5 text-emerald-600" />;
   if (state === "error") return <XCircle className="h-5 w-5 text-red-600" />;
-  return <AlertTriangle className="h-5 w-5 text-amber-500" />;
+  if (state === "warning")
+    return <AlertTriangle className="h-5 w-5 text-amber-500" />;
+  return <Timer className="h-5 w-5 text-sky-600" />;
+}
+
+function checkState(status: ReadinessCheck["status"]) {
+  if (status === "ok") return "done";
+  if (status === "error") return "error";
+  if (status === "warning") return "warning";
+  return "pending";
+}
+
+function FiscalReadinessCard({
+  readiness,
+  onRefresh,
+}: {
+  readiness: FiscalReadiness;
+  onRefresh: () => void;
+}) {
+  const groups = [
+    { title: "Plano PRO", codes: ["PLAN_PRO_ACTIVE"] },
+    {
+      title: "Dados da empresa",
+      codes: [
+        "FISCAL_CONFIG_EXISTS",
+        "CNPJ_CONFIGURED",
+        "STATE_REGISTRATION_CONFIGURED",
+      ],
+    },
+    {
+      title: "Focus NFe",
+      codes: ["FOCUS_TOKEN_CONFIGURED", "FOCUS_COMPANY_LINKED"],
+    },
+    {
+      title: "Certificado digital",
+      codes: ["CERTIFICATE_CONFIGURED", "CERTIFICATE_NOT_EXPIRED"],
+    },
+    { title: "CSC/token", codes: ["CSC_CONFIGURED"] },
+    {
+      title: "Homologação",
+      codes: ["HOMOLOGATION_TEST_DONE", "LAST_DOCUMENT_NOT_REJECTED"],
+    },
+    { title: "Produção", codes: ["PRODUCTION_ENV_NOT_ENABLED_YET"] },
+  ];
+  const checkByCode = new Map(
+    readiness.checks.map((check) => [check.code, check]),
+  );
+  const summarized = groups.map((group) => {
+    const checks = group.codes
+      .map((code) => checkByCode.get(code))
+      .filter(Boolean) as ReadinessCheck[];
+    const state: "done" | "warning" | "error" | "pending" = checks.some(
+      (check) => check.status === "error",
+    )
+      ? "error"
+      : checks.some((check) => check.status === "warning")
+        ? "warning"
+        : checks.some((check) => check.status === "pending")
+          ? "pending"
+          : "done";
+    return { ...group, checks, state };
+  });
+  return (
+    <Card className="border-primary/20">
+      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <CardTitle>Fiscal PRO — Checklist de Implantação</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Valide a prontidão operacional antes de ativar cliente real no
+            fiscal.
+          </p>
+        </div>
+        <Button variant="outline" onClick={onRefresh}>
+          <RefreshCcw className="mr-2 h-4 w-4" />
+          Atualizar checklist
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {summarized.map((group) => (
+            <div key={group.title} className="rounded-xl border p-4">
+              <div className="flex gap-3">
+                <StatusIcon state={group.state} />
+                <div className="space-y-2">
+                  <b>{group.title}</b>
+                  {group.checks.map((check) => (
+                    <p
+                      key={check.code}
+                      className="text-sm text-muted-foreground"
+                    >
+                      {check.message}
+                      {check.blocking || check.status === "error" ? (
+                        <span className="ml-1 font-semibold text-red-600">
+                          Bloqueante.
+                        </span>
+                      ) : check.status === "warning" ? (
+                        <span className="ml-1 font-semibold text-amber-600">
+                          Aviso.
+                        </span>
+                      ) : null}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="grid gap-3 text-sm md:grid-cols-3">
+          <div className="rounded-xl border bg-muted/30 p-3">
+            <div className="text-xs text-muted-foreground">Ambiente</div>
+            <b>
+              {readiness.focus.environment === "production"
+                ? "Produção"
+                : "Homologação"}
+            </b>
+          </div>
+          <div className="rounded-xl border bg-muted/30 p-3">
+            <div className="text-xs text-muted-foreground">Certificado</div>
+            <b>
+              {readiness.certificate.daysToExpire === null
+                ? readiness.certificate.configured
+                  ? "Configurado"
+                  : "Não configurado"
+                : `Vence em ${readiness.certificate.daysToExpire} dias`}
+            </b>
+          </div>
+          <div className="rounded-xl border bg-muted/30 p-3">
+            <div className="text-xs text-muted-foreground">
+              Último documento
+            </div>
+            <b>
+              {readiness.lastDocument
+                ? `${readiness.lastDocument.status} · ${readiness.lastDocument.environment}`
+                : "Sem documento fiscal"}
+            </b>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Button asChild variant="outline">
+            <a href="#company">Ir para configuração Focus</a>
+          </Button>
+          {readiness.lastDocument && (
+            <Button asChild variant="outline">
+              <Link href="/fiscal">Ver área fiscal</Link>
+            </Button>
+          )}
+        </div>
+        {!readiness.readyForProduction && (
+          <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+            Emissão em produção será liberada em etapa futura.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function FiscalFocusPage() {
@@ -242,6 +441,7 @@ export default function FiscalFocusPage() {
   const { currentStore, actor } = useAuth();
   const storeKey = currentStore?.id ?? actor?.storeId ?? "no-store";
   const [status, setStatus] = useState<Status | null>(null),
+    [readiness, setReadiness] = useState<FiscalReadiness | null>(null),
     [loading, setLoading] = useState(true),
     [accessError, setAccessError] = useState<ApiError | null>(null),
     [statusError, setStatusError] = useState<ApiError | null>(null);
@@ -275,6 +475,7 @@ export default function FiscalFocusPage() {
     const id = ++requestRef.current;
     setLoading(true);
     setStatus(null);
+    setReadiness(null);
     setAccessError(null);
     setStatusError(null);
     clearSensitive();
@@ -317,6 +518,16 @@ export default function FiscalFocusPage() {
         if (id !== requestRef.current) return;
         if (!r.ok) {
           setStatus(data as Status);
+          const readinessResponse = await fetch("/api/fiscal/focus/readiness", {
+            credentials: "include",
+            headers: { accept: "application/json" },
+          });
+          const readinessData = await readinessResponse
+            .json()
+            .catch(() => ({}));
+          if (id !== requestRef.current) return;
+          if (readinessResponse.ok)
+            setReadiness(readinessData as FiscalReadiness);
           setStatusError({
             error: safeError(
               data,
@@ -329,6 +540,14 @@ export default function FiscalFocusPage() {
           return;
         }
         setStatus(data as Status);
+        const readinessResponse = await fetch("/api/fiscal/focus/readiness", {
+          credentials: "include",
+          headers: { accept: "application/json" },
+        });
+        const readinessData = await readinessResponse.json().catch(() => ({}));
+        if (id !== requestRef.current) return;
+        if (readinessResponse.ok)
+          setReadiness(readinessData as FiscalReadiness);
       } catch (statusFailure) {
         if (id !== requestRef.current) return;
         setStatusError({
@@ -580,6 +799,12 @@ export default function FiscalFocusPage() {
         )}
         {!loading && !accessError && status && (
           <>
+            {readiness && (
+              <FiscalReadinessCard
+                readiness={readiness}
+                onRefresh={() => void loadStatus()}
+              />
+            )}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
