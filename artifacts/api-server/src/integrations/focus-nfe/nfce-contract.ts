@@ -6,6 +6,8 @@ export const FOCUS_NFCE_ENDPOINTS = {
   consultMethod: "GET",
   cancelPath: (referencia: string) => `/v2/nfce/${encodeURIComponent(referencia)}`,
   cancelMethod: "DELETE",
+  inutilizationPath: "/v2/nfce/inutilizacao",
+  inutilizationMethod: "POST",
 } as const;
 
 export const FOCUS_NFCE_REF_MAX_LENGTH = 60;

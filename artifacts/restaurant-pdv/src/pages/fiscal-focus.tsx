@@ -460,7 +460,10 @@ export default function FiscalFocusPage() {
     [showProdSection, setShowProdSection] = useState(false);
   const [savingCompany, setSavingCompany] = useState(false),
     [savingCert, setSavingCert] = useState(false),
-    [savingCsc, setSavingCsc] = useState(false);
+    [savingCsc, setSavingCsc] = useState(false),
+    [savingInutilization, setSavingInutilization] = useState(false);
+  const [inutilization, setInutilization] = useState({ environment: "homologation", serie: "1", numberStart: "", numberEnd: "", justification: "" });
+  const [inutilizationResult, setInutilizationResult] = useState<{ status:string; protocol?:string|null; rejectionMessage?:string|null } | null>(null);
   const [companyError, setCompanyError] = useState<string | null>(null),
     [certError, setCertError] = useState<string | null>(null),
     [cscError, setCscError] = useState<string | null>(null);
@@ -653,6 +656,24 @@ export default function FiscalFocusPage() {
       setCertPassword("");
       setFile(null);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+  async function saveInutilization() {
+    if (savingInutilization) return;
+    if (inutilization.environment === "production" && !confirm("AMBIENTE DE PRODUÇÃO REAL. Confirma inutilizar esta faixa na SEFAZ?")) return;
+    if (inutilization.environment !== "production" && !confirm("Confirma inutilizar esta faixa de numeração em homologação?")) return;
+    setSavingInutilization(true);
+    setInutilizationResult(null);
+    try {
+      const r = await fetch("/api/fiscal/nfce/inutilizations", { method: "POST", credentials: "include", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ environment: inutilization.environment, serie: Number(inutilization.serie), numberStart: Number(inutilization.numberStart), numberEnd: Number(inutilization.numberEnd), justification: inutilization.justification }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw data;
+      setInutilizationResult(data);
+      toast({ title: data.status === "authorized" ? "Inutilização autorizada." : "Inutilização registrada." });
+    } catch (e) {
+      toast({ title: safeError(e, "Inutilização rejeitada. Verifique a justificativa, série e numeração informadas."), variant: "destructive" });
+    } finally {
+      setSavingInutilization(false);
     }
   }
   async function saveCsc() {
@@ -1125,6 +1146,40 @@ export default function FiscalFocusPage() {
                     Baixar manual fiscal
                   </a>
                 </Button>
+              </CardContent>
+            </Card>
+
+            <Card className="border-amber-500/30" id="inutilization">
+              <CardHeader>
+                <CardTitle>Inutilizar numeração</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Use somente quando houver quebra ou pulo de numeração fiscal NFC-e. A loja é sempre a loja autenticada; não há envio de storeId pela tela.
+                </p>
+                <div className="grid gap-3 md:grid-cols-4">
+                  <div className="space-y-1">
+                    <Label>Ambiente</Label>
+                    <select className="h-10 rounded-md border bg-background px-3 text-sm" value={inutilization.environment} onChange={(e) => setInutilization((v) => ({ ...v, environment: e.target.value }))}>
+                      <option value="homologation">Homologação</option>
+                      <option value="production" disabled={!status.readyForProduction}>Produção</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1"><Label>Série</Label><Input type="number" min="1" max="999" value={inutilization.serie} onChange={(e) => setInutilization((v) => ({ ...v, serie: e.target.value }))} /></div>
+                  <div className="space-y-1"><Label>Número inicial</Label><Input type="number" min="1" value={inutilization.numberStart} onChange={(e) => setInutilization((v) => ({ ...v, numberStart: e.target.value }))} /></div>
+                  <div className="space-y-1"><Label>Número final</Label><Input type="number" min="1" value={inutilization.numberEnd} onChange={(e) => setInutilization((v) => ({ ...v, numberEnd: e.target.value }))} /></div>
+                </div>
+                {inutilization.environment === "production" && <div className="rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm font-semibold text-red-700 dark:text-red-300">AMBIENTE DE PRODUÇÃO REAL.</div>}
+                {!status.readyForProduction && <p className="text-xs text-muted-foreground">Produção fiscal ainda não está liberada para esta loja.</p>}
+                <div className="space-y-1">
+                  <Label>Justificativa</Label>
+                  <textarea className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" maxLength={255} value={inutilization.justification} onChange={(e) => setInutilization((v) => ({ ...v, justification: e.target.value }))} placeholder="Quebra de sequência causada por erro operacional." />
+                </div>
+                <Button onClick={() => void saveInutilization()} disabled={savingInutilization}>
+                  {savingInutilization && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Inutilizar numeração
+                </Button>
+                {inutilizationResult && <p className="text-sm">Resultado: {inutilizationResult.status === "authorized" ? "autorizado" : inutilizationResult.status === "rejected" ? "rejeitado" : "pendente/erro"}{inutilizationResult.protocol ? ` — protocolo ${inutilizationResult.protocol}` : ""}{inutilizationResult.rejectionMessage ? ` — ${inutilizationResult.rejectionMessage}` : ""}</p>}
               </CardContent>
             </Card>
             <Card

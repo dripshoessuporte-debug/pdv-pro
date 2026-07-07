@@ -43,6 +43,7 @@ export const fiscalDocumentStatuses = [
 ] as const;
 
 export const fiscalDocumentTypes = ["nfce"] as const;
+export const fiscalInutilizationStatuses = ["submitting", "authorized", "rejected", "error"] as const;
 
 export const storeFiscalSettingsTable = pgTable(
   "store_fiscal_settings",
@@ -305,6 +306,36 @@ export const fiscalDocumentsTable = pgTable(
   ],
 );
 
+
+export const fiscalInutilizationsTable = pgTable(
+  "fiscal_inutilizations",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("store_id").notNull().references(() => storesTable.id),
+    provider: text("provider").notNull().default("focus_nfe"),
+    environment: text("environment").notNull(),
+    series: integer("series").notNull(),
+    numberStart: integer("number_start").notNull(),
+    numberEnd: integer("number_end").notNull(),
+    justification: text("justification").notNull(),
+    status: text("status").notNull().default("submitting"),
+    providerStatus: text("provider_status"),
+    protocol: text("protocol"),
+    rejectionCode: text("rejection_code"),
+    rejectionMessage: text("rejection_message"),
+    createdByUserId: integer("created_by_user_id").references(() => usersTable.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("fiscal_inutilizations_store_env_series_idx").on(table.storeId, table.environment, table.series),
+    check("fiscal_inutilizations_provider_check", sql`${table.provider} in ('focus_nfe')`),
+    check("fiscal_inutilizations_environment_check", sql`${table.environment} in ('homologation', 'production')`),
+    check("fiscal_inutilizations_status_check", sql`${table.status} in ('submitting','authorized','rejected','error')`),
+    check("fiscal_inutilizations_range_check", sql`${table.numberEnd} >= ${table.numberStart}`),
+  ],
+);
+
 export const fiscalAuditLogsTable = pgTable(
   "fiscal_audit_logs",
   {
@@ -369,6 +400,10 @@ export type ProductFiscalSettings =
 export const insertFiscalDocumentSchema = createInsertSchema(fiscalDocumentsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertFiscalDocument = z.infer<typeof insertFiscalDocumentSchema>;
 export type FiscalDocument = typeof fiscalDocumentsTable.$inferSelect;
+
+export const insertFiscalInutilizationSchema = createInsertSchema(fiscalInutilizationsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFiscalInutilization = z.infer<typeof insertFiscalInutilizationSchema>;
+export type FiscalInutilization = typeof fiscalInutilizationsTable.$inferSelect;
 
 export const insertFiscalAuditLogSchema = createInsertSchema(
   fiscalAuditLogsTable,

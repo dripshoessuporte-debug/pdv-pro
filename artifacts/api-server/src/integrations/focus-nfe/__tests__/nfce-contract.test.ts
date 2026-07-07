@@ -157,3 +157,41 @@ test("cancelamento valida justificativa e persiste status cancelled sem migratio
   assert.match(repositorySource, /status:"cancelled"/);
   assert.match(schemaSource, /"cancelled"/);
 });
+
+test("inutilização NFC-e usa endpoint oficial, ambiente escolhido e storeId do actor", () => {
+  const routeSource = readFileSync(resolve("src/routes/fiscal-nfce.ts"), "utf8");
+  assert.equal(FOCUS_NFCE_ENDPOINTS.inutilizationMethod, "POST");
+  assert.equal(FOCUS_NFCE_ENDPOINTS.inutilizationPath, "/v2/nfce/inutilizacao");
+  assert.match(routeSource, /\/fiscal\/nfce\/inutilizations/);
+  assert.match(routeSource, /inutilizeNumberRange\(actor\.storeId/);
+  assert.doesNotMatch(routeSource, /req\.body\?\.storeId|body\.storeId/);
+  assert.match(serviceSource, /resolveStoreFocusCredentials\(\{ storeId: actorStoreId, environment: parsed\.environment \}\)/);
+});
+
+test("inutilização valida justificativa, faixa, limite e conflito com documento existente", () => {
+  const repositorySource = readFileSync(resolve("src/integrations/focus-nfe/nfce-repository.ts"), "utf8");
+  assert.match(serviceSource, /justification\.length < 15 \|\| justification\.length > 255/);
+  assert.match(serviceSource, /numberEnd < numberStart/);
+  assert.match(serviceSource, /numberEnd - numberStart \+ 1 > 100/);
+  assert.match(serviceSource, /findDocumentsInNumberRange\(actorStoreId, parsed\.environment/);
+  assert.match(repositorySource, /inArray\(fiscalDocumentsTable\.status,\["authorized","cancelled"\]\)/);
+  assert.match(serviceSource, /Não é possível inutilizar numeração que já possui documento fiscal registrado/);
+});
+
+test("inutilização em produção herda travas e resposta segura sem secrets", () => {
+  assert.match(serviceSource, /await assertSetupReady\(actorStoreId, parsed\.environment\)/);
+  assert.match(serviceSource, /Produção fiscal ainda não está liberada para esta loja/);
+  assert.match(serviceSource, /cnpj, serie:String\(parsed\.series\), numero_inicial:String\(parsed\.numberStart\), numero_final:String\(parsed\.numberEnd\), justificativa:parsed\.justification/);
+  assert.match(serviceSource, /toSafeNfceInutilization/);
+  assert.doesNotMatch(serviceSource, /token:|cscSecret|certificatePassword|encryptedValue/);
+});
+
+test("inutilização possui migration mínima dedicada", () => {
+  const schemaSource = readFileSync(resolve("../../lib/db/src/schema/fiscal.ts"), "utf8");
+  const migrationSource = readFileSync(resolve("../../lib/db/drizzle/0027_fiscal_inutilizations.sql"), "utf8");
+  assert.match(schemaSource, /fiscalInutilizationsTable/);
+  assert.match(migrationSource, /CREATE TABLE IF NOT EXISTS "fiscal_inutilizations"/);
+  assert.match(migrationSource, /number_start/);
+  assert.match(migrationSource, /number_end/);
+  assert.match(migrationSource, /created_by_user_id/);
+});

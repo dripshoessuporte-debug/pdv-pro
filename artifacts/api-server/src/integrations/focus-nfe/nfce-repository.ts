@@ -1,8 +1,22 @@
-import { and, eq } from "drizzle-orm";
-import { db, fiscalAuditLogsTable, fiscalDocumentsTable, storeFiscalSettingsTable } from "@workspace/db";
+import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { db, fiscalAuditLogsTable, fiscalDocumentsTable, fiscalInutilizationsTable, storeFiscalSettingsTable } from "@workspace/db";
 import { assertHomologationSetupReady, assertProductionSetupReady, buildHomologationNfcePayload, buildProductionNfcePayload, payloadHash, stableNfceReference } from "./nfce-payload";
-import { NfceServiceError, type SafeNfceDocument } from "./nfce-types";
+import { NfceServiceError, type SafeNfceDocument, type SafeNfceInutilization } from "./nfce-types";
 export const toSafeNfceDocument = (d: typeof fiscalDocumentsTable.$inferSelect): SafeNfceDocument => ({ id:d.id, orderId:d.orderId, environment:d.environment, status:d.status, series:d.series, number:d.number, accessKey:d.accessKey, protocol:d.protocol, xmlAvailable:Boolean(d.xmlUrl), danfceAvailable:Boolean(d.danfceUrl), rejectionCode:d.rejectionCode, rejectionMessage:d.rejectionMessage, authorizedAt:d.authorizedAt, lastCheckedAt:d.lastCheckedAt });
+export const toSafeNfceInutilization = (d: typeof fiscalInutilizationsTable.$inferSelect): SafeNfceInutilization => ({ id:d.id, environment:d.environment, status:d.status, series:d.series, numberStart:d.numberStart, numberEnd:d.numberEnd, protocol:d.protocol, rejectionCode:d.rejectionCode, rejectionMessage:d.rejectionMessage, createdAt:d.createdAt, updatedAt:d.updatedAt });
+
+export async function findDocumentsInNumberRange(storeId:number, environment:"homologation"|"production", series:number, numberStart:number, numberEnd:number){
+  return db.select({ id:fiscalDocumentsTable.id, status:fiscalDocumentsTable.status, number:fiscalDocumentsTable.number }).from(fiscalDocumentsTable).where(and(eq(fiscalDocumentsTable.storeId,storeId),eq(fiscalDocumentsTable.documentType,"nfce"),eq(fiscalDocumentsTable.environment,environment),eq(fiscalDocumentsTable.series,series),gte(fiscalDocumentsTable.number,numberStart),lte(fiscalDocumentsTable.number,numberEnd),inArray(fiscalDocumentsTable.status,["authorized","cancelled"])));
+}
+export async function createInutilizationRecord(data:{ storeId:number; environment:"homologation"|"production"; series:number; numberStart:number; numberEnd:number; justification:string; createdByUserId:number }){
+  const [d]=await db.insert(fiscalInutilizationsTable).values({ storeId:data.storeId, environment:data.environment, series:data.series, numberStart:data.numberStart, numberEnd:data.numberEnd, justification:data.justification, status:"submitting", createdByUserId:data.createdByUserId }).returning(); return d;
+}
+export async function markInutilizationAuthorized(id:number, data:{ providerStatus:string|null; protocol:string|null; message:string|null }){
+  const [d]=await db.update(fiscalInutilizationsTable).set({ status:"authorized", providerStatus:data.providerStatus, protocol:data.protocol, rejectionCode:null, rejectionMessage:data.message, updatedAt:new Date() }).where(eq(fiscalInutilizationsTable.id,id)).returning(); return d;
+}
+export async function markInutilizationRejected(id:number, data:{ status?:"rejected"|"error"; providerStatus:string|null; rejectionCode:string|null; rejectionMessage:string|null }){
+  const [d]=await db.update(fiscalInutilizationsTable).set({ status:data.status ?? "rejected", providerStatus:data.providerStatus, rejectionCode:data.rejectionCode, rejectionMessage:data.rejectionMessage, updatedAt:new Date() }).where(eq(fiscalInutilizationsTable.id,id)).returning(); return d;
+}
 export async function findNfceDocument(storeId:number, orderId:number, environment:"homologation"|"production"="homologation"){ const [d]=await db.select().from(fiscalDocumentsTable).where(and(eq(fiscalDocumentsTable.storeId,storeId),eq(fiscalDocumentsTable.orderId,orderId),eq(fiscalDocumentsTable.documentType,"nfce"),eq(fiscalDocumentsTable.environment,environment))).limit(1); return d; }
 export async function findFiscalDocumentByIdForStore(documentId:number, storeId:number){ const [d]=await db.select().from(fiscalDocumentsTable).where(and(eq(fiscalDocumentsTable.id,documentId),eq(fiscalDocumentsTable.storeId,storeId),eq(fiscalDocumentsTable.documentType,"nfce"))).limit(1); return d; }
 export async function markFiscalDocumentCancelled(documentId:number, data:{ providerStatus:string|null; protocol:string|null; xmlUrl:string|null; danfceUrl:string|null; message:string|null }){ const [d]=await db.update(fiscalDocumentsTable).set({ status:"cancelled", providerStatus:data.providerStatus, protocol:data.protocol, xmlUrl:data.xmlUrl, danfceUrl:data.danfceUrl, rejectionCode:null, rejectionMessage:data.message, lastCheckedAt:new Date() }).where(eq(fiscalDocumentsTable.id,documentId)).returning(); return d; }
