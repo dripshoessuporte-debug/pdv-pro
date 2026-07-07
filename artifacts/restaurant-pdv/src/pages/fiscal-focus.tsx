@@ -60,6 +60,21 @@ type ReadinessCheck = {
   message: string;
   blocking?: boolean;
 };
+type GoLiveCheck = {
+  code: string;
+  label: string;
+  status: "ok" | "warning" | "blocked" | "pending" | "error";
+  message: string;
+};
+type GoLiveChecklist = {
+  storeId: number;
+  readyForControlledHomologation: boolean;
+  readyForProduction: boolean;
+  summary: Record<string, GoLiveCheck["status"]>;
+  checks: GoLiveCheck[];
+  blockingIssues: string[];
+  warnings: string[];
+};
 type FiscalReadiness = {
   plan: { allowed: boolean; status: string | null };
   focus: {
@@ -292,6 +307,80 @@ function checkState(status: ReadinessCheck["status"]) {
   return "pending";
 }
 
+
+function GoLiveFiscalCard({
+  checklist,
+  onRefresh,
+}: {
+  checklist: GoLiveChecklist;
+  onRefresh: () => void;
+}) {
+  const statusClass = (status: GoLiveCheck["status"]) =>
+    status === "ok"
+      ? "border-emerald-500/30 bg-emerald-500/5"
+      : status === "blocked" || status === "error"
+        ? "border-red-500/30 bg-red-500/5"
+        : "border-amber-500/30 bg-amber-500/5";
+  const stateFor = (status: GoLiveCheck["status"]) =>
+    status === "ok"
+      ? "done"
+      : status === "blocked" || status === "error"
+        ? "error"
+        : "warning";
+  return (
+    <Card className="border-emerald-500/20">
+      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <CardTitle>Go-Live Fiscal</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Visão final segura da prontidão NFC-e antes da homologação controlada e cliente real.
+          </p>
+        </div>
+        <Button variant="outline" onClick={onRefresh}>
+          <RefreshCcw className="mr-2 h-4 w-4" />
+          Atualizar checklist
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-xl border bg-muted/30 p-3">
+            <div className="text-xs text-muted-foreground">Pronto para homologação controlada</div>
+            <b>{checklist.readyForControlledHomologation ? "Sim" : "Não"}</b>
+          </div>
+          <div className="rounded-xl border bg-muted/30 p-3">
+            <div className="text-xs text-muted-foreground">Pronto para produção</div>
+            <b>{checklist.readyForProduction ? "Sim" : "Não"}</b>
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {checklist.checks.map((item) => (
+            <div key={item.code} className={`rounded-xl border p-4 ${statusClass(item.status)}`}>
+              <div className="flex gap-3">
+                <StatusIcon state={stateFor(item.status)} />
+                <div>
+                  <b>{item.label}</b>
+                  <p className="mt-1 text-sm text-muted-foreground">{item.message}</p>
+                  <p className="mt-1 text-xs font-semibold uppercase text-muted-foreground">{item.status}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        {checklist.blockingIssues.length > 0 && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-3 text-sm">
+            <b>Bloqueios críticos:</b> {checklist.blockingIssues.join(", ")}
+          </div>
+        )}
+        {checklist.warnings.length > 0 && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+            <b>Avisos:</b> {checklist.warnings.join(", ")}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function FiscalReadinessCard({
   readiness,
   onRefresh,
@@ -447,6 +536,7 @@ export default function FiscalFocusPage() {
   const storeKey = currentStore?.id ?? actor?.storeId ?? "no-store";
   const [status, setStatus] = useState<Status | null>(null),
     [readiness, setReadiness] = useState<FiscalReadiness | null>(null),
+    [goLiveChecklist, setGoLiveChecklist] = useState<GoLiveChecklist | null>(null),
     [loading, setLoading] = useState(true),
     [accessError, setAccessError] = useState<ApiError | null>(null),
     [statusError, setStatusError] = useState<ApiError | null>(null);
@@ -484,6 +574,7 @@ export default function FiscalFocusPage() {
     setLoading(true);
     setStatus(null);
     setReadiness(null);
+    setGoLiveChecklist(null);
     setAccessError(null);
     setStatusError(null);
     clearSensitive();
@@ -555,7 +646,14 @@ export default function FiscalFocusPage() {
         const readinessData = await readinessResponse.json().catch(() => ({}));
         if (id !== requestRef.current) return;
         if (readinessResponse.ok)
-          setReadiness(readinessData as FiscalReadiness);
+            setReadiness(readinessData as FiscalReadiness);
+          const goLiveResponse = await fetch("/api/fiscal/go-live-checklist", {
+            credentials: "include",
+            headers: { accept: "application/json" },
+          });
+          const goLiveData = await goLiveResponse.json().catch(() => ({}));
+          if (id !== requestRef.current) return;
+          if (goLiveResponse.ok) setGoLiveChecklist(goLiveData as GoLiveChecklist);
       } catch (statusFailure) {
         if (id !== requestRef.current) return;
         setStatusError({
@@ -825,6 +923,12 @@ export default function FiscalFocusPage() {
         )}
         {!loading && !accessError && status && (
           <>
+            {goLiveChecklist && (
+              <GoLiveFiscalCard
+                checklist={goLiveChecklist}
+                onRefresh={() => void loadStatus()}
+              />
+            )}
             {readiness && (
               <FiscalReadinessCard
                 readiness={readiness}
