@@ -8,7 +8,8 @@
     "build": "node ./build.mjs",
     "start": "pnpm --filter @workspace/db db:migrate && node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:focus-nfe": "node ./scripts/run-focus-nfe-tests.mjs"
+    "test:focus-nfe": "node ./scripts/run-focus-nfe-tests.mjs",
+    "test:fiscal-smoke": "node ./scripts/run-fiscal-smoke-tests.mjs"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
