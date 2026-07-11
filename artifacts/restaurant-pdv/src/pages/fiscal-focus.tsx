@@ -75,6 +75,13 @@ type GoLiveChecklist = {
   blockingIssues: string[];
   warnings: string[];
 };
+type SystemPreflight = {
+  ready: boolean;
+  checks: { code: string; status: "ok" | "warning" | "blocked" | "error"; message: string }[];
+  blockingIssues: string[];
+  warnings: string[];
+};
+
 type FiscalReadiness = {
   plan: { allowed: boolean; status: string | null };
   focus: {
@@ -537,6 +544,7 @@ export default function FiscalFocusPage() {
   const [status, setStatus] = useState<Status | null>(null),
     [readiness, setReadiness] = useState<FiscalReadiness | null>(null),
     [goLiveChecklist, setGoLiveChecklist] = useState<GoLiveChecklist | null>(null),
+    [systemPreflight, setSystemPreflight] = useState<SystemPreflight | null>(null),
     [loading, setLoading] = useState(true),
     [accessError, setAccessError] = useState<ApiError | null>(null),
     [statusError, setStatusError] = useState<ApiError | null>(null);
@@ -551,9 +559,12 @@ export default function FiscalFocusPage() {
   const [savingCompany, setSavingCompany] = useState(false),
     [savingCert, setSavingCert] = useState(false),
     [savingCsc, setSavingCsc] = useState(false),
-    [savingInutilization, setSavingInutilization] = useState(false);
+    [savingInutilization, setSavingInutilization] = useState(false),
+    [checkingPreflight, setCheckingPreflight] = useState(false),
+    [releasingProduction, setReleasingProduction] = useState(false);
   const [inutilization, setInutilization] = useState({ environment: "homologation", serie: "1", numberStart: "", numberEnd: "", justification: "" });
   const [inutilizationResult, setInutilizationResult] = useState<{ status:string; protocol?:string|null; rejectionMessage?:string|null } | null>(null);
+  const [productionConfirmation, setProductionConfirmation] = useState("");
   const [companyError, setCompanyError] = useState<string | null>(null),
     [certError, setCertError] = useState<string | null>(null),
     [cscError, setCscError] = useState<string | null>(null);
@@ -575,6 +586,7 @@ export default function FiscalFocusPage() {
     setStatus(null);
     setReadiness(null);
     setGoLiveChecklist(null);
+    setSystemPreflight(null);
     setAccessError(null);
     setStatusError(null);
     clearSensitive();
@@ -654,6 +666,10 @@ export default function FiscalFocusPage() {
           const goLiveData = await goLiveResponse.json().catch(() => ({}));
           if (id !== requestRef.current) return;
           if (goLiveResponse.ok) setGoLiveChecklist(goLiveData as GoLiveChecklist);
+          const preflightResponse = await fetch("/api/fiscal/system-preflight", { credentials: "include", headers: { accept: "application/json" } });
+          const preflightData = await preflightResponse.json().catch(() => ({}));
+          if (id !== requestRef.current) return;
+          if (preflightResponse.ok) setSystemPreflight(preflightData as SystemPreflight);
       } catch (statusFailure) {
         if (id !== requestRef.current) return;
         setStatusError({
@@ -754,6 +770,37 @@ export default function FiscalFocusPage() {
       setCertPassword("");
       setFile(null);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+  async function checkSystemPreflight() {
+    if (checkingPreflight) return;
+    setCheckingPreflight(true);
+    try {
+      const r = await fetch("/api/fiscal/system-preflight", { credentials: "include", headers: { accept: "application/json" } });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw data;
+      setSystemPreflight(data as SystemPreflight);
+      toast({ title: (data as SystemPreflight).ready ? "Sistema fiscal pronto." : "Preflight fiscal encontrou bloqueios." });
+    } catch (e) {
+      toast({ title: safeError(e, "Não foi possível verificar o sistema fiscal."), variant: "destructive" });
+    } finally {
+      setCheckingPreflight(false);
+    }
+  }
+  async function releaseProduction() {
+    if (releasingProduction) return;
+    setReleasingProduction(true);
+    try {
+      const r = await fetch("/api/fiscal/production/release", { method: "POST", credentials: "include", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ confirmation: productionConfirmation }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw data;
+      toast({ title: data.message ?? "Produção fiscal liberada." });
+      setProductionConfirmation("");
+      await loadStatus();
+    } catch (e) {
+      toast({ title: safeError(e, "Produção fiscal ainda não pode ser liberada. Conclua a homologação e os requisitos obrigatórios."), variant: "destructive" });
+    } finally {
+      setReleasingProduction(false);
     }
   }
   async function saveInutilization() {
@@ -929,11 +976,46 @@ export default function FiscalFocusPage() {
                 onRefresh={() => void loadStatus()}
               />
             )}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5" />
+                  Preflight Técnico Fiscal
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-5">
+                  <div className="rounded-xl border p-3"><div className="text-xs text-muted-foreground">Sistema pronto para configurar cliente</div><b>{systemPreflight?.ready ? "Sim" : "Não"}</b></div>
+                  <div className="rounded-xl border p-3"><div className="text-xs text-muted-foreground">Chave de criptografia fiscal</div><b>{systemPreflight?.checks.find((c) => c.code === "FISCAL_SECRET_KEY_READY")?.status === "ok" ? "ok" : "bloqueado"}</b></div>
+                  <div className="rounded-xl border p-3"><div className="text-xs text-muted-foreground">Tabelas fiscais</div><b>{systemPreflight && !systemPreflight.checks.some((c) => c.code.startsWith("FISCAL_TABLE_") && c.status !== "ok") ? "ok" : "bloqueado"}</b></div>
+                  <div className="rounded-xl border p-3"><div className="text-xs text-muted-foreground">Credenciais por loja</div><b>{systemPreflight?.checks.find((c) => c.code === "STORE_FOCUS_HOMOLOGATION_CREDENTIAL")?.status === "ok" ? "ok" : "pendente"}</b></div>
+                  <div className="rounded-xl border p-3"><div className="text-xs text-muted-foreground">Migrations fiscais</div><b>{systemPreflight?.checks.find((c) => c.code === "FISCAL_MIGRATIONS_APPLIED")?.status === "ok" ? "ok" : "bloqueado"}</b></div>
+                </div>
+                <Button type="button" variant="outline" onClick={() => void checkSystemPreflight()} disabled={checkingPreflight}>
+                  {checkingPreflight && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Verificar sistema fiscal
+                </Button>
+              </CardContent>
+            </Card>
             {readiness && (
               <FiscalReadinessCard
                 readiness={readiness}
                 onRefresh={() => void loadStatus()}
               />
+            )}
+            {readiness?.readyForHomologation && status.productionCredentialConfigured && status.certificateConfigured && status.cscConfigured && status.readyForHomologationTest && !status.readyForProduction && (
+              <Card className="border-red-500/30 bg-red-500/5">
+                <CardHeader><CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-300"><ShieldAlert className="h-5 w-5" />Liberar produção fiscal</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm font-semibold text-red-700 dark:text-red-300">A partir desta liberação, NFC-e em produção poderá gerar documento fiscal real.</p>
+                  <Label>Digite exatamente: LIBERAR PRODUCAO FISCAL</Label>
+                  <Input value={productionConfirmation} onChange={(e) => setProductionConfirmation(e.target.value)} />
+                  <Button type="button" variant="destructive" disabled={productionConfirmation !== "LIBERAR PRODUCAO FISCAL" || releasingProduction} onClick={() => void releaseProduction()}>
+                    {releasingProduction && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Liberar produção fiscal
+                  </Button>
+                </CardContent>
+              </Card>
             )}
             <Card>
               <CardHeader>

@@ -5,16 +5,21 @@ import express, {
   type Request,
   type Response,
 } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   db,
+  fiscalAuditLogsTable,
   fiscalDocumentsTable,
+  fiscalGroupRulesTable,
+  fiscalGroupsTable,
+  fiscalInutilizationsTable,
+  fiscalProviderCredentialsTable,
   storeFiscalPresentationTable,
   storeFiscalSettingsTable,
 } from "@workspace/db";
 import { requireStoreFeature } from "../lib/store-features";
 import { requireRole, resolveCurrentActor } from "../middleware/rbac";
-import { resolveFocusNfeToken } from "../integrations/focus-nfe";
+import { getFocusNfeConfig, resolveFocusNfeToken } from "../integrations/focus-nfe";
 import {
   configureFocusCsc,
   getFocusCompanySummary,
@@ -28,6 +33,7 @@ import {
   FocusSetupError,
   mapFocusSetupError,
 } from "../integrations/focus-nfe/setup-errors";
+import { encryptSecret, decryptSecret, encryptionKeyFromEnv } from "../lib/fiscal-secrets";
 
 const router: IRouter = Router();
 const clean = (value: unknown, maxLength = 250): string =>
@@ -118,6 +124,61 @@ function sendSetupError(
   res.status(mapped.status).json(mapped.body);
 }
 
+
+type SystemPreflightStatus = "ok" | "warning" | "blocked" | "error";
+type SystemPreflightCheck = { code: string; status: SystemPreflightStatus; message: string };
+const preflightCheck = (code: string, status: SystemPreflightStatus, message: string): SystemPreflightCheck => ({ code, status, message });
+const hasBlockingPreflightStatus = (status: SystemPreflightStatus) => status === "blocked" || status === "error";
+const fiscalTables = [
+  ["store_fiscal_settings", storeFiscalSettingsTable],
+  ["fiscal_provider_credentials", fiscalProviderCredentialsTable],
+  ["fiscal_documents", fiscalDocumentsTable],
+  ["fiscal_inutilizations", fiscalInutilizationsTable],
+  ["fiscal_groups", fiscalGroupsTable],
+  ["fiscal_group_rules", fiscalGroupRulesTable],
+] as const;
+
+async function buildSystemPreflight(storeId: number, fiscalFeatureAllowed: boolean) {
+  const checks: SystemPreflightCheck[] = [];
+  checks.push(preflightCheck("DATABASE_URL_CONFIGURED", process.env.DATABASE_URL ? "ok" : "blocked", process.env.DATABASE_URL ? "DATABASE_URL aparentemente configurada." : "DATABASE_URL não configurada no servidor."));
+  try {
+    encryptionKeyFromEnv();
+    checks.push(preflightCheck("FISCAL_SECRET_KEY_READY", "ok", "Chave de criptografia fiscal configurada."));
+    const fake = "fake-fiscal-preflight-secret";
+    const encrypted = encryptSecret(fake);
+    const decrypted = decryptSecret(encrypted);
+    checks.push(preflightCheck("FISCAL_SECRET_ROUNDTRIP", decrypted === fake ? "ok" : "blocked", decrypted === fake ? "Criptografia fiscal validada em memória." : "Criptografia fiscal não concluiu roundtrip em memória."));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Chave de criptografia fiscal indisponível.";
+    checks.push(preflightCheck("FISCAL_SECRET_KEY_READY", "blocked", message));
+    checks.push(preflightCheck("FISCAL_SECRET_ROUNDTRIP", "blocked", "Criptografia fiscal não pôde ser validada em memória."));
+  }
+  for (const [tableName, table] of fiscalTables) {
+    try {
+      await db.select({ ok: sql<number>`1` }).from(table).limit(1);
+      checks.push(preflightCheck(`FISCAL_TABLE_${tableName.toUpperCase()}_ACCESSIBLE`, "ok", `Tabela fiscal ${tableName} acessível.`));
+    } catch {
+      checks.push(preflightCheck(`FISCAL_TABLE_${tableName.toUpperCase()}_ACCESSIBLE`, "blocked", `Tabela fiscal ${tableName} indisponível.`));
+    }
+  }
+  const tableBlocked = checks.some((c) => c.code.startsWith("FISCAL_TABLE_") && hasBlockingPreflightStatus(c.status));
+  checks.push(preflightCheck("FISCAL_MIGRATIONS_APPLIED", tableBlocked ? "blocked" : "ok", tableBlocked ? "Migrations fiscais não parecem aplicadas." : "Migrations fiscais parecem aplicadas."));
+  try {
+    const [settings] = await db.select({ id: storeFiscalSettingsTable.id }).from(storeFiscalSettingsTable).where(eq(storeFiscalSettingsTable.storeId, storeId)).limit(1);
+    checks.push(preflightCheck("STORE_FISCAL_SETTINGS_QUERY", "ok", settings ? "Configuração fiscal da loja consultada." : "Configuração fiscal da loja ainda não criada."));
+  } catch {
+    checks.push(preflightCheck("STORE_FISCAL_SETTINGS_QUERY", "blocked", "Backend não conseguiu consultar configuração fiscal da loja."));
+  }
+  checks.push(preflightCheck("FISCAL_FEATURE_ACTIVE", fiscalFeatureAllowed ? "ok" : "blocked", fiscalFeatureAllowed ? "Módulo fiscal ativo para a loja." : "Módulo fiscal inativo para a loja."));
+  const cfg = getFocusNfeConfig();
+  checks.push(preflightCheck("FOCUS_BASE_CONFIG_RESOLVED", cfg.baseUrls.homologation && cfg.baseUrls.production ? "ok" : "blocked", "Configuração base da Focus resolvida sem retornar tokens."));
+  const focus = await getFocusCompanySummary(storeId);
+  checks.push(preflightCheck("STORE_FOCUS_HOMOLOGATION_CREDENTIAL", focus.homologationCredentialConfigured ? "ok" : "warning", focus.homologationCredentialConfigured ? "Credencial Focus de homologação da loja configurada." : "Credencial Focus de homologação da loja pendente."));
+  const blockingIssues = checks.filter((c) => hasBlockingPreflightStatus(c.status)).map((c) => c.code);
+  const warnings = checks.filter((c) => c.status === "warning").map((c) => c.code);
+  return { ready: blockingIssues.length === 0, checks, blockingIssues, warnings };
+}
+
 const certificateUploadLimitErrorHandler: ErrorRequestHandler = (
   error,
   _req,
@@ -150,6 +211,58 @@ const certificateUploadLimitErrorHandler: ErrorRequestHandler = (
 };
 
 
+
+router.get(
+  "/fiscal/system-preflight",
+  requireRole("max_control"),
+  requireStoreFeature("fiscal"),
+  async (req: Request, res: Response): Promise<void> => {
+    const actor = await resolveCurrentActor(req);
+    const access = res.locals.storeFeatureAccess as { allowed?: boolean } | undefined;
+    try {
+      res.json(await buildSystemPreflight(actor.storeId, Boolean(access?.allowed)));
+    } catch (error) {
+      console.error("[fiscal/system-preflight]", { errorName: error instanceof Error ? error.name : typeof error, safeMessage: safeStatusMessage(error), storeId: actor.storeId, userId: actor.id });
+      res.status(503).json({ ready: false, checks: [preflightCheck("FISCAL_PREFLIGHT_UNAVAILABLE", "error", "Não foi possível executar o preflight fiscal agora.")], blockingIssues: ["FISCAL_PREFLIGHT_UNAVAILABLE"], warnings: [] });
+    }
+  },
+);
+
+router.post(
+  "/fiscal/production/release",
+  requireRole("max_control"),
+  requireStoreFeature("fiscal"),
+  async (req: Request, res: Response): Promise<void> => {
+    const actor = await resolveCurrentActor(req);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (body.confirmation !== "LIBERAR PRODUCAO FISCAL") {
+      res.status(400).json({ code: "FISCAL_PRODUCTION_RELEASE_CONFIRMATION_INVALID", error: "Produção fiscal ainda não pode ser liberada. Conclua a homologação e os requisitos obrigatórios." });
+      return;
+    }
+    try {
+      const [settings] = await db.select().from(storeFiscalSettingsTable).where(eq(storeFiscalSettingsTable.storeId, actor.storeId)).limit(1);
+      const focus = await getFocusCompanySummary(actor.storeId);
+      const [authorizedHomologation] = await db.select({ id: fiscalDocumentsTable.id }).from(fiscalDocumentsTable).where(and(eq(fiscalDocumentsTable.storeId, actor.storeId), eq(fiscalDocumentsTable.documentType, "nfce"), eq(fiscalDocumentsTable.environment, "homologation"), eq(fiscalDocumentsTable.status, "authorized"))).limit(1);
+      const [lastDocument] = await db.select({ status: fiscalDocumentsTable.status }).from(fiscalDocumentsTable).where(eq(fiscalDocumentsTable.storeId, actor.storeId)).orderBy(desc(fiscalDocumentsTable.createdAt)).limit(1);
+      const fiscalConfigComplete = Boolean(settings?.cnpj?.trim() && settings?.stateRegistration?.trim() && settings?.taxRegime && settings?.state && settings?.cityIbgeCode && Number.isInteger(settings?.series) && Number.isInteger(settings?.nextNumber));
+      const lastCritical = Boolean(lastDocument && ["rejected", "error"].includes(lastDocument.status));
+      const allowed = fiscalConfigComplete && focus.homologationCredentialConfigured && focus.productionCredentialConfigured && focus.certificateConfigured && focus.cscConfigured && Boolean(authorizedHomologation) && !lastCritical;
+      if (!allowed) {
+        res.status(409).json({ code: "FISCAL_PRODUCTION_RELEASE_BLOCKED", error: "Produção fiscal ainda não pode ser liberada. Conclua a homologação e os requisitos obrigatórios." });
+        return;
+      }
+      await db.transaction(async (tx: any) => {
+        await tx.update(storeFiscalSettingsTable).set({ setupStatus: "production", updatedAt: new Date() }).where(eq(storeFiscalSettingsTable.storeId, actor.storeId));
+        await tx.insert(fiscalAuditLogsTable).values({ storeId: actor.storeId, actorUserId: actor.id, action: "fiscal_production_released", targetType: "store_fiscal_settings", targetId: String(actor.storeId), metadata: { status: "production" } });
+      });
+      res.json({ ready: true, setupStatus: "production", message: "Produção fiscal liberada com segurança para esta loja." });
+    } catch (error) {
+      console.error("[fiscal/production/release]", { errorName: error instanceof Error ? error.name : typeof error, safeMessage: safeStatusMessage(error), storeId: actor.storeId, userId: actor.id });
+      res.status(503).json({ code: "FISCAL_PRODUCTION_RELEASE_FAILED", error: "Produção fiscal ainda não pode ser liberada. Conclua a homologação e os requisitos obrigatórios." });
+    }
+  },
+);
+
 router.get(
   "/fiscal/go-live-checklist",
   requireRole("max_control"),
@@ -174,8 +287,9 @@ router.get(
       const focus = await getFocusCompanySummary(actor.storeId);
       const environment = settings?.environment === "production" ? "production" : "homologation";
       const baseToken = resolveFocusNfeToken(environment);
+      const globalTokenDiagnostic = Boolean(baseToken.token);
       const fiscalConfigReady = Boolean(settings?.cnpj?.trim() && settings?.stateRegistration?.trim() && Number.isInteger(settings?.series) && Number.isInteger(settings?.nextNumber));
-      const focusReady = Boolean(baseToken.token && focus.companyLinked && focus.homologationCredentialConfigured);
+      const focusReady = Boolean(focus.companyLinked && focus.homologationCredentialConfigured);
       const certificateReady = Boolean(focus.certificateConfigured);
       const cscReady = Boolean(focus.cscConfigured);
       const homologationAuthorized = Boolean(authorizedHomologation);
@@ -183,7 +297,8 @@ router.get(
       const checks: GoLiveCheck[] = [
         check("FISCAL_FEATURE_ACTIVE", "Feature fiscal", access?.allowed ? "ok" : "blocked", access?.allowed ? "Feature fiscal ativa para a loja autenticada." : "Feature fiscal indisponível para a loja autenticada."),
         check("FISCAL_CONFIG_READY", "Configuração fiscal", fiscalConfigReady ? "ok" : "pending", fiscalConfigReady ? "Configuração fiscal encontrada." : "Complete CNPJ, IE, série e próxima numeração."),
-        check("FOCUS_CONFIG_READY", "Configuração Focus", focusReady ? "ok" : "pending", focusReady ? "Integração Focus configurada sem expor credenciais." : "Vincule empresa e credencial de homologação Focus."),
+        check("FOCUS_CONFIG_READY", "Configuração Focus", focusReady ? "ok" : "pending", focusReady ? "Integração Focus configurada por credencial da loja sem expor credenciais." : "Vincule empresa e credencial de homologação Focus por loja."),
+        check("FOCUS_GLOBAL_HOMOLOGATION_TOKEN_DIAGNOSTIC", "Token global homologação", globalTokenDiagnostic ? "ok" : "warning", globalTokenDiagnostic ? "Token global de homologação presente apenas como diagnóstico." : "Token global FOCUS_NFE_HOMOLOGATION_TOKEN ausente; não bloqueia loja com credencial própria."),
         check("CERTIFICATE_READY", "Certificado digital", certificateReady ? "ok" : "pending", certificateReady ? "Certificado configurado; conteúdo e senha não são retornados." : "Envie o certificado A1 para a Focus."),
         check("CSC_READY", "CSC NFC-e", cscReady ? "ok" : "pending", cscReady ? "CSC configurado; segredo não é retornado." : "Configure o CSC/token da NFC-e."),
         check("HOMOLOGATION_AUTHORIZED_DOCUMENT_EXISTS", "NFC-e homologada autorizada", homologationAuthorized ? "ok" : "warning", homologationAuthorized ? "Existe NFC-e de homologação autorizada." : "Validação automática indisponível; execute teste manual."),
@@ -434,7 +549,7 @@ router.get(
           status: access?.status ?? null,
         },
         focus: {
-          configured: Boolean(baseToken.token && focus.companyLinked),
+          configured: Boolean(focus.homologationCredentialConfigured && focus.companyLinked),
           tokenConfigured: focus.homologationCredentialConfigured,
           companyLinked: focus.companyLinked,
           companyId: focus.providerCompanyId,

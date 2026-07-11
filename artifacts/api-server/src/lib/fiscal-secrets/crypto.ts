@@ -18,13 +18,13 @@ export class FiscalSecretsError extends Error {
   }
 }
 
-function encryptionKeyFromEnv(env: NodeJS.ProcessEnv = process.env): Buffer {
+export function encryptionKeyFromEnv(env: NodeJS.ProcessEnv = process.env): Buffer {
   const raw = env.FISCAL_SECRETS_ENCRYPTION_KEY;
-  if (!raw) throw new FiscalSecretsError("Chave de criptografia fiscal não configurada.");
+  if (!raw) throw new FiscalSecretsError("Chave de criptografia fiscal não configurada no servidor. Configure FISCAL_SECRETS_ENCRYPTION_KEY no Railway.");
   const key = Buffer.from(raw, "base64");
   const fallback = Buffer.from(raw, "utf8");
   const resolved = key.length === 32 ? key : fallback;
-  if (resolved.length !== 32) throw new FiscalSecretsError("Chave de criptografia fiscal inválida.");
+  if (resolved.length !== 32) throw new FiscalSecretsError("Chave de criptografia fiscal inválida. Ela deve ter 32 bytes ou base64 válido de 32 bytes.");
   return resolved;
 }
 
