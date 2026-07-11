@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db, fiscalProviderCredentialsTable } from "@workspace/db";
 import type { FocusNfeEnvironment } from "../../integrations/focus-nfe";
 import { decryptSecret, encryptSecret } from "./crypto";
-export { decryptSecret, encryptSecret, FiscalSecretsError } from "./crypto";
+export { decryptSecret, encryptSecret, encryptionKeyFromEnv, FiscalSecretsError } from "./crypto";
 
 export type FiscalProvider = "focus_nfe";
 export type FiscalCredentialType = "api_token" | "csc_secret";
