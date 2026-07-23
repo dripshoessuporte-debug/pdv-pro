@@ -906,7 +906,7 @@ export default function Menu() {
                 <div className="flex flex-col gap-2"><Input type="file" accept=".csv,text/csv" onChange={(e)=>void loadMultisaborCsvFile(e.target.files?.[0] ?? null)} /><Button disabled={!multisaborCsv.trim() || multisaborImporting} onClick={validateMultisaborCsv}>Validar planilha</Button><Button disabled={!multisaborImportPreview || multisaborImportPreview.counters.erros > 0 || multisaborImporting} onClick={confirmMultisaborImport}>Confirmar importação</Button></div>
               </div>
               {multisaborImportPreview ? <div className="space-y-3 rounded-lg border bg-background p-3">
-                <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-7">{Object.entries(multisaborImportPreview.counters).map(([k,v])=><div key={k} className="rounded border p-2"><p className="text-xs text-muted-foreground">{k}</p><p className="font-semibold">{v}</p></div>)}</div>
+                <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7">{Object.entries(multisaborImportPreview.counters).map(([k,v])=><div key={k} className="rounded border p-2"><p className="text-xs text-muted-foreground">{k}</p><p className="font-semibold">{v}</p></div>)}</div>
                 {multisaborImportPreview.errors.length ? <div className="space-y-1 text-sm text-destructive">{multisaborImportPreview.errors.map((e,idx)=><p key={idx}>Linha {e.rowNumber}: {e.message}</p>)}</div> : <div className="max-h-48 overflow-auto text-sm">{multisaborImportPreview.rows.slice(0, 30).map((r)=><p key={`${r.rowNumber}-${r.tipo}`}>Linha {r.rowNumber}: {r.tipo} — {r.grupo} — {r.resumo}</p>)}</div>}
               </div> : null}
             </section>
@@ -1433,7 +1433,7 @@ export default function Menu() {
                   <Label>Descrição</Label>
                   <Textarea value={addonGroupForm.description} onChange={(e) => setAddonGroupForm({ ...addonGroupForm, description: e.target.value })} placeholder="Descrição opcional" rows={2} />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <Label>Mínimo</Label>
                     <Input type="number" min="0" value={addonGroupForm.minSelected} onChange={(e) => setAddonGroupForm({ ...addonGroupForm, minSelected: e.target.value })} />

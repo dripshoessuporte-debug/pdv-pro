@@ -1453,7 +1453,7 @@ export default function NewOrder() {
                   <Label className="mb-2 block text-sm font-medium">
                     Tipo de Pedido
                   </Label>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                     {ORDER_TYPES.map((t) => (
                       <Button
                         key={t.value}
@@ -1794,7 +1794,7 @@ export default function NewOrder() {
                         <Banknote className="w-4 h-4" /> Pagamento
                       </p>
                       {/* Quando pagar */}
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {[
                           { value: "now", label: "💳 Pagou agora" },
                           {
@@ -2767,7 +2767,7 @@ export default function NewOrder() {
                             .join(", ")
                         : "Nenhum"}
                     </p>
-                    <div className="grid grid-cols-2 gap-2 border-t pt-3 sm:grid-cols-5">
+                    <div className="grid grid-cols-1 gap-2 border-t pt-3 sm:grid-cols-2 lg:grid-cols-5">
                       <span>
                         Base: R$ {multisaborQuote.basePrice.toFixed(2)}
                       </span>

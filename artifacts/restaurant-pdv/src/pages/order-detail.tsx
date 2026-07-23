@@ -599,7 +599,7 @@ ${allowedFlavors.map((f: any) => `${f.productId} - ${f.productName} — ${f.tier
                         </Button>
                       ))}
                     </div>
-                    <div className="grid grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1">
                       {products
                         ?.filter((p) => p.available)
                         .map((product) => (

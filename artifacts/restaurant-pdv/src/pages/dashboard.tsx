@@ -199,7 +199,7 @@ export default function Dashboard() {
         )}
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             title="Faturamento Hoje"
             value={
@@ -236,7 +236,7 @@ export default function Dashboard() {
 
         {/* Mesas */}
         {summary && (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Card className="border-green-200 bg-green-50">
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="w-3 h-3 rounded-full bg-green-500 shrink-0" />
