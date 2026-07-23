@@ -598,7 +598,7 @@ export default function Settings() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="col-span-2">
                 <Label>Nome da Loja</Label>
                 <Input
@@ -777,7 +777,7 @@ export default function Settings() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="flex items-center gap-2">
                   <Package className="w-4 h-4" />
@@ -952,7 +952,7 @@ export default function Settings() {
                   )}
 
                   {deliveryFeeMode === "distance_tier" && (
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <Label>Taxa mínima de entrega (R$)</Label>
                         <Input
@@ -1110,7 +1110,7 @@ export default function Settings() {
               <Label className="block mb-2">
                 Método de cálculo de distância
               </Label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {(
                   [
                     {

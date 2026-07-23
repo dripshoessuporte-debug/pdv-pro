@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard,
@@ -19,6 +19,8 @@ import {
   Layers3,
   BookOpenCheck,
   PlugZap,
+  Menu,
+  X,
 } from "lucide-react";
 import {
   useHealthCheck,
@@ -76,12 +78,12 @@ function AlertBadge({ count }: { count: number }) {
   );
 }
 
-function SettingsNavigation({ location }: { location: string }) {
+export function SettingsNavigation({ location }: { location: string }) {
   if (!location.startsWith("/settings")) return null;
 
   return (
-    <div className="mb-6 rounded-2xl border bg-card p-2 shadow-sm">
-      <div className="flex flex-wrap gap-2">
+    <div className="mb-6 overflow-x-auto rounded-2xl border bg-card p-2 shadow-sm [-webkit-overflow-scrolling:touch]">
+      <div className="flex min-w-max gap-2 sm:min-w-0 sm:flex-wrap">
         {settingsItems.map((item) => {
           const isActive =
             item.href === "/settings"
@@ -92,7 +94,7 @@ function SettingsNavigation({ location }: { location: string }) {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
+              className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
                 isActive
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -108,12 +110,12 @@ function SettingsNavigation({ location }: { location: string }) {
   );
 }
 
-function FiscalNavigation({ location }: { location: string }) {
+export function FiscalNavigation({ location }: { location: string }) {
   if (!location.startsWith("/fiscal")) return null;
 
   return (
-    <div className="mb-6 rounded-2xl border bg-card p-2 shadow-sm">
-      <div className="flex flex-wrap gap-2">
+    <div className="mb-6 overflow-x-auto rounded-2xl border bg-card p-2 shadow-sm [-webkit-overflow-scrolling:touch]">
+      <div className="flex min-w-max gap-2 sm:min-w-0 sm:flex-wrap">
         {fiscalItems.map((item) => {
           const isActive =
             item.href === "/fiscal"
@@ -124,7 +126,7 @@ function FiscalNavigation({ location }: { location: string }) {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
+              className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
                 isActive
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -144,6 +146,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { actor, user, currentStore, logout } = useAuth();
   const currentStoreId = currentStore?.id ?? actor?.storeId ?? null;
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const visibleNavItems = actor
     ? navItems.filter((item) => canAccessPath(actor.role, item.href))
@@ -213,9 +216,52 @@ export function Layout({ children }: { children: ReactNode }) {
     return 0;
   }
 
+  const systemStatus = (
+    <div className="flex items-center text-zinc-300">
+      {health?.status === "ok" ? (
+        <CheckCircle2 className="mr-2 h-4 w-4 text-green-400" />
+      ) : (
+        <AlertCircle className="mr-2 h-4 w-4 text-red-400" />
+      )}
+      Status do Sistema
+    </div>
+  );
+
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
-      <aside className="w-64 border-r border-white/10 bg-sidebar text-sidebar-foreground flex flex-col shadow-2xl shadow-slate-950/20">
+    <div className="min-h-screen w-full bg-background text-foreground lg:flex">
+      {mobileMenuOpen && (
+        <button
+          type="button"
+          aria-label="Fechar menu mobile"
+          className="fixed inset-0 z-40 bg-slate-950/60 lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+      <header className="sticky top-0 z-30 border-b bg-background/95 px-4 py-3 shadow-sm backdrop-blur lg:hidden">
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-11 w-11 shrink-0"
+            aria-label={mobileMenuOpen ? "Fechar menu" : "Abrir menu"}
+            onClick={() => setMobileMenuOpen((open) => !open)}
+          >
+            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </Button>
+          <Link href="/" className="flex min-w-0 flex-1 items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
+            <img src="/brand/gestor-max-logo.png" alt="Gestor Max" className="h-9 w-auto max-w-[140px] object-contain" />
+            <span className="sr-only">Gestor Max</span>
+          </Link>
+          <div className="hidden min-w-0 flex-1 text-right text-xs text-muted-foreground min-[430px]:block">
+            <div className="truncate font-semibold text-foreground">{currentStore?.name ?? `Loja ${actor.storeId}`}</div>
+            {canAccessPath(actor.role, "/cash") && (
+              <div className={cashOpen ? "text-green-600" : "text-amber-600"}>Caixa {cashOpen ? "aberto" : "fechado"}</div>
+            )}
+          </div>
+        </div>
+      </header>
+      <aside className={`fixed inset-y-0 left-0 z-50 flex w-[min(20rem,86vw)] -translate-x-full flex-col border-r border-white/10 bg-sidebar text-sidebar-foreground shadow-2xl shadow-slate-950/30 transition-transform lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:translate-x-0 ${mobileMenuOpen ? "translate-x-0" : ""}`}>
         <div className="min-h-20 flex items-center px-6 border-b border-white/10">
           <Link href="/" className="flex min-h-11 items-center">
             <img
@@ -237,7 +283,8 @@ export function Layout({ children }: { children: ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`group flex items-center justify-between px-3.5 py-3 rounded-xl text-sm transition-all duration-200 ${
+                onClick={() => setMobileMenuOpen(false)}
+                className={`group flex min-h-11 items-center justify-between px-3.5 py-3 rounded-xl text-sm transition-all duration-200 ${
                   isActive
                     ? "bg-primary text-white font-semibold shadow-lg shadow-red-950/30"
                     : "text-zinc-300 hover:bg-white/10 hover:text-white"
@@ -318,19 +365,10 @@ export function Layout({ children }: { children: ReactNode }) {
           </Button>
         </div>
 
-        <div className="p-4 border-t border-white/10 text-sm flex items-center justify-between">
-          <div className="flex items-center text-zinc-300">
-            {health?.status === "ok" ? (
-              <CheckCircle2 className="w-4 h-4 text-green-400 mr-2" />
-            ) : (
-              <AlertCircle className="w-4 h-4 text-red-400 mr-2" />
-            )}
-            Status do Sistema
-          </div>
-        </div>
+        <div className="border-t border-white/10 p-4 text-sm">{systemStatus}</div>
       </aside>
-      <main className="flex-1 overflow-y-auto bg-background">
-        <div className="p-8 lg:p-10 max-w-7xl mx-auto min-h-full">
+      <main className="min-w-0 flex-1 bg-background">
+        <div className="mx-auto min-h-full max-w-7xl px-4 py-5 sm:px-6 lg:p-10">
           <SettingsNavigation location={location} />
           <FiscalNavigation location={location} />
           {children}

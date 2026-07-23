@@ -8,7 +8,7 @@
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:fiscal-focus": "node --test src/pages/fiscal-focus.test.mjs src/pages/pizza-multiflavor.test.mjs"
+    "test:fiscal-focus": "node --test src/pages/fiscal-focus.test.mjs src/pages/pizza-multiflavor.test.mjs src/pages/layout-responsive.test.mjs"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
